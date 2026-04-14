@@ -1,0 +1,30 @@
+{
+  "name": "safecampus-pucp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Plataforma omnicanal para gestión centralizada de incidentes en campus universitario — PUCP",
+  "scripts": {
+    "dev:web": "turbo run dev --filter=@safecampus/web",
+    "dev:backend": "cd apps/backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:mobile": "turbo run dev --filter=@safecampus/mobile",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean",
+    "db:up": "node -e \"console.log('Supabase es administrado remotamente; no hay DB local que levantar.')\"",
+    "db:down": "node -e \"console.log('Supabase es administrado remotamente; no hay DB local que apagar.')\"",
+    "db:migrate": "cd apps/backend && alembic upgrade head",
+    "db:makemigrations": "cd apps/backend && alembic revision --autogenerate -m",
+    "db:current": "cd apps/backend && alembic current",
+    "db:history": "cd apps/backend && alembic history --verbose",
+    "db:validate-baseline": "cd apps/backend && alembic upgrade head"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

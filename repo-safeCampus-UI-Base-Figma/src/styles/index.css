@@ -1,0 +1,13 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/* ── Print styles for /docs/components PDF export ── */
+@media print {
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  * { animation: none !important; transition: none !important; }
+  section { break-inside: avoid; }
+  h2 { break-after: avoid; }
+  .border { border-color: #d1d5db !important; }
+  @page { size: A4; margin: 12mm 10mm; }
+}
