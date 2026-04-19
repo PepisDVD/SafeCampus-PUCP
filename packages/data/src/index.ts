@@ -1,9 +1,9 @@
 export { createClient as createBrowserClient, supabase } from "./client/client";
-export { createServerSupabaseClient } from "./client/server";
-export { updateSession } from "./client/middleware";
 export {
+  BROWSER_COOKIE_OPTIONS,
   COOKIE_DOMAIN,
   RAW_DOMAIN,
+  SERVER_COOKIE_OPTIONS,
   SHARED_COOKIE_OPTIONS,
 } from "./client/options";
 export { applySupabasePagination } from "./utils/pagination";

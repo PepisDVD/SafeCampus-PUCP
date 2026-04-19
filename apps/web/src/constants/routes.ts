@@ -15,6 +15,7 @@ export const ROUTES = {
   ACOMPANAMIENTO: "/acompanamiento",
 
   // Operativo
+  BIENVENIDA: "/bienvenida",
   DASHBOARD: "/dashboard",
   INCIDENTES: "/incidentes",
   INCIDENTE_DETALLE: (id: string) => `/incidentes/${id}`,

@@ -1,5 +1,12 @@
-import { updateSession } from "@safecampus/data";
+import { updateSession } from "@safecampus/data/server";
 import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+
+function isPublicPath(pathname: string): boolean {
+  if (pathname === "/login") return true;
+  if (pathname.startsWith("/auth/callback")) return true;
+  return false;
+}
 
 function requestOrigin(request: NextRequest) {
   const forwardedProto = request.headers.get("x-forwarded-proto");
@@ -12,7 +19,17 @@ function requestOrigin(request: NextRequest) {
 export async function proxy(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.set("x-current-url", requestOrigin(request));
-  const { supabaseResponse } = await updateSession(request, headers);
+  const { supabaseResponse, user } = await updateSession(request, headers);
+
+  if (!user && !isPublicPath(request.nextUrl.pathname)) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set(
+      "next",
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    );
+    return NextResponse.redirect(loginUrl);
+  }
+
   return supabaseResponse;
 }
 

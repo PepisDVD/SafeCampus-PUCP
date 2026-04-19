@@ -8,10 +8,22 @@ export const COOKIE_DOMAIN = RAW_DOMAIN
     : `.${RAW_DOMAIN}`
   : undefined;
 
-export const SHARED_COOKIE_OPTIONS: CookieOptions = {
+const BASE_COOKIE_OPTIONS: CookieOptions = {
   path: "/",
   sameSite: "lax",
   secure: process.env.NODE_ENV === "production",
-  httpOnly: true,
   ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
 };
+
+export const BROWSER_COOKIE_OPTIONS: CookieOptions = {
+  ...BASE_COOKIE_OPTIONS,
+  httpOnly: false,
+};
+
+export const SERVER_COOKIE_OPTIONS: CookieOptions = {
+  ...BASE_COOKIE_OPTIONS,
+  httpOnly: true,
+};
+
+// Backward compatibility alias.
+export const SHARED_COOKIE_OPTIONS: CookieOptions = SERVER_COOKIE_OPTIONS;

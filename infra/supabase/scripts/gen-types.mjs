@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 
@@ -7,6 +7,55 @@ const outputPath = resolve(
   process.cwd(),
   "../../packages/shared-types/src/database.types.ts",
 );
+const rootEnvPath = resolve(process.cwd(), "../../.env");
+const webEnvLocalPath = resolve(process.cwd(), "../../apps/web/.env.local");
+
+const assignEnvIfMissing = (key, value) => {
+  const current = process.env[key];
+  if (!current || !current.trim()) {
+    process.env[key] = value;
+  }
+};
+
+const stripOptionalQuotes = (value) => {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+};
+
+const loadEnvFile = (filePath) => {
+  if (!existsSync(filePath)) return;
+
+  const raw = readFileSync(filePath, "utf8");
+  const lines = raw.split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const clean = trimmed.startsWith("export ")
+      ? trimmed.slice("export ".length)
+      : trimmed;
+    const separatorIndex = clean.indexOf("=");
+    if (separatorIndex <= 0) continue;
+
+    const key = clean.slice(0, separatorIndex).trim();
+    if (!key) continue;
+
+    const rawValue = clean.slice(separatorIndex + 1);
+    assignEnvIfMissing(key, stripOptionalQuotes(rawValue));
+  }
+};
+
+// Load env in a deterministic order:
+// 1) root .env, 2) apps/web/.env.local as fallback for web-defined public vars.
+loadEnvFile(rootEnvPath);
+loadEnvFile(webEnvLocalPath);
 
 const getProjectIdFromUrl = (url) => {
   try {

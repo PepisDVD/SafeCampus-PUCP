@@ -2,7 +2,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { SHARED_COOKIE_OPTIONS } from "./options";
+import { SERVER_COOKIE_OPTIONS } from "./options";
 
 export async function updateSession(request: NextRequest, headers?: Headers) {
   let supabaseResponse = NextResponse.next({
@@ -14,7 +14,7 @@ export async function updateSession(request: NextRequest, headers?: Headers) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookieOptions: SHARED_COOKIE_OPTIONS,
+      cookieOptions: SERVER_COOKIE_OPTIONS,
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -28,7 +28,7 @@ export async function updateSession(request: NextRequest, headers?: Headers) {
 
           cookiesToSet.forEach(({ name, value, options }) => {
             const safeOptions: CookieOptions = {
-              ...SHARED_COOKIE_OPTIONS,
+              ...SERVER_COOKIE_OPTIONS,
               ...options,
               secure:
                 options?.secure ?? process.env.NODE_ENV === "production",

@@ -4,6 +4,8 @@
  * 📦 Módulo: Admin / Layout
  */
 
+import { LogoutButton } from "@/features/auth/components";
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex">
@@ -16,7 +18,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <p className="text-sm text-muted-foreground">Auditoría</p>
         </nav>
       </aside>
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto">
+        <header className="sticky top-0 z-20 flex justify-end border-b bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
+          <LogoutButton />
+        </header>
+        {children}
+      </main>
     </div>
   );
 }

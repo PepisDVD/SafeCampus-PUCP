@@ -22,7 +22,9 @@
     "db:current": "cd apps/backend && alembic current",
     "db:history": "cd apps/backend && alembic history --verbose",
     "db:validate-baseline": "cd apps/backend && alembic upgrade head",
-    "gen:types": "turbo run gen:types --filter=@safecampus/supabase"
+    "gen:types": "turbo run gen:types --filter=@safecampus/supabase",
+    "supabase:version": "pnpm --filter @safecampus/supabase exec supabase --version",
+    "supabase:login": "pnpm --filter @safecampus/supabase exec supabase login"
   },
   "devDependencies": {
     "turbo": "^2.5.0"
