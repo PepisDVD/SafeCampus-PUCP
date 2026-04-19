@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "SafeCampus Operador",
+    "slug": "safecampus-operador",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "package": "edu.pucp.safecampus.operador"
+    },
+    "ios": {
+      "bundleIdentifier": "edu.pucp.safecampus.operador"
+    }
+  }
+}

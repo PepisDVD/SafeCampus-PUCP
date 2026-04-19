@@ -1,0 +1,4 @@
+@import "tailwindcss";
+@import "@safecampus/config/tailwind/theme.css";
+
+@source "../../node_modules/@safecampus/ui-kit/src/**/*.{js,ts,jsx,tsx}";

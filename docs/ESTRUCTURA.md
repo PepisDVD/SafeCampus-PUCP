@@ -1,67 +1,76 @@
-<!-- 📁 docs/ESTRUCTURA.md -->
-<!-- 🎯 Documentación del mapeo entre la arquitectura C4 y la estructura de carpetas del código. -->
+# Estructura real del monorepo SafeCampus (abril 2026)
 
-# Estructura del Proyecto SafeCampus PUCP
+## Contenedores C4 -> carpetas
 
-## Mapeo Arquitectura C4 → Código
-
-### Contenedores (C2)
-
-| Contenedor C4 | Carpeta | Tech |
+| Contenedor | Carpeta | Estado |
 |---|---|---|
-| API Backend SafeCampus | `apps/backend/` | Python + FastAPI |
-| Frontend Comunidad (PWA) | `apps/web/` → `(comunidad)/` | Next.js |
-| Frontend Web Operativo | `apps/web/` → `(operativo)/` + `(admin)/` | Next.js |
-| Frontend Operador | `apps/mobile/` | React Native + Expo |
-| Base de Datos Operacional | `infra/db/` + `alembic/` | PostgreSQL + PostGIS |
+| Backend API | `apps/backend/` | Base funcional con FastAPI, health check y vertical inicial de incidentes |
+| Frontend web/pwa | `apps/web/` | Next.js 16 con App Router y paginas principales migradas |
+| Frontend mobile operador | `apps/mobile/` | Skeleton Expo inicial dentro del monorepo |
+| Paquetes compartidos | `packages/*` | `ui-kit`, `shared-types`, `config`, `data` |
+| Infraestructura | `infra/` | Supabase remoto + Docker solo para dependencias auxiliares |
+| UI base de referencia | `repo-safeCampus-UI-Base-Figma/` | Solo referencia visual/fuente de migracion |
 
-### Componentes del Backend (C3)
+## Paquetes compartidos
 
-| Componente C3 | Archivo |
+| Paquete | Proposito |
 |---|---|
-| Capa de API | `app/api/v1/*.py` |
-| Recepción Omnicanal | `app/services/recepcion_omnicanal_service.py` |
-| Gestión de Incidentes | `app/services/incidente_service.py` |
-| Flujo de Casos | `app/services/flujo_casos_service.py` |
-| Orquestador de Clasificación | `app/services/clasificacion_service.py` |
-| Fábrica de Prompts | `app/llm/fabrica_prompts.py` |
-| Normalizador LLM | `app/llm/normalizador.py` |
-| Motor de Reglas | `app/llm/motor_reglas.py` |
-| Lost & Found | `app/services/lost_found_service.py` |
-| Acompañamiento Seguro | `app/services/acompanamiento_service.py` |
-| Dashboard y Consultas | `app/services/dashboard_service.py` |
-| Gestión Usuarios | `app/services/usuario_service.py` |
-| Auditoría | `app/services/auditoria_service.py` |
-| Notificaciones | `app/services/notificacion_service.py` |
+| `@safecampus/ui-kit` | Componentes UI compartidos para apps del monorepo |
+| `@safecampus/shared-types` | Tipos de dominio compartidos + `Database` de Supabase |
+| `@safecampus/data` | Cliente Supabase browser/server, refresh de sesion para proxy y utilidades de query |
+| `@safecampus/config` | Configuracion compartida de eslint/tsconfig/prettier/tokens |
 
-### Modelo de Datos (9 esquemas, 29 tablas)
+## Backend actual
 
-| Esquema PostgreSQL | Modelo | Tablas |
-|---|---|---|
-| `sc_users` | `models/sc_users.py` | usuario, rol, permiso, usuario_rol, rol_permiso, dispositivo_usuario, sesion |
-| `sc_omnicanal` | `models/sc_omnicanal.py` | canal_reporte, reporte_entrante |
-| `sc_incidentes` | `models/sc_incidentes.py` | incidente, historial_incidente, evidencia, comentario_incidente, ubicacion_incidente, asignacion_recurso |
-| `sc_clasificacion` | `models/sc_clasificacion.py` | clasificacion_incidente |
-| `sc_notificaciones` | `models/sc_notificaciones.py` | notificacion |
-| `sc_kpi` | `models/sc_kpi.py` | kpi_operativo |
-| `sc_lost_found` | `models/sc_lost_found.py` | caso_lost_found, categoria_objeto, historial_caso_lf |
-| `sc_acompanamiento` | `models/sc_acompanamiento.py` | acompanamiento_seguro, ubicacion_trayecto, alerta_acompanamiento, evento_acompanamiento |
-| `sc_auditoria` | `models/sc_auditoria.py` | registro_auditoria |
+```
+apps/backend/app/
+  api/v1/
+    incidentes.py
+    router.py
+  models/
+    base.py
+    incidente_view.py
+  repositories/
+    incidente_repository.py
+  services/
+    incidente_service.py
+  schemas/
+    common.py
+    incidente.py
+```
 
-### Convenciones de Nomenclatura
+Notas:
+- El dominio completo (todas las tablas/esquemas planeados) sigue pendiente de implementacion.
+- Alembic y conexion a Supabase remoto estan activos.
 
-| Elemento | Convención | Ejemplo |
-|---|---|---|
-| Tablas BD | snake_case singular | `incidente`, `reporte_entrante` |
-| Columnas BD | snake_case descriptivo | `fecha_creacion`, `operador_asignado_id` |
-| Claves primarias | `id` (UUID v4) | `id` |
-| Claves foráneas | `<entidad>_id` | `usuario_id`, `incidente_id` |
-| ENUMs BD | snake_case | `estado_incidente`, `nivel_severidad` |
-| Valores ENUM | UPPER_SNAKE_CASE | `EN_EVALUACION`, `CRITICO` |
-| Esquemas BD | prefijo `sc_` | `sc_incidentes`, `sc_users` |
-| Componentes React | PascalCase | `IncidentCard`, `SeverityBadge` |
-| Hooks React | prefijo `use` camelCase | `useIncidentes`, `useAuth` |
-| Funciones Python | snake_case | `crear_incidente`, `get_by_id` |
-| Clases Python | PascalCase | `IncidenteService`, `IncidenteCreate` |
-| Endpoints API | sustantivos plural | `/api/v1/incidentes`, `/api/v1/usuarios` |
-| Schemas Pydantic | PascalCase + sufijo | `IncidenteCreate`, `IncidenteResponse` |
+## Frontend web actual
+
+Rutas con UI funcional migrada:
+- `/login`
+- `/reportar`
+- `/dashboard`
+
+Rutas aun en modo base (pendientes de migracion completa desde la UI validada):
+- `/mis-casos`
+- `/lost-found`
+- `/acompanamiento`
+- `/incidentes`, `/mapa`, `/kpis`, `/mensajes`
+- modulo admin
+
+## Docker en SafeCampus
+
+No se usa Postgres local.
+
+`infra/docker/docker-compose.dev.yml` se usa solo para servicios auxiliares de desarrollo:
+- `redis`: cache/pubsub/eventos
+- `mailpit`: pruebas de correo saliente
+
+Comandos recomendados:
+- `pnpm dev:deps:up`
+- `pnpm dev:deps:down`
+
+## Estandares del monorepo
+
+- Todos los workspaces JS tienen scripts base: `build`, `lint`, `test`, `typecheck`.
+- Tipos de Supabase se generan hacia `packages/shared-types/src/database.types.ts`.
+- Tipos de dominio se consumen desde `@safecampus/shared-types` (sin duplicarlos en apps).

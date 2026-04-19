@@ -1,0 +1,7 @@
+{
+  "extends": "../../packages/config/tsconfig/react-native.json",
+  "compilerOptions": {
+    "strict": true
+  },
+  "include": ["App.tsx"]
+}

@@ -1,159 +1,270 @@
-<!-- 📁 README.md -->
-<!-- 🎯 Documentación principal del proyecto: setup, stack, estructura y guía de desarrollo. -->
-
 # SafeCampus PUCP
 
-Plataforma omnicanal para la gestión centralizada, trazable y asistida de incidentes en el campus de la Pontificia Universidad Católica del Perú.
+Monorepo de SafeCampus PUCP para web, backend y mobile.
 
-## Estado actual del proyecto
+Fecha de referencia de este estado: **2026-04-19**.
 
-- Monorepo inicializado (pnpm + Turborepo)
-- Backend base con FastAPI y conexión PostgreSQL async (SQLAlchemy + asyncpg)
-- Frontend base con Next.js (App Router)
-- Estructura de módulos lista para implementación por fases
-- Migraciones habilitadas con Alembic sobre Supabase
+## 1) Estado actual del monorepo
 
-## Estructura del proyecto
+- `apps/web`: Next.js 16 + React 19. Login, reportar y dashboard operativo con UI funcional. Modulos admin y varios modulos aun estan en modo scaffold.
+- `apps/backend`: FastAPI con arquitectura en capas (`api -> service -> repository`) y vertical inicial de incidentes.
+- `apps/mobile`: skeleton Expo integrado al monorepo.
+- `packages/data`: clientes Supabase browser/server + middleware de sesion.
+- `packages/shared-types`: tipos de dominio compartidos (`Incidente`, `Usuario`, enums).
+- Base de datos: **Supabase remoto** (no se levanta Postgres local en Docker para SafeCampus).
 
-| Carpeta | Descripción |
-|---------|-------------|
-| `apps/backend/` | API Backend — Python + FastAPI |
-| `apps/web/` | Frontend Web + PWA — Next.js + TypeScript |
-| `apps/mobile/` | Frontend Operador — React Native + Expo |
-| `packages/shared-types/` | Tipos TypeScript compartidos |
-| `packages/ui-kit/` | Componentes UI compartidos (futuro) |
-| `infra/` | Docker, scripts de BD, configuración |
-| `docs/` | Documentación técnica y ADRs |
-| `repo-safeCampus-UI-Base-Figma/` | Referencia visual exportada de Figma (solo lectura) |
+## 2) Estructura principal
 
-## Requisitos
+| Ruta | Uso |
+|---|---|
+| `apps/backend` | API FastAPI, Alembic, tests Pytest |
+| `apps/web` | App web/pwa con Next.js App Router |
+| `apps/mobile` | App Expo (base) |
+| `packages/ui-kit` | Componentes UI compartidos (shadcn/Radix) |
+| `packages/shared-types` | Tipos de dominio + `Database` |
+| `packages/data` | Cliente Supabase y utilidades |
+| `packages/config` | ESLint/TSConfig/Prettier compartidos |
+| `infra/db` | SQL base (DDL y bootstrap) |
+| `infra/supabase` | CLI/scripts para generar tipos TS desde Supabase |
+| `infra/docker` | Servicios auxiliares locales (`redis`, `mailpit`) |
+| `docs` | Documentacion tecnica |
 
-- Node.js >= 20
-- pnpm >= 9
-- Python >= 3.12
-- Proyecto Supabase activo (PostgreSQL)
+## 3) Onboarding completo (desde cero)
 
-## Configuración de entorno
+Esta seccion asume que acabas de clonar el repo.
 
-### Backend
+### Paso 0. Requisitos
 
-1. Copiar `apps/backend/.env.example` a `apps/backend/.env`
-2. Definir `DATABASE_URL`
+- Node.js `>=20`
+- pnpm `>=9`
+- Python `>=3.12`
+- Scoop (Windows, para gestionar instalaciones CLI)
+- Supabase CLI `>=2` (necesario para flujo `pnpm gen:types`)
+- Docker Desktop (opcional, solo para deps auxiliares)
 
-Ejemplo con Supabase (recomendado para pruebas compartidas):
+Verifica rapido:
 
-```env
-DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:PORT/postgres?ssl=require
+```bash
+node -v
+pnpm -v
+python --version
+scoop --version
+supabase --version
+docker --version
 ```
 
-Notas importantes:
-- Si tu password tiene `#`, debes codificarlo como `%23`
-- El backend usa driver async, por eso la URL debe iniciar con `postgresql+asyncpg://`
+### Paso 0.1 (Windows) Instalar Scoop y Supabase CLI
 
-### Esquema (Alembic)
-
-Aplicar versión actual del esquema en Supabase:
+Si estas en Windows y aun no los tienes instalados:
 
 ```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
+scoop install supabase
+```
+
+Validar instalacion:
+
+```powershell
+scoop --version
+supabase --version
+```
+
+### Paso 1. Clonar e instalar dependencias JS
+
+```bash
+git clone <URL_DEL_REPO>
+cd Repo-SafeCampus-PUCP
+pnpm install
+```
+
+### Paso 2. Preparar entorno Python del backend
+
+Desde `apps/backend`:
+
+```bash
 cd apps/backend
-.\.venv\Scripts\Activate.ps1
-alembic upgrade head
+python -m venv .venv
 ```
 
-Comandos útiles:
+Activacion:
+
+- PowerShell:
 
 ```powershell
-alembic current
-alembic history --verbose
-alembic revision --autogenerate -m "descripcion"
+.\.venv\Scripts\Activate.ps1
 ```
 
-### Frontend
+- Bash:
 
-1. Copiar `apps/web/.env.local.example` a `apps/web/.env.local`
-2. Validar al menos estas variables:
+```bash
+source .venv/bin/activate
+```
+
+Instalar dependencias backend:
+
+```bash
+pip install --upgrade pip
+pip install -e ".[dev]"
+cd ../..
+```
+
+### Paso 3. Configurar variables de entorno
+
+#### 3.1 Variables globales (`.env` en raiz)
+
+```bash
+cp .env.example .env
+```
+
+Completar al menos:
+
+- `DATABASE_URL` (DSN `postgresql+asyncpg://...` con `?ssl=require`)
+- `SUPABASE_PROJECT_ID` (opcional si ya tienes `NEXT_PUBLIC_SUPABASE_URL`)
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_ACCESS_TOKEN` (recomendado para `pnpm gen:types`)
+- `NEXT_PUBLIC_API_URL` (por defecto `http://localhost:8000/api/v1`)
+
+#### 3.2 Variables backend (`apps/backend/.env`)
+
+```bash
+cp apps/backend/.env.example apps/backend/.env
+```
+
+Completar como minimo:
+
+- `DATABASE_URL`
+- `SECRET_KEY`
+
+#### 3.3 Variables web (`apps/web/.env.local`)
+
+Si no existe, crear `apps/web/.env.local`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_DOMAIN=
+NEXT_PUBLIC_GOOGLE_MAPS_KEY=
 ```
 
-## Levantar el proyecto (Windows / PowerShell)
+### Paso 4. Sincronizar base de datos (Supabase remoto)
 
-```powershell
-# 1) Instalar dependencias del monorepo
-pnpm install
+SafeCampus usa Supabase remoto. Flujo recomendado:
 
-# 2) Preparar backend (solo la primera vez)
-cd apps/backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-cd ../..
+1. Si es proyecto nuevo, ejecutar una vez `infra/db/initial_DLL.sql` en SQL Editor de Supabase.
+2. Aplicar migraciones Alembic:
 
-# 3) Levantar backend (Terminal 1)
-cd apps/backend
-.\.venv\Scripts\Activate.ps1
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```bash
+pnpm db:migrate
+pnpm db:current
+pnpm db:history
 ```
 
-En una segunda terminal:
+3. Autenticar Supabase CLI (obligatorio para generar tipos):
 
-```powershell
-# 4) Levantar frontend (Terminal 2)
-cd apps/web
-pnpm dev
+```bash
+supabase login
 ```
 
-## Verificación rápida
+Si prefieres usar el binario local del monorepo:
 
-Con backend y frontend levantados:
+```bash
+pnpm supabase:login
+```
+
+Alternativa no interactiva (CI/entornos sin TTY): definir `SUPABASE_ACCESS_TOKEN` en `.env` raiz.
+
+4. Regenerar tipos TS de Supabase:
+
+```bash
+pnpm gen:types
+```
+
+Esto escribe en `packages/shared-types/src/database.types.ts`.
+
+### Paso 5. Levantar servicios auxiliares (opcional)
+
+```bash
+pnpm dev:deps:up
+```
+
+Servicios:
+
+- Redis: `localhost:6379`
+- Mailpit SMTP/UI: `localhost:1025` y `http://localhost:8025`
+
+Apagar:
+
+```bash
+pnpm dev:deps:down
+```
+
+### Paso 6. Levantar aplicaciones
+
+En terminales separadas:
+
+```bash
+pnpm dev:backend
+pnpm dev:web
+```
+
+Opcional mobile:
+
+```bash
+pnpm dev:mobile
+```
+
+URLs utiles:
 
 - Backend health: `http://localhost:8000/health`
 - Backend docs: `http://localhost:8000/api/v1/docs`
-- Frontend: `http://localhost:3000`
+- Web: `http://localhost:3000`
 
-## Scripts útiles (raíz)
+### Paso 7. Validar calidad local
 
 ```bash
-pnpm dev:web       # Levanta web por turbo
-pnpm dev:backend   # Levanta backend (sin activar venv automáticamente)
-pnpm build         # Build de workspaces
-pnpm test          # Tests de workspaces
-pnpm db:migrate    # Ejecuta alembic upgrade head
-pnpm db:current    # Muestra revisión actual de alembic
-pnpm db:history    # Muestra historial de migraciones
+pnpm lint
+pnpm typecheck
+pnpm test:backend
+pnpm test
+pnpm build
 ```
 
-## Trabajo en equipo (2 personas)
+Nota: en algunos entornos Windows se puede presentar `Error: spawn EPERM` al correr `pnpm test`/`pnpm build` del paquete web (Vitest/Next). Si ocurre, validar primero `pnpm lint`, `pnpm typecheck` y `pnpm test:backend`.
 
-- Si ambos usan el mismo `DATABASE_URL` (Supabase), ambos ven los mismos datos
-- La sincronización de datos es compartida por base de datos
-- Realtime instantáneo (sin recargar) se implementará en una fase posterior
+## 4) Comandos principales del monorepo
 
-## Stack tecnológico
+```bash
+pnpm dev:web
+pnpm dev:backend
+pnpm dev:mobile
+pnpm dev:deps:up
+pnpm dev:deps:down
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:backend
+pnpm build
+pnpm db:migrate
+pnpm db:makemigrations
+pnpm db:current
+pnpm db:history
+pnpm gen:types
+pnpm supabase:login
+```
 
-| Capa | Tecnología |
-|------|-----------|
-| Backend | Python 3.12 · FastAPI · SQLAlchemy 2.0 · Pydantic v2 |
-| Frontend Web/PWA | Next.js 16 · React 19 · TypeScript · Tailwind CSS |
-| Frontend Móvil | React Native · Expo · TypeScript |
-| Base de datos | PostgreSQL 16 · PostGIS 3.4 |
-| IA/Clasificación | OpenAI API · Reglas de negocio |
-| Monorepo | pnpm workspaces · Turborepo |
+## 5) Convenciones importantes
 
-## Arquitectura
+- Alembic es el dueno de migraciones (`apps/backend/alembic`).
+- No usar `supabase db push` para SafeCampus.
+- Reusar `@safecampus/ui-kit` y `@safecampus/shared-types` en apps.
+- `infra/docker` no levanta Postgres local para SafeCampus.
 
-El sistema sigue el modelo C4 con 3 niveles documentados:
-- **C1 — Contexto**: SafeCampus + actores + sistemas externos
-- **C2 — Contenedores**: 3 frontends + 1 backend + BD + servicios
-- **C3 — Componentes**: Módulos internos del backend
+## 6) Documentacion complementaria
 
-Ver `docs/` para documentación detallada.
-
-## Autores
-
-- Luis David Pachas Atuncar
-- Yomira Rossana Salazar Canto
-
-Asesor: José Antonio Pow Sang Portillo
+- Estructura del repo: `docs/ESTRUCTURA.md`
+- Tokens de diseno: `docs/DESIGN_TOKENS.md`
+- Herramientas/plugins del monorepo: `docs/README_HERRAMIENTAS_Y_PLUGINS.md`

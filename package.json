@@ -7,17 +7,24 @@
     "dev:web": "turbo run dev --filter=@safecampus/web",
     "dev:backend": "cd apps/backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
     "dev:mobile": "turbo run dev --filter=@safecampus/mobile",
+    "dev:deps:up": "docker compose -f infra/docker/docker-compose.dev.yml up -d",
+    "dev:deps:down": "docker compose -f infra/docker/docker-compose.dev.yml down",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "test:backend": "cd apps/backend && pytest -q -p no:cacheprovider",
     "clean": "turbo run clean",
     "db:up": "node -e \"console.log('Supabase es administrado remotamente; no hay DB local que levantar.')\"",
     "db:down": "node -e \"console.log('Supabase es administrado remotamente; no hay DB local que apagar.')\"",
     "db:migrate": "cd apps/backend && alembic upgrade head",
-    "db:makemigrations": "cd apps/backend && alembic revision --autogenerate -m",
+    "db:makemigrations": "cd apps/backend && alembic revision --autogenerate -m \"autogen\"",
     "db:current": "cd apps/backend && alembic current",
     "db:history": "cd apps/backend && alembic history --verbose",
-    "db:validate-baseline": "cd apps/backend && alembic upgrade head"
+    "db:validate-baseline": "cd apps/backend && alembic upgrade head",
+    "gen:types": "turbo run gen:types --filter=@safecampus/supabase",
+    "supabase:version": "pnpm --filter @safecampus/supabase exec supabase --version",
+    "supabase:login": "pnpm --filter @safecampus/supabase exec supabase login"
   },
   "devDependencies": {
     "turbo": "^2.5.0"

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tdp-dev/skills-lock/main/schema.json",
+  "version": "1.1.0",
+  "description": "Installed local skills for SafeCampus PUCP monorepo",
+  "skills": [
+    {
+      "name": "turborepo",
+      "scope": ["."],
+      "description": "Monorepo orchestration, dependency graph, and task pipelines"
+    },
+    {
+      "name": "next-best-practices",
+      "scope": ["apps/web"],
+      "description": "Next.js 16 App Router conventions for production pages and auth flows"
+    },
+    {
+      "name": "tailwind-v4-shadcn",
+      "scope": ["apps/web", "packages/ui-kit", "packages/config"],
+      "description": "Tailwind CSS v4 and shadcn conventions using shared ui-kit components"
+    },
+    {
+      "name": "vercel-react-best-practices",
+      "scope": ["apps/web", "packages/ui-kit", "packages/data"],
+      "description": "React 19 server/client boundary, hydration, and rendering performance"
+    },
+    {
+      "name": "supabase-postgres-best-practices",
+      "scope": ["apps/web", "apps/backend", "packages/data", "infra/supabase"],
+      "description": "Remote Supabase usage, typed clients, auth middleware, and DB safety rules"
+    },
+    {
+      "name": "fastapi-clean-architecture",
+      "scope": ["apps/backend"],
+      "description": "FastAPI layered architecture with repositories, services, and Alembic migrations"
+    },
+    {
+      "name": "testing-monorepo",
+      "scope": ["apps/web", "apps/backend", "packages/ui-kit", "packages/data"],
+      "description": "Testing pyramid with Vitest, Playwright, and Pytest across packages"
+    },
+    {
+      "name": "monorepo-ci-standards",
+      "scope": ["."],
+      "description": "Mandatory scripts and CI gates for lint, typecheck, test, and build"
+    }
+  ]
+}

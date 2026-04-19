@@ -5,9 +5,13 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "lint": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "node -e \"console.log('No tests for @safecampus/shared-types yet')\"",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@safecampus/config": "workspace:*",
     "typescript": "^5.7.0"
   }
 }

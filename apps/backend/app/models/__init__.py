@@ -1,5 +1,9 @@
-"""
-📁 apps/backend/app/models/__init__.py
-🎯 Paquete de modelos SQLAlchemy — organizados por esquema PostgreSQL (9 esquemas, 29 tablas).
-📦 Capa: Models / Dominio
-"""
+from app.models.base import SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.incidente_view import IncidenteView
+
+__all__ = [
+    "IncidenteView",
+    "SoftDeleteMixin",
+    "TimestampMixin",
+    "UUIDPrimaryKeyMixin",
+]
