@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
+import { Suspense, type FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button, Input, Label } from "@safecampus/ui-kit";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
@@ -11,7 +11,7 @@ import { LOGIN_ROLES } from "@/features/auth/login.config";
 import type { LoginRoleId } from "@/features/auth/types";
 import { isAllowedInstitutionalEmail, signInWithPucpSso } from "@/lib/auth";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const searchParams = useSearchParams();
   const [selectedRoleId, setSelectedRoleId] = useState<LoginRoleId>("comunidad");
   const [showPass, setShowPass] = useState(false);
@@ -168,5 +168,21 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LoginPageFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
+      <p className="text-sm text-gray-500">Cargando pantalla de acceso...</p>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
