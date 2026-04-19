@@ -1,0 +1,25 @@
+{
+  "name": "@safecampus/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "dev": "expo start",
+    "build": "node -e \"console.log('Use EAS build for mobile artifacts')\"",
+    "lint": "tsc --noEmit",
+    "test": "node -e \"console.log('No tests for @safecampus/mobile yet')\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@safecampus/shared-types": "workspace:*",
+    "expo": "~53.0.11",
+    "expo-status-bar": "~2.2.3",
+    "react": "19.0.0",
+    "react-native": "0.79.3"
+  },
+  "devDependencies": {
+    "@safecampus/config": "workspace:*",
+    "@types/react": "^19",
+    "typescript": "^5"
+  }
+}

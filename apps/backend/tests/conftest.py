@@ -1,10 +1,15 @@
-"""
-📁 apps/backend/tests/conftest.py
-🎯 Fixtures globales de pytest: sesión de BD de prueba, cliente HTTP, factories.
-📦 Capa: Tests
-"""
+import os
 
 import pytest
+from fastapi.testclient import TestClient
+
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=require",
+)
+os.environ["DEBUG"] = "true"
+
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture
@@ -12,8 +17,6 @@ def anyio_backend():
     return "asyncio"
 
 
-# TODO: Agregar fixtures de base de datos de prueba y cliente HTTP
-# @pytest.fixture
-# async def db_session(): ...
-# @pytest.fixture
-# async def client(): ...
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(app)

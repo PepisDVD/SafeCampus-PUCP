@@ -1,26 +1,27 @@
-# 📁 infra/docker/docker-compose.dev.yml
-# 🎯 Levantar PostgreSQL 16 + PostGIS 3.4 para desarrollo local con volumen persistente.
-# 📦 Capa: Infraestructura / Docker
+# Infra local auxiliar para desarrollo SafeCampus.
+# La base de datos es remota en Supabase (no se levanta Postgres local).
 
 services:
-  db:
-    image: postgis/postgis:16-3.4
-    container_name: safecampus-db
-    environment:
-      POSTGRES_DB: safecampus
-      POSTGRES_USER: safecampus
-      POSTGRES_PASSWORD: dev_password
+  redis:
+    image: redis:7-alpine
+    container_name: safecampus-redis
     ports:
-      - "5432:5432"
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - safecampus_pgdata:/var/lib/postgresql/data
-      - ../db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ../db/enums.sql:/docker-entrypoint-initdb.d/02-enums.sql
+      - safecampus_redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U safecampus -d safecampus"]
-      interval: 5s
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
       timeout: 5s
       retries: 5
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: safecampus-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
-  safecampus_pgdata:
+  safecampus_redis_data:

@@ -7,16 +7,22 @@
       "outputs": [".next/**", "dist/**", "build/**"]
     },
     "lint": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^lint"]
     },
     "test": {
-      "dependsOn": ["build"]
+      "dependsOn": ["^test"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
     },
     "dev": {
       "cache": false,
       "persistent": true
     },
     "clean": {
+      "cache": false
+    },
+    "gen:types": {
       "cache": false
     }
   }

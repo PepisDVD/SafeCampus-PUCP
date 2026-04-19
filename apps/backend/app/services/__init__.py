@@ -1,5 +1,3 @@
-"""
-📁 apps/backend/app/services/__init__.py
-🎯 Paquete de servicios — lógica de negocio desacoplada de la capa HTTP.
-📦 Capa: Services
-"""
+from app.services.incidente_service import IncidenteService
+
+__all__ = ["IncidenteService"]
