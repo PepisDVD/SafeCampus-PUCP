@@ -1,4 +1,4 @@
-import { supabase } from "@safecampus/data";
+import { createBrowserClient } from "@safecampus/data";
 
 import {
   ALLOWED_INSTITUTIONAL_DOMAIN,
@@ -14,6 +14,7 @@ export async function signInWithPucpSso({
   email,
   nextPath,
 }: SignInWithPucpSsoOptions): Promise<void> {
+  const supabase = createBrowserClient();
   const normalizedEmail = email.trim().toLowerCase();
   if (!isAllowedInstitutionalEmail(normalizedEmail)) {
     throw new Error(
@@ -45,6 +46,7 @@ export async function signInWithPucpSso({
 }
 
 export async function signOut(): Promise<unknown> {
+  const supabase = createBrowserClient();
   return supabase.auth.signOut();
 }
 

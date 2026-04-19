@@ -1,4 +1,4 @@
-export { createClient as createBrowserClient, supabase } from "./client/client";
+export { createClient as createBrowserClient } from "./client/client";
 export {
   BROWSER_COOKIE_OPTIONS,
   COOKIE_DOMAIN,
