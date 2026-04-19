@@ -123,6 +123,7 @@ Completar al menos:
 - `DATABASE_URL` (DSN `postgresql+asyncpg://...` con `?ssl=require`)
 - `SUPABASE_PROJECT_ID` (opcional si ya tienes `NEXT_PUBLIC_SUPABASE_URL`)
 - `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_ACCESS_TOKEN` (recomendado para `pnpm gen:types`)
 - `NEXT_PUBLIC_API_URL` (por defecto `http://localhost:8000/api/v1`)
 
 #### 3.2 Variables backend (`apps/backend/.env`)
@@ -162,7 +163,21 @@ pnpm db:current
 pnpm db:history
 ```
 
-3. Regenerar tipos TS de Supabase:
+3. Autenticar Supabase CLI (obligatorio para generar tipos):
+
+```bash
+supabase login
+```
+
+Si prefieres usar el binario local del monorepo:
+
+```bash
+pnpm supabase:login
+```
+
+Alternativa no interactiva (CI/entornos sin TTY): definir `SUPABASE_ACCESS_TOKEN` en `.env` raiz.
+
+4. Regenerar tipos TS de Supabase:
 
 ```bash
 pnpm gen:types
@@ -238,6 +253,7 @@ pnpm db:makemigrations
 pnpm db:current
 pnpm db:history
 pnpm gen:types
+pnpm supabase:login
 ```
 
 ## 5) Convenciones importantes
