@@ -15,11 +15,37 @@ interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
 }
 
+const AUTH_SESSION_RETRY_COUNT = 6;
+const AUTH_SESSION_RETRY_DELAY_MS = 150;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 class ApiClient {
   private baseUrl: string;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
+  }
+
+  private async resolveBearerToken(forceRefresh = false): Promise<string | null> {
+    if (typeof window === "undefined") return null;
+
+    const supabase = createBrowserClient();
+    if (forceRefresh) {
+      const { data } = await supabase.auth.refreshSession();
+      return data.session?.access_token ?? null;
+    }
+
+    for (let attempt = 0; attempt < AUTH_SESSION_RETRY_COUNT; attempt += 1) {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? null;
+      if (token) return token;
+      await sleep(AUTH_SESSION_RETRY_DELAY_MS);
+    }
+
+    return null;
   }
 
   private async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -31,20 +57,22 @@ class ApiClient {
       url += `?${searchParams.toString()}`;
     }
 
-    let token: string | null = null;
-    if (typeof window !== "undefined") {
-      const supabase = createBrowserClient();
-      const { data } = await supabase.auth.getSession();
-      token = data.session?.access_token ?? null;
-    }
+    let token = await this.resolveBearerToken();
 
-    const headers: HeadersInit = {
+    const buildHeaders = (accessToken: string | null): HeadersInit => ({
       "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
+      ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
       ...customHeaders,
-    };
+    });
 
-    const response = await fetch(url, { ...restOptions, headers });
+    let response = await fetch(url, { ...restOptions, headers: buildHeaders(token) });
+
+    if (response.status === 401 && typeof window !== "undefined") {
+      token = await this.resolveBearerToken(true);
+      if (token) {
+        response = await fetch(url, { ...restOptions, headers: buildHeaders(token) });
+      }
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: "Error desconocido" }));
