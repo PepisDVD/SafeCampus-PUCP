@@ -36,8 +36,13 @@ class SupabaseAuthClient:
         }
         user_url = f"{self._base_url}/auth/v1/user"
 
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            response = await client.get(user_url, headers=headers)
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                response = await client.get(user_url, headers=headers)
+        except httpx.RequestError as exc:
+            raise ExternalServiceError(
+                "No fue posible contactar Supabase Auth para validar la sesión",
+            ) from exc
 
         if response.status_code in (401, 403):
             raise UnauthorizedError("Token de sesion invalido o expirado")

@@ -18,8 +18,11 @@ class Settings(BaseSettings):
     # --- CORS ---
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",  # Frontend web (Next.js)
+        "http://127.0.0.1:3000",  # Frontend web alternate localhost
         "http://localhost:8081",  # Frontend móvil (Expo)
+        "http://127.0.0.1:8081",  # Frontend móvil alternate localhost
     ]
+    CORS_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     # --- Database ---
     DATABASE_URL: str

@@ -6,6 +6,7 @@ import { puedeAccederAdminPanel } from "@/constants/permissions";
 import type { RolUsuario } from "@/constants/roles";
 
 function isPublicPath(pathname: string): boolean {
+  if (pathname.startsWith("/.well-known/")) return true;
   if (pathname === "/login") return true;
   if (pathname.startsWith("/auth/callback")) return true;
   return false;
@@ -127,6 +128,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

@@ -4,7 +4,12 @@
  * 📦 Capa: Lib / Servicios
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+import { createBrowserClient } from "@safecampus/data";
+
+const API_BASE_URL =
+  typeof window === "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"
+    : "/api/v1";
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
@@ -26,8 +31,12 @@ class ApiClient {
       url += `?${searchParams.toString()}`;
     }
 
-    // TODO: Obtener token de sesión
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    let token: string | null = null;
+    if (typeof window !== "undefined") {
+      const supabase = createBrowserClient();
+      const { data } = await supabase.auth.getSession();
+      token = data.session?.access_token ?? null;
+    }
 
     const headers: HeadersInit = {
       "Content-Type": "application/json",

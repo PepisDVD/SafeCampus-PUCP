@@ -7,20 +7,91 @@
 
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { toast } from "sonner";
 
 import { Card, CardContent } from "@safecampus/ui-kit";
 
-import { useAdminPanel } from "@/features/admin-panel";
+import { adminApi, type AdminIntegrationApi } from "@/lib/api/admin";
 
 import { IntegracionCard } from "./integracion-card";
+import type { CategoriaIntegracion, EstadoIntegracion, Integracion } from "../types";
+
+function normalizeIntegracion(item: AdminIntegrationApi): Integracion {
+  const allowedCategorias: CategoriaIntegracion[] = [
+    "mensajeria",
+    "ia",
+    "mapas",
+    "correo",
+    "autenticacion",
+  ];
+  const allowedEstados: EstadoIntegracion[] = ["operativo", "degradado", "inactivo"];
+
+  const categoria = allowedCategorias.includes(item.categoria as CategoriaIntegracion)
+    ? (item.categoria as CategoriaIntegracion)
+    : "autenticacion";
+  const estado = allowedEstados.includes(item.estado as EstadoIntegracion)
+    ? (item.estado as EstadoIntegracion)
+    : "inactivo";
+
+  return {
+    id: item.servicio,
+    nombre: item.nombre,
+    descripcion: item.descripcion,
+    categoria,
+    estado,
+    ultimaVerificacion: item.ultima_verificacion
+      ? new Date(item.ultima_verificacion).toLocaleString("es-PE")
+      : "Sin verificación",
+    latenciaMs: item.latencia_ms,
+    mensajeEstado: item.mensaje_estado,
+  };
+}
 
 export function IntegracionesPanel() {
-  const { integraciones } = useAdminPanel();
+  const [integraciones, setIntegraciones] = useState<Integracion[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const operativos = integraciones.filter((i) => i.estado === "operativo").length;
-  const degradados = integraciones.filter((i) => i.estado === "degradado").length;
-  const inactivos = integraciones.filter((i) => i.estado === "inactivo").length;
+  useEffect(() => {
+    let mounted = true;
+    void adminApi
+      .listIntegrations()
+      .then((response) => {
+        if (!mounted) return;
+        setIntegraciones(response.items.map(normalizeIntegracion));
+      })
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : "No se pudieron cargar las integraciones.");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const onVerify = async (serviceName: string) => {
+    const response = await adminApi.verifyIntegration(serviceName);
+    setIntegraciones((prev) =>
+      prev.map((item) => (item.id === serviceName ? normalizeIntegracion(response.item) : item)),
+    );
+  };
+
+  const operativos = useMemo(
+    () => integraciones.filter((i) => i.estado === "operativo").length,
+    [integraciones],
+  );
+  const degradados = useMemo(
+    () => integraciones.filter((i) => i.estado === "degradado").length,
+    [integraciones],
+  );
+  const inactivos = useMemo(
+    () => integraciones.filter((i) => i.estado === "inactivo").length,
+    [integraciones],
+  );
 
   return (
     <div className="space-y-6">
@@ -64,11 +135,17 @@ export function IntegracionesPanel() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {integraciones.map((i) => (
-          <IntegracionCard key={i.id} integracion={i} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-muted-foreground">
+          Cargando integraciones...
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {integraciones.map((i) => (
+            <IntegracionCard key={i.id} integracion={i} onVerify={onVerify} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

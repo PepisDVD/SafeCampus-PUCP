@@ -31,8 +31,6 @@ import {
   CardTitle,
 } from "@safecampus/ui-kit";
 
-import { useAdminPanel } from "@/features/admin-panel";
-
 import type { CategoriaIntegracion, EstadoIntegracion, Integracion } from "../types";
 
 const CATEGORIA_ICON: Record<
@@ -66,10 +64,10 @@ const ESTADO_STYLE: Record<EstadoIntegracion, { label: string; badge: string; ic
 
 interface Props {
   integracion: Integracion;
+  onVerify: (serviceName: string) => Promise<void>;
 }
 
-export function IntegracionCard({ integracion }: Props) {
-  const { verificarIntegracion } = useAdminPanel();
+export function IntegracionCard({ integracion, onVerify }: Props) {
   const [verificando, setVerificando] = useState(false);
   const Icon = CATEGORIA_ICON[integracion.categoria];
   const estado = ESTADO_STYLE[integracion.estado];
@@ -77,13 +75,10 @@ export function IntegracionCard({ integracion }: Props) {
   const onVerificar = async () => {
     setVerificando(true);
     try {
-      await new Promise((r) => setTimeout(r, 600));
-      const result = verificarIntegracion(integracion.id);
-      if (!result.ok) {
-        toast.error(result.mensaje ?? "No se pudo verificar la integración.");
-        return;
-      }
+      await onVerify(integracion.id);
       toast.success(`Verificación completada: ${integracion.nombre}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo verificar la integración.");
     } finally {
       setVerificando(false);
     }

@@ -6,6 +6,16 @@ import type { Database } from "@safecampus/shared-types";
 
 import { SERVER_COOKIE_OPTIONS } from "./options";
 
+function isTransientAuthNetworkError(message: string | undefined): boolean {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("fetch failed") ||
+    normalized.includes("timeout") ||
+    normalized.includes("network")
+  );
+}
+
 export async function updateSession(request: NextRequest, headers?: Headers) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -34,7 +44,8 @@ export async function updateSession(request: NextRequest, headers?: Headers) {
               ...options,
               secure:
                 options?.secure ?? process.env.NODE_ENV === "production",
-              httpOnly: options?.httpOnly ?? true,
+              httpOnly:
+                options?.httpOnly ?? SERVER_COOKIE_OPTIONS.httpOnly ?? false,
               sameSite:
                 (options?.sameSite as CookieOptions["sameSite"]) ?? "lax",
               path: options?.path ?? "/",
@@ -46,16 +57,50 @@ export async function updateSession(request: NextRequest, headers?: Headers) {
     },
   );
 
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  let user = null;
+  let session = null;
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  let error: { message?: string } | null = null;
+
+  try {
+    const {
+      data: { user: resolvedUser },
+      error: resolvedError,
+    } = await supabase.auth.getUser();
+    user = resolvedUser;
+    error = resolvedError;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "fetch failed";
+    if (isTransientAuthNetworkError(message)) {
+      console.warn("[updateSession] transient getUser network error", { message });
+      return { supabaseResponse, user: null, session: null, supabase };
+    }
+    throw err;
+  }
+
+  try {
+    const {
+      data: { session: resolvedSession },
+    } = await supabase.auth.getSession();
+    session = resolvedSession;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "fetch failed";
+    if (isTransientAuthNetworkError(message)) {
+      console.warn("[updateSession] transient getSession network error", {
+        message,
+      });
+      return { supabaseResponse, user: null, session: null, supabase };
+    }
+    throw err;
+  }
 
   if (error && error.message !== "Auth session missing!") {
+    if (isTransientAuthNetworkError(error.message)) {
+      console.warn("[updateSession] transient auth network error", {
+        message: error.message,
+      });
+      return { supabaseResponse, user: null, session: null, supabase };
+    }
     throw new Error(error.message);
   }
 

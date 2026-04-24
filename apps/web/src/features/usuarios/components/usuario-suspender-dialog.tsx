@@ -28,7 +28,7 @@ interface Props {
   open: boolean;
   usuario: UsuarioAdmin | null;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (id: string, motivo: string) => { ok: boolean; mensaje?: string };
+  onConfirm: (id: string, motivo: string) => Promise<{ ok: boolean; mensaje?: string }>;
 }
 
 export function UsuarioSuspenderDialog({ open, usuario, onOpenChange, onConfirm }: Props) {
@@ -41,14 +41,14 @@ export function UsuarioSuspenderDialog({ open, usuario, onOpenChange, onConfirm 
 
   if (!usuario) return null;
 
-  const confirmar = () => {
+  const confirmar = async () => {
     if (!motivo.trim()) {
       toast.error("Ingresa un motivo para registrar la suspensión.");
       return;
     }
     setSubmitting(true);
     try {
-      const result = onConfirm(usuario.id, motivo.trim());
+      const result = await onConfirm(usuario.id, motivo.trim());
       if (!result.ok) {
         toast.error(result.mensaje ?? "No se pudo suspender la cuenta.");
         return;

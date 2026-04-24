@@ -2432,6 +2432,7 @@ export type Database = {
           codigo_institucional: string | null
           created_at: string
           deleted_at: string | null
+          departamento: string | null
           email: string
           email_verificado: boolean
           estado: Database["public"]["Enums"]["estado_usuario"]
@@ -2450,6 +2451,7 @@ export type Database = {
           codigo_institucional?: string | null
           created_at?: string
           deleted_at?: string | null
+          departamento?: string | null
           email: string
           email_verificado?: boolean
           estado?: Database["public"]["Enums"]["estado_usuario"]
@@ -2468,6 +2470,7 @@ export type Database = {
           codigo_institucional?: string | null
           created_at?: string
           deleted_at?: string | null
+          departamento?: string | null
           email?: string
           email_verificado?: boolean
           estado?: Database["public"]["Enums"]["estado_usuario"]

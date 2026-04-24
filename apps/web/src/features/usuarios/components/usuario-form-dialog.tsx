@@ -67,8 +67,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   modo: "crear" | "editar";
   usuario?: UsuarioAdmin;
-  onCrear?: (input: CrearUsuarioInput) => { ok: boolean; mensaje?: string };
-  onEditar?: (id: string, input: EditarUsuarioInput) => { ok: boolean; mensaje?: string };
+  onCrear?: (input: CrearUsuarioInput) => Promise<{ ok: boolean; mensaje?: string }>;
+  onEditar?: (id: string, input: EditarUsuarioInput) => Promise<{ ok: boolean; mensaje?: string }>;
 }
 
 const valoresVaciosCrear: CrearForm = {
@@ -126,14 +126,14 @@ export function UsuarioFormDialog({
     setSubmitting(true);
     try {
       if (esEditar && usuario && onEditar) {
-        const result = onEditar(usuario.id, values as EditarUsuarioInput);
+        const result = await onEditar(usuario.id, values as EditarUsuarioInput);
         if (!result.ok) {
           toast.error(result.mensaje ?? "No se pudo actualizar el usuario.");
           return;
         }
         toast.success("Usuario actualizado correctamente.");
       } else if (!esEditar && onCrear) {
-        const result = onCrear(values as CrearUsuarioInput);
+        const result = await onCrear(values as CrearUsuarioInput);
         if (!result.ok) {
           toast.error(result.mensaje ?? "No se pudo crear el usuario.");
           return;

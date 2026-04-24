@@ -26,6 +26,8 @@ export function UsuariosPanel() {
     usuariosFiltrados,
     stats,
     filtros,
+    loading,
+    error,
     setFiltros,
     crearUsuario,
     editarUsuario,
@@ -46,12 +48,18 @@ export function UsuariosPanel() {
     setUsuarioSeleccionado(u);
     setSuspenderAbierto(true);
   };
-  const reactivar = (u: UsuarioAdmin) => {
-    reactivarUsuario(u.id);
+  const reactivar = async (u: UsuarioAdmin) => {
+    await reactivarUsuario(u.id);
   };
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       <UsuarioStatsCards stats={stats} />
 
       <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
@@ -65,6 +73,7 @@ export function UsuariosPanel() {
       </div>
 
       <UsuarioTable
+        loading={loading}
         usuarios={usuariosFiltrados}
         onEdit={abrirEditar}
         onSuspend={abrirSuspender}
@@ -88,7 +97,7 @@ export function UsuariosPanel() {
         open={suspenderAbierto}
         onOpenChange={setSuspenderAbierto}
         usuario={usuarioSeleccionado}
-        onConfirm={suspenderUsuario}
+        onConfirm={(id) => suspenderUsuario(id)}
       />
     </div>
   );

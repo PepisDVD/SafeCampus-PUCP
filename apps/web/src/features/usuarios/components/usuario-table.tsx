@@ -35,10 +35,11 @@ import {
 import type { UsuarioAdmin } from "../types";
 
 interface Props {
+  loading?: boolean;
   usuarios: UsuarioAdmin[];
   onEdit: (u: UsuarioAdmin) => void;
   onSuspend: (u: UsuarioAdmin) => void;
-  onReactivate: (u: UsuarioAdmin) => void;
+  onReactivate: (u: UsuarioAdmin) => Promise<void>;
 }
 
 function iniciales(nombre: string): string {
@@ -50,7 +51,15 @@ function iniciales(nombre: string): string {
     .join("");
 }
 
-export function UsuarioTable({ usuarios, onEdit, onSuspend, onReactivate }: Props) {
+export function UsuarioTable({ loading, usuarios, onEdit, onSuspend, onReactivate }: Props) {
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-muted-foreground">
+        Cargando usuarios...
+      </div>
+    );
+  }
+
   if (usuarios.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center">

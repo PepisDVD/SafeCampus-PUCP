@@ -28,6 +28,17 @@ function loginRedirectWithError(origin: string, code: string) {
   return NextResponse.redirect(loginUrl);
 }
 
+function callbackClientFallbackRedirect(
+  origin: string,
+  code: string,
+  nextPath: string,
+) {
+  const fallbackUrl = new URL("/auth/callback-client", origin);
+  fallbackUrl.searchParams.set("code", code);
+  fallbackUrl.searchParams.set("next", nextPath);
+  return NextResponse.redirect(fallbackUrl);
+}
+
 function resolveApiBaseUrl(origin: string): string {
   return process.env.NEXT_PUBLIC_API_URL?.trim() || `${origin}/api/v1`;
 }
@@ -49,6 +60,7 @@ async function syncAuthenticatedUser(
       "User-Agent": request.headers.get("user-agent") ?? "",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(8000),
   });
 
   return response.ok;
@@ -65,7 +77,17 @@ export async function GET(request: Request) {
   }
 
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  let data: Awaited<ReturnType<typeof supabase.auth.exchangeCodeForSession>>["data"] | null = null;
+  let error: Awaited<ReturnType<typeof supabase.auth.exchangeCodeForSession>>["error"] | null = null;
+
+  try {
+    const result = await supabase.auth.exchangeCodeForSession(code);
+    data = result.data;
+    error = result.error;
+  } catch (exchangeError) {
+    console.error("[auth/callback] exchangeCodeForSession threw", exchangeError);
+    return callbackClientFallbackRedirect(origin, code, nextPath);
+  }
 
   if (error) {
     console.error("[auth/callback] exchangeCodeForSession failed", {
@@ -73,7 +95,7 @@ export async function GET(request: Request) {
       code: error.code,
       status: error.status,
     });
-    return loginRedirectWithError(origin, AUTH_ERROR_OAUTH_EXCHANGE_FAILED);
+    return callbackClientFallbackRedirect(origin, code, nextPath);
   }
 
   const user = data.user;
