@@ -5,6 +5,7 @@ import {
   AUTH_ERROR_DOMAIN_NOT_ALLOWED,
   AUTH_ERROR_OAUTH_EXCHANGE_FAILED,
   AUTH_ERROR_OAUTH_MISSING_CODE,
+  AUTH_ERROR_PROFILE_SYNC_FAILED,
   isAllowedInstitutionalEmail,
   isGoogleProviderUser,
 } from "@/features/auth/auth.policy";
@@ -25,6 +26,32 @@ function loginRedirectWithError(origin: string, code: string) {
   const loginUrl = new URL(LOGIN_PATH, origin);
   loginUrl.searchParams.set("error", code);
   return NextResponse.redirect(loginUrl);
+}
+
+function resolveApiBaseUrl(origin: string): string {
+  return process.env.NEXT_PUBLIC_API_URL?.trim() || `${origin}/api/v1`;
+}
+
+async function syncAuthenticatedUser(
+  origin: string,
+  accessToken: string,
+  request: Request,
+): Promise<boolean> {
+  const apiBaseUrl = resolveApiBaseUrl(origin).replace(/\/$/, "");
+  const syncUrl = `${apiBaseUrl}/auth/sync-user`;
+
+  const response = await fetch(syncUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "X-Forwarded-For": request.headers.get("x-forwarded-for") ?? "",
+      "User-Agent": request.headers.get("user-agent") ?? "",
+    },
+    cache: "no-store",
+  });
+
+  return response.ok;
 }
 
 export async function GET(request: Request) {
@@ -57,6 +84,21 @@ export async function GET(request: Request) {
   if (!isAllowedUser) {
     await supabase.auth.signOut();
     return loginRedirectWithError(origin, AUTH_ERROR_DOMAIN_NOT_ALLOWED);
+  }
+
+  const accessToken = data.session?.access_token;
+  if (!accessToken) {
+    await supabase.auth.signOut();
+    return loginRedirectWithError(origin, AUTH_ERROR_PROFILE_SYNC_FAILED);
+  }
+
+  const syncOk = await syncAuthenticatedUser(origin, accessToken, request).catch(
+    () => false,
+  );
+
+  if (!syncOk) {
+    await supabase.auth.signOut();
+    return loginRedirectWithError(origin, AUTH_ERROR_PROFILE_SYNC_FAILED);
   }
 
   const targetUrl = new URL(nextPath, origin);

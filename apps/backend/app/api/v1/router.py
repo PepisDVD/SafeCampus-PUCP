@@ -1,8 +1,13 @@
 from fastapi import APIRouter
 
-from app.api.v1 import incidentes
+from app.api.v1 import auth, incidentes
 
 api_router = APIRouter()
+api_router.include_router(
+    auth.router,
+    prefix="/auth",
+    tags=["Auth"],
+)
 api_router.include_router(
     incidentes.router,
     prefix="/incidentes",

@@ -1,19 +1,21 @@
 /**
  * 📁 apps/web/src/app/(admin)/roles/page.tsx
- * 🎯 Administración de roles y permisos granulares por módulo y acción.
+ * 🎯 Administración de roles y matriz RBAC v1.0 (UC-GU-05).
  * 📦 Módulo: Admin / Roles
  */
 
+import { RbacMatrix } from "@/features/roles";
+
+import { AdminPageHeader } from "../_components/admin-page-header";
+
 export default function RolesPage() {
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">Roles y Permisos</h1>
-      <p className="text-muted-foreground mt-2">
-        Configuración de roles y permisos granulares del sistema
-      </p>
-      {/* TODO: Implementar lista de roles con cantidad de usuarios */}
-      {/* TODO: Implementar matriz de permisos por módulo y acción */}
-      {/* TODO: Implementar creación/edición de roles personalizados */}
-    </div>
+    <section>
+      <AdminPageHeader
+        title="Roles y Permisos"
+        description="Matriz RBAC v1.0 de SafeCampus — comunidad, operador, supervisor y administrador."
+      />
+      <RbacMatrix />
+    </section>
   );
 }

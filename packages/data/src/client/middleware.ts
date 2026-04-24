@@ -2,6 +2,8 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import type { Database } from "@safecampus/shared-types";
+
 import { SERVER_COOKIE_OPTIONS } from "./options";
 
 export async function updateSession(request: NextRequest, headers?: Headers) {
@@ -10,7 +12,7 @@ export async function updateSession(request: NextRequest, headers?: Headers) {
     headers,
   });
 
-  const supabase = createServerClient(
+  const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -53,5 +55,5 @@ export async function updateSession(request: NextRequest, headers?: Headers) {
     throw new Error(error.message);
   }
 
-  return { supabaseResponse, user };
+  return { supabaseResponse, user, supabase };
 }

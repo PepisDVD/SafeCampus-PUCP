@@ -1,0 +1,123 @@
+/**
+ * 📁 apps/web/src/features/usuarios/mock-data.ts
+ * 🎯 Semilla inicial de usuarios para el panel admin.
+ *    Se usa como fallback mientras no exista tabla `usuarios` en Supabase.
+ *    Cuando el backend exponga /api/v1/usuarios, estos datos deben
+ *    reemplazarse por un fetch al endpoint real.
+ * 📦 Feature: Usuarios
+ */
+
+import type { UsuarioAdmin } from "./types";
+
+export const USUARIOS_MOCK: UsuarioAdmin[] = [
+  {
+    id: "U001",
+    nombre: "María García López",
+    email: "a20201234@pucp.edu.pe",
+    codigo: "20201234",
+    departamento: "Ingeniería Informática",
+    rol: "comunidad",
+    estado: "activo",
+    ultimoAcceso: "2026-04-18 08:15",
+    createdAt: "2025-03-12 10:00",
+  },
+  {
+    id: "U002",
+    nombre: "Carlos Mendoza Ríos",
+    email: "c.mendoza@pucp.edu.pe",
+    codigo: "20183456",
+    departamento: "Estudios Generales Ciencias",
+    rol: "comunidad",
+    estado: "activo",
+    ultimoAcceso: "2026-04-17 14:30",
+    createdAt: "2025-03-12 10:00",
+  },
+  {
+    id: "U003",
+    nombre: "Jorge Salinas Torres",
+    email: "jsalinas@pucp.edu.pe",
+    codigo: "OP-023",
+    departamento: "Seguridad Campus",
+    rol: "operador",
+    estado: "activo",
+    ultimoAcceso: "2026-04-19 06:00",
+    createdAt: "2024-08-01 09:00",
+  },
+  {
+    id: "U004",
+    nombre: "Rosa Quispe Mamani",
+    email: "rquispe@pucp.edu.pe",
+    codigo: "OP-017",
+    departamento: "Seguridad Campus",
+    rol: "operador",
+    estado: "activo",
+    ultimoAcceso: "2026-04-19 07:45",
+    createdAt: "2024-08-01 09:00",
+  },
+  {
+    id: "U005",
+    nombre: "Luis Fernández Castro",
+    email: "lfernandez@pucp.edu.pe",
+    codigo: "SUP-004",
+    departamento: "Jefatura de Seguridad",
+    rol: "supervisor",
+    estado: "activo",
+    ultimoAcceso: "2026-04-19 08:00",
+    createdAt: "2024-05-10 08:30",
+  },
+  {
+    id: "U006",
+    nombre: "Ana Torres Vega",
+    email: "atorres@pucp.edu.pe",
+    codigo: "ADM-001",
+    departamento: "DITIC",
+    rol: "admin",
+    estado: "activo",
+    ultimoAcceso: "2026-04-19 07:30",
+    createdAt: "2024-01-15 08:00",
+  },
+  {
+    id: "U007",
+    nombre: "Prof. Roberto Silva",
+    email: "r.silva@pucp.edu.pe",
+    codigo: "DOC-112",
+    departamento: "Facultad de Derecho",
+    rol: "comunidad",
+    estado: "activo",
+    ultimoAcceso: "2026-04-15 10:00",
+    createdAt: "2024-06-20 11:00",
+  },
+  {
+    id: "U008",
+    nombre: "Elena Paredes Núñez",
+    email: "e.paredes@pucp.edu.pe",
+    codigo: "ADM-234",
+    departamento: "RRHH",
+    rol: "comunidad",
+    estado: "inactivo",
+    ultimoAcceso: "2026-03-10 09:00",
+    createdAt: "2024-09-01 12:00",
+  },
+  {
+    id: "U009",
+    nombre: "Marco Díaz Lozano",
+    email: "mdiaz@pucp.edu.pe",
+    codigo: "OP-031",
+    departamento: "Seguridad Campus",
+    rol: "operador",
+    estado: "activo",
+    ultimoAcceso: "2026-04-19 06:30",
+    createdAt: "2025-02-14 09:00",
+  },
+  {
+    id: "U010",
+    nombre: "Sandra Rojas Huanca",
+    email: "srojas@pucp.edu.pe",
+    codigo: "SUP-002",
+    departamento: "Jefatura de Seguridad",
+    rol: "supervisor",
+    estado: "suspendido",
+    ultimoAcceso: "2026-03-15 11:00",
+    createdAt: "2024-04-22 08:00",
+  },
+];
