@@ -4,10 +4,22 @@
  * 📦 Capa: Lib / Servicios
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+import { createBrowserClient } from "@safecampus/data";
+
+const API_BASE_URL =
+  typeof window === "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"
+    : "/api/v1";
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
+}
+
+const AUTH_SESSION_RETRY_COUNT = 6;
+const AUTH_SESSION_RETRY_DELAY_MS = 150;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 class ApiClient {
@@ -15,6 +27,25 @@ class ApiClient {
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
+  }
+
+  private async resolveBearerToken(forceRefresh = false): Promise<string | null> {
+    if (typeof window === "undefined") return null;
+
+    const supabase = createBrowserClient();
+    if (forceRefresh) {
+      const { data } = await supabase.auth.refreshSession();
+      return data.session?.access_token ?? null;
+    }
+
+    for (let attempt = 0; attempt < AUTH_SESSION_RETRY_COUNT; attempt += 1) {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? null;
+      if (token) return token;
+      await sleep(AUTH_SESSION_RETRY_DELAY_MS);
+    }
+
+    return null;
   }
 
   private async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -26,16 +57,22 @@ class ApiClient {
       url += `?${searchParams.toString()}`;
     }
 
-    // TODO: Obtener token de sesión
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    let token = await this.resolveBearerToken();
 
-    const headers: HeadersInit = {
+    const buildHeaders = (accessToken: string | null): HeadersInit => ({
       "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
+      ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
       ...customHeaders,
-    };
+    });
 
-    const response = await fetch(url, { ...restOptions, headers });
+    let response = await fetch(url, { ...restOptions, headers: buildHeaders(token) });
+
+    if (response.status === 401 && typeof window !== "undefined") {
+      token = await this.resolveBearerToken(true);
+      if (token) {
+        response = await fetch(url, { ...restOptions, headers: buildHeaders(token) });
+      }
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: "Error desconocido" }));

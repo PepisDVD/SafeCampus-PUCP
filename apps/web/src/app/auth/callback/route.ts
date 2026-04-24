@@ -5,6 +5,7 @@ import {
   AUTH_ERROR_DOMAIN_NOT_ALLOWED,
   AUTH_ERROR_OAUTH_EXCHANGE_FAILED,
   AUTH_ERROR_OAUTH_MISSING_CODE,
+  AUTH_ERROR_PROFILE_SYNC_FAILED,
   isAllowedInstitutionalEmail,
   isGoogleProviderUser,
 } from "@/features/auth/auth.policy";
@@ -27,6 +28,44 @@ function loginRedirectWithError(origin: string, code: string) {
   return NextResponse.redirect(loginUrl);
 }
 
+function callbackClientFallbackRedirect(
+  origin: string,
+  code: string,
+  nextPath: string,
+) {
+  const fallbackUrl = new URL("/auth/callback-client", origin);
+  fallbackUrl.searchParams.set("code", code);
+  fallbackUrl.searchParams.set("next", nextPath);
+  return NextResponse.redirect(fallbackUrl);
+}
+
+function resolveApiBaseUrl(origin: string): string {
+  return process.env.NEXT_PUBLIC_API_URL?.trim() || `${origin}/api/v1`;
+}
+
+async function syncAuthenticatedUser(
+  origin: string,
+  accessToken: string,
+  request: Request,
+): Promise<boolean> {
+  const apiBaseUrl = resolveApiBaseUrl(origin).replace(/\/$/, "");
+  const syncUrl = `${apiBaseUrl}/auth/sync-user`;
+
+  const response = await fetch(syncUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "X-Forwarded-For": request.headers.get("x-forwarded-for") ?? "",
+      "User-Agent": request.headers.get("user-agent") ?? "",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000),
+  });
+
+  return response.ok;
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const origin = requestUrl.origin;
@@ -38,7 +77,17 @@ export async function GET(request: Request) {
   }
 
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  let data: Awaited<ReturnType<typeof supabase.auth.exchangeCodeForSession>>["data"] | null = null;
+  let error: Awaited<ReturnType<typeof supabase.auth.exchangeCodeForSession>>["error"] | null = null;
+
+  try {
+    const result = await supabase.auth.exchangeCodeForSession(code);
+    data = result.data;
+    error = result.error;
+  } catch (exchangeError) {
+    console.error("[auth/callback] exchangeCodeForSession threw", exchangeError);
+    return callbackClientFallbackRedirect(origin, code, nextPath);
+  }
 
   if (error) {
     console.error("[auth/callback] exchangeCodeForSession failed", {
@@ -46,7 +95,7 @@ export async function GET(request: Request) {
       code: error.code,
       status: error.status,
     });
-    return loginRedirectWithError(origin, AUTH_ERROR_OAUTH_EXCHANGE_FAILED);
+    return callbackClientFallbackRedirect(origin, code, nextPath);
   }
 
   const user = data.user;
@@ -57,6 +106,21 @@ export async function GET(request: Request) {
   if (!isAllowedUser) {
     await supabase.auth.signOut();
     return loginRedirectWithError(origin, AUTH_ERROR_DOMAIN_NOT_ALLOWED);
+  }
+
+  const accessToken = data.session?.access_token;
+  if (!accessToken) {
+    await supabase.auth.signOut();
+    return loginRedirectWithError(origin, AUTH_ERROR_PROFILE_SYNC_FAILED);
+  }
+
+  const syncOk = await syncAuthenticatedUser(origin, accessToken, request).catch(
+    () => false,
+  );
+
+  if (!syncOk) {
+    await supabase.auth.signOut();
+    return loginRedirectWithError(origin, AUTH_ERROR_PROFILE_SYNC_FAILED);
   }
 
   const targetUrl = new URL(nextPath, origin);

@@ -16,7 +16,7 @@ function LoginPageContent() {
   const [selectedRoleId, setSelectedRoleId] = useState<LoginRoleId>("comunidad");
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("usuario@pucp.edu.pe");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("********");
   const [clientError, setClientError] = useState<string | null>(null);
 
@@ -41,7 +41,7 @@ function LoginPageContent() {
     if (!selectedRole || loading) return;
 
     const normalizedEmail = email.trim().toLowerCase();
-    if (!isAllowedInstitutionalEmail(normalizedEmail)) {
+    if (normalizedEmail && !isAllowedInstitutionalEmail(normalizedEmail)) {
       setClientError(
         "Ingresa un correo institucional PUCP valido (@pucp.edu.pe).",
       );
@@ -53,7 +53,7 @@ function LoginPageContent() {
 
     try {
       await signInWithPucpSso({
-        email: normalizedEmail,
+        email: normalizedEmail || undefined,
         nextPath: nextFromGuard ?? selectedRole.ruta,
       });
     } catch (error) {
@@ -114,7 +114,6 @@ function LoginPageContent() {
                   <User className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <Input
                     type="email"
-                    required
                     autoComplete="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}

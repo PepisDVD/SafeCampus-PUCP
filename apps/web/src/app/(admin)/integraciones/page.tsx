@@ -1,20 +1,22 @@
 /**
  * 📁 apps/web/src/app/(admin)/integraciones/page.tsx
- * 🎯 Panel de monitoreo de integraciones externas: OpenAI, WhatsApp, Maps, Gmail.
+ * 🎯 Monitoreo de integraciones externas (UC-GU-06).
+ *    Permite verificar manualmente: OpenAI · WhatsApp · Maps · Gmail · Google SSO.
  * 📦 Módulo: Admin / Integraciones
  */
 
+import { IntegracionesPanel } from "@/features/integraciones";
+
+import { AdminPageHeader } from "../_components/admin-page-header";
+
 export default function IntegracionesPage() {
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">Integraciones Externas</h1>
-      <p className="text-muted-foreground mt-2">
-        Monitoreo y configuración de servicios externos conectados
-      </p>
-      {/* TODO: Implementar tarjetas de estado por servicio (OK, Degradado, Caído) */}
-      {/* TODO: Implementar métricas de uso: llamadas, latencia, errores */}
-      {/* TODO: Implementar configuración de credenciales */}
-      {/* TODO: Servicios: OpenAI API, WhatsApp Business, Google Maps, Gmail OAuth2 */}
-    </div>
+    <section>
+      <AdminPageHeader
+        title="Integraciones Externas"
+        description="Monitoreo y verificación de los servicios de terceros conectados a SafeCampus."
+      />
+      <IntegracionesPanel />
+    </section>
   );
 }

@@ -9,6 +9,19 @@ const outputPath = resolve(
 );
 const rootEnvPath = resolve(process.cwd(), "../../.env");
 const webEnvLocalPath = resolve(process.cwd(), "../../apps/web/.env.local");
+const defaultSchemas = [
+  "public",
+  "sc_acompanamiento",
+  "sc_auditoria",
+  "sc_clasificacion",
+  "sc_dashboard",
+  "sc_incidentes",
+  "sc_kpi",
+  "sc_lost_found",
+  "sc_notificaciones",
+  "sc_omnicanal",
+  "sc_users",
+];
 
 const assignEnvIfMissing = (key, value) => {
   const current = process.env[key];
@@ -71,6 +84,33 @@ const projectId =
   process.env.SUPABASE_PROJECT_ID?.trim() ||
   getProjectIdFromUrl(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
 
+const parseSchemas = (rawSchemas) => {
+  if (!rawSchemas || !rawSchemas.trim()) return defaultSchemas;
+
+  const parsed = rawSchemas
+    .split(",")
+    .map((schema) => schema.trim())
+    .filter(Boolean);
+
+  return parsed.length ? parsed : defaultSchemas;
+};
+
+const schemaPattern = /^[a-z_][a-z0-9_]*$/;
+const requestedSchemas = parseSchemas(process.env.SUPABASE_DB_SCHEMAS);
+const invalidSchemas = requestedSchemas.filter(
+  (schema) => !schemaPattern.test(schema),
+);
+
+if (invalidSchemas.length) {
+  console.error(
+    `SUPABASE_DB_SCHEMAS contiene nombres invalidos: ${invalidSchemas.join(", ")}`,
+  );
+  process.exit(1);
+}
+
+const schemas = Array.from(new Set(requestedSchemas));
+const schemaFlags = schemas.map((schema) => `--schema ${schema}`).join(" ");
+
 if (!projectId) {
   console.error(
     "No se pudo resolver SUPABASE_PROJECT_ID. Define SUPABASE_PROJECT_ID o NEXT_PUBLIC_SUPABASE_URL antes de ejecutar gen:types.",
@@ -80,7 +120,7 @@ if (!projectId) {
 
 try {
   const generated = execSync(
-    `supabase gen types --lang typescript --project-id ${projectId} --schema public`,
+    `supabase gen types --lang typescript --project-id ${projectId} ${schemaFlags}`,
     {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -94,7 +134,9 @@ try {
 
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, generated, "utf8");
-  console.log(`Tipos Supabase generados en ${outputPath}`);
+  console.log(
+    `Tipos Supabase generados en ${outputPath} (schemas: ${schemas.join(", ")})`,
+  );
 } catch (error) {
   console.error("Fallo la generacion de tipos Supabase.");
   if (error instanceof Error) {

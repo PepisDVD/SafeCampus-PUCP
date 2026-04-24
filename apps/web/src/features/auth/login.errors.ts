@@ -13,5 +13,13 @@ export function mapAuthError(rawError: string | null): string | null {
     return "No se recibio respuesta valida del proveedor de autenticacion.";
   }
 
+  if (rawError === "profile_sync_failed") {
+    return "No se pudo sincronizar tu perfil de acceso. Intenta nuevamente.";
+  }
+
+  if (rawError === "admin_required") {
+    return "Tu cuenta no tiene permisos de administrador para ese modulo.";
+  }
+
   return "No se pudo iniciar sesion en este momento.";
 }

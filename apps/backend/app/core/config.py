@@ -18,8 +18,11 @@ class Settings(BaseSettings):
     # --- CORS ---
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",  # Frontend web (Next.js)
+        "http://127.0.0.1:3000",  # Frontend web alternate localhost
         "http://localhost:8081",  # Frontend móvil (Expo)
+        "http://127.0.0.1:8081",  # Frontend móvil alternate localhost
     ]
+    CORS_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     # --- Database ---
     DATABASE_URL: str
@@ -41,6 +44,12 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
+    # --- Supabase Auth ---
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    ALLOWED_INSTITUTIONAL_DOMAIN: str = "pucp.edu.pe"
+    DEFAULT_COMMUNITY_ROLE_ID: str = "0c21c807-e3d3-4daa-b67f-b8929b3ac10d"
+
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_database_url(cls, value: str) -> str:
@@ -50,6 +59,11 @@ class Settings(BaseSettings):
         if "ssl=require" not in value and "sslmode=require" not in value:
             raise ValueError("DATABASE_URL debe exigir SSL (agrega '?ssl=require').")
         return value
+
+    @field_validator("ALLOWED_INSTITUTIONAL_DOMAIN")
+    @classmethod
+    def normalize_domain(cls, value: str) -> str:
+        return value.strip().lower()
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": True}
 

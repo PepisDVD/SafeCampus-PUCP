@@ -18,14 +18,16 @@ import {
   SelectValue,
   Textarea,
 } from "@safecampus/ui-kit";
-import { CheckCircle2, Flame, HeartPulse, MapPin, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Flame, HeartPulse, MapPin, ShieldAlert } from "lucide-react";
+
+import { incidentesApi, type IncidenteCreateResponse, type NivelSeveridad } from "@/lib/api/incidentes";
 
 type Step = 0 | 1 | 2 | 3;
 
 const tiposIncidente = [
-  { id: "robo", label: "Robo / Hurto", icon: ShieldAlert },
-  { id: "emergencia", label: "Emergencia medica", icon: HeartPulse },
-  { id: "incendio", label: "Incendio / Humo", icon: Flame },
+  { id: "robo", label: "Robo / Hurto", icon: ShieldAlert, severidad: "ALTO" },
+  { id: "emergencia_medica", label: "Emergencia medica", icon: HeartPulse, severidad: "CRITICO" },
+  { id: "incendio", label: "Incendio / Humo", icon: Flame, severidad: "CRITICO" },
 ];
 
 const zonasCampus = [
@@ -43,6 +45,9 @@ export default function ReportarPage() {
   const [descripcion, setDescripcion] = useState("");
   const [zona, setZona] = useState("");
   const [referencia, setReferencia] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [resultado, setResultado] = useState<IncidenteCreateResponse | null>(null);
 
   const puedeContinuar = useMemo(() => {
     if (step === 0) return Boolean(tipo);
@@ -61,6 +66,51 @@ export default function ReportarPage() {
     setStep((actual) => (actual - 1) as Step);
   };
 
+  const resetForm = () => {
+    setStep(0);
+    setTipo("");
+    setDescripcion("");
+    setZona("");
+    setReferencia("");
+    setError("");
+    setResultado(null);
+  };
+
+  const enviarReporte = async () => {
+    if (!puedeContinuar || loading) return;
+    const tipoSeleccionado = tiposIncidente.find((item) => item.id === tipo);
+    setLoading(true);
+    setError("");
+    try {
+      const response = await incidentesApi.create({
+        descripcion,
+        canal_origen: "WEB",
+        ubicacion_texto: [zona, referencia].filter(Boolean).join(" - "),
+        categoria: tipo || null,
+        severidad: (tipoSeleccionado?.severidad as NivelSeveridad | undefined) ?? "MEDIO",
+        correlation_id:
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `web-${Date.now()}`,
+        metadata_canal: {
+          origen_ui: "pwa_comunidad",
+          zona,
+          referencia,
+        },
+      });
+      setResultado(response);
+      setStep(3);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "No fue posible registrar el incidente",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (step === 3) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10 pb-24">
@@ -72,7 +122,9 @@ export default function ReportarPage() {
             <CardTitle>Reporte enviado</CardTitle>
             <CardDescription>
               Tu caso fue registrado como{" "}
-              <span className="font-semibold text-foreground">INC-20260418-0198</span>
+              <span className="font-semibold text-foreground">
+                {resultado?.incident.codigo ?? "INC-PENDIENTE"}
+              </span>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -84,11 +136,7 @@ export default function ReportarPage() {
               variant="outline"
               className="w-full"
               onClick={() => {
-                setStep(0);
-                setTipo("");
-                setDescripcion("");
-                setZona("");
-                setReferencia("");
+                resetForm();
               }}
             >
               Crear nuevo reporte
@@ -226,12 +274,18 @@ export default function ReportarPage() {
             <Button
               type="button"
               className="bg-[#001C55] hover:bg-[#032E84]"
-              onClick={step === 2 ? () => setStep(3) : siguiente}
-              disabled={!puedeContinuar}
+              onClick={step === 2 ? enviarReporte : siguiente}
+              disabled={!puedeContinuar || loading}
             >
-              {step === 2 ? "Enviar reporte" : "Continuar"}
+              {loading ? "Enviando..." : step === 2 ? "Enviar reporte" : "Continuar"}
             </Button>
           </div>
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>{error}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
