@@ -51,9 +51,13 @@ export async function updateSession(request: NextRequest, headers?: Headers) {
     error,
   } = await supabase.auth.getUser();
 
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   if (error && error.message !== "Auth session missing!") {
     throw new Error(error.message);
   }
 
-  return { supabaseResponse, user, supabase };
+  return { supabaseResponse, user, session, supabase };
 }

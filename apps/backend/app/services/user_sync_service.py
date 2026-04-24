@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.exceptions import ForbiddenError
 from app.integrations.supabase_auth import SupabaseAuthClient
 from app.repositories.user_sync_repository import UserSyncRepository
-from app.schemas.auth import UserSyncResponse
+from app.schemas.auth import CurrentUserRolesResponse, UserSyncResponse
 
 
 class UserSyncService:
@@ -94,6 +94,25 @@ class UserSyncService:
             email=auth_user.email,
             roles=roles,
             is_new_user=is_new_user,
+        )
+
+    async def get_current_user_roles(self, *, access_token: str) -> CurrentUserRolesResponse:
+        auth_user = await self._auth_client.fetch_user(access_token)
+
+        user_row = await self._repository.find_user_by_auth_user_id(auth_user.auth_user_id)
+        if not user_row:
+            user_row = await self._repository.find_user_by_email(auth_user.email)
+
+        if not user_row:
+            raise ForbiddenError("No existe un usuario del sistema asociado a la sesión actual")
+
+        user_id = str(user_row["id"])
+        roles = await self._repository.list_role_names(user_id)
+
+        return CurrentUserRolesResponse(
+            user_id=user_id,
+            email=auth_user.email,
+            roles=roles,
         )
 
 

@@ -32,46 +32,58 @@ function normalizeRole(raw: string | null | undefined): RolUsuario | null {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-  if (["admin", "administrador", "administrator"].includes(normalized)) return "admin";
-  if (["supervisor"].includes(normalized)) return "supervisor";
-  if (["operador", "operator"].includes(normalized)) return "operador";
-  if (["comunidad", "community", "usuario", "user"].includes(normalized)) {
-    return "comunidad";
-  }
+  if (normalized === "administrador") return "admin";
+  if (normalized === "supervisor") return "supervisor";
+  if (normalized === "operador") return "operador";
+  if (normalized === "comunidad") return "comunidad";
   return null;
 }
 
-async function resolveUserRoleFromDatabase(
-  email: string | undefined,
-  supabase: Awaited<ReturnType<typeof updateSession>>["supabase"],
+type CurrentRolesResponse = {
+  user_id: string;
+  email: string;
+  roles: string[];
+};
+
+function resolveApiBaseUrl(request: NextRequest): string {
+  return process.env.NEXT_PUBLIC_API_URL?.trim() || `${request.nextUrl.origin}/api/v1`;
+}
+
+async function resolveUserRoleFromBackend(
+  request: NextRequest,
+  accessToken: string,
 ): Promise<RolUsuario | null> {
-  if (!email) return null;
+  const apiBaseUrl = resolveApiBaseUrl(request).replace(/\/$/, "");
+  const response = await fetch(`${apiBaseUrl}/auth/current-roles`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "X-Forwarded-For": request.headers.get("x-forwarded-for") ?? "",
+      "User-Agent": request.headers.get("user-agent") ?? "",
+    },
+    cache: "no-store",
+  });
 
-  const { data: userRow } = await supabase
-    .schema("sc_users")
-    .from("usuario")
-    .select("id")
-    .eq("email", email.toLowerCase())
-    .is("deleted_at", null)
-    .maybeSingle();
+  if (!response.ok) {
+    console.warn("[proxy] current-roles lookup failed", {
+      status: response.status,
+      statusText: response.statusText,
+    });
+    return null;
+  }
 
-  if (!userRow) return null;
+  const payload = (await response.json()) as CurrentRolesResponse;
+  if (!Array.isArray(payload.roles) || payload.roles.length === 0) {
+    return null;
+  }
 
-  const { data: roleLinks } = await supabase
-    .schema("sc_users")
-    .from("usuario_rol")
-    .select("rol:rol_id(nombre)")
-    .eq("usuario_id", userRow.id);
-
-  if (!roleLinks?.length) return null;
-
-  for (const link of roleLinks) {
-    const roleName = (link as { rol?: { nombre?: string } | null }).rol?.nombre;
+  for (const roleName of payload.roles) {
     const parsed = normalizeRole(roleName);
     if (parsed === "admin") return parsed;
   }
 
-  const first = (roleLinks[0] as { rol?: { nombre?: string } | null }).rol?.nombre;
+  const first = payload.roles[0] ?? null;
   return normalizeRole(first);
 }
 
@@ -86,7 +98,7 @@ function requestOrigin(request: NextRequest) {
 export async function proxy(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.set("x-current-url", requestOrigin(request));
-  const { supabaseResponse, user, supabase } = await updateSession(request, headers);
+  const { supabaseResponse, user, session } = await updateSession(request, headers);
 
   if (!user && !isPublicPath(request.nextUrl.pathname)) {
     const loginUrl = new URL("/login", request.url);
@@ -98,13 +110,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user && isAdminPath(request.nextUrl.pathname)) {
-    const metadataRole =
-      normalizeRole((user.app_metadata?.role as string | undefined) ?? null) ??
-      normalizeRole((user.user_metadata?.role as string | undefined) ?? null);
-
-    const role =
-      metadataRole ??
-      (await resolveUserRoleFromDatabase(user.email, supabase));
+    const accessToken = session?.access_token;
+    const role = accessToken
+      ? await resolveUserRoleFromBackend(request, accessToken)
+      : null;
 
     if (!role || !puedeAccederAdminPanel(role)) {
       const loginUrl = new URL("/login", request.url);

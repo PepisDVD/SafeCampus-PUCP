@@ -110,7 +110,7 @@ class UserSyncRepository:
             """
             UPDATE sc_users.usuario
             SET
-                auth_user_id = :auth_user_id::uuid,
+                auth_user_id = CAST(:auth_user_id AS uuid),
                 auth_provider = COALESCE(:auth_provider, auth_provider),
                 email = :email,
                 nombre = :nombre,
@@ -192,7 +192,7 @@ class UserSyncRepository:
             VALUES (
                 CAST(:user_id AS uuid),
                 :token_hash,
-                CASE WHEN :ip_origen IS NULL THEN NULL ELSE CAST(:ip_origen AS inet) END,
+                CAST(:ip_origen AS inet),
                 :user_agent,
                 'ACTIVA',
                 :fecha_expiracion

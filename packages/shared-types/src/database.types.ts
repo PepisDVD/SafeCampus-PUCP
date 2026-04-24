@@ -2426,6 +2426,8 @@ export type Database = {
       usuario: {
         Row: {
           apellido: string
+          auth_provider: string | null
+          auth_user_id: string | null
           avatar_url: string | null
           codigo_institucional: string | null
           created_at: string
@@ -2435,13 +2437,15 @@ export type Database = {
           estado: Database["public"]["Enums"]["estado_usuario"]
           id: string
           nombre: string
-          password_hash: string
+          password_hash: string | null
           telefono: string | null
           ultimo_acceso: string | null
           updated_at: string
         }
         Insert: {
           apellido: string
+          auth_provider?: string | null
+          auth_user_id?: string | null
           avatar_url?: string | null
           codigo_institucional?: string | null
           created_at?: string
@@ -2451,13 +2455,15 @@ export type Database = {
           estado?: Database["public"]["Enums"]["estado_usuario"]
           id?: string
           nombre: string
-          password_hash: string
+          password_hash?: string | null
           telefono?: string | null
           ultimo_acceso?: string | null
           updated_at?: string
         }
         Update: {
           apellido?: string
+          auth_provider?: string | null
+          auth_user_id?: string | null
           avatar_url?: string | null
           codigo_institucional?: string | null
           created_at?: string
@@ -2467,7 +2473,7 @@ export type Database = {
           estado?: Database["public"]["Enums"]["estado_usuario"]
           id?: string
           nombre?: string
-          password_hash?: string
+          password_hash?: string | null
           telefono?: string | null
           ultimo_acceso?: string | null
           updated_at?: string
