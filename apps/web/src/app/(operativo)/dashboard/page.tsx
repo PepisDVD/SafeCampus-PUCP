@@ -136,8 +136,8 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="relative h-[320px] overflow-hidden rounded-xl border bg-[linear-gradient(135deg,#eef7ff_0%,#f8fbff_100%)]">
-              <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(#001C55_1px,transparent_1px)] [background-size:18px_18px]" />
+            <div className="relative h-80 overflow-hidden rounded-xl border bg-[linear-gradient(135deg,#eef7ff_0%,#f8fbff_100%)]">
+              <div className="absolute inset-0 bg-[radial-gradient(#001C55_1px,transparent_1px)] bg-size-[18px_18px] opacity-20" />
               {activos.map((item) => (
                 <div
                   key={item.id}
