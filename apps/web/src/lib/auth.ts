@@ -6,7 +6,7 @@ import {
 } from "@/features/auth/auth.policy";
 
 type SignInWithPucpSsoOptions = {
-  email?: string;
+  email: string;
   nextPath: string;
 };
 
@@ -15,9 +15,8 @@ export async function signInWithPucpSso({
   nextPath,
 }: SignInWithPucpSsoOptions): Promise<void> {
   const supabase = createBrowserClient();
-  const normalizedEmail = email?.trim().toLowerCase() ?? "";
-
-  if (normalizedEmail && !isAllowedInstitutionalEmail(normalizedEmail)) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!isAllowedInstitutionalEmail(normalizedEmail)) {
     throw new Error(
       `Solo se permite el acceso con correos institucionales @${ALLOWED_INSTITUTIONAL_DOMAIN}`,
     );
@@ -36,7 +35,7 @@ export async function signInWithPucpSso({
       queryParams: {
         hd: ALLOWED_INSTITUTIONAL_DOMAIN,
         prompt: "select_account",
-        ...(normalizedEmail ? { login_hint: normalizedEmail } : {}),
+        login_hint: normalizedEmail,
       },
     },
   });
