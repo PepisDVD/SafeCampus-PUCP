@@ -55,14 +55,21 @@ Required values:
 ```env
 DATABASE_URL=postgresql+asyncpg://.../postgres?ssl=require
 SECRET_KEY=CHANGE-ME
+DATABASE_ECHO=false
 SUPABASE_URL=https://PROJECT_REF.supabase.co
 SUPABASE_ANON_KEY=...
 ALLOWED_INSTITUTIONAL_DOMAIN=pucp.edu.pe
+DEFAULT_COMMUNITY_ROLE_ID=00000000-0000-0000-0000-000000000000
 WEB_APP_URL=http://localhost:3000
 BACKEND_PUBLIC_URL=http://localhost:8000
 SESSION_COOKIE_NAME=safecampus_session
 SESSION_COOKIE_SECURE=false
+SESSION_COOKIE_DOMAIN=
 ```
+
+Optional integration values are also declared in `.env.example`:
+`OPENAI_API_KEY`, `OPENAI_MODEL`, `GOOGLE_MAPS_API_KEY`, `WHATSAPP_TOKEN`,
+`WHATSAPP_PHONE_ID`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET`.
 
 `DATABASE_URL` must use the async SQLAlchemy driver prefix:
 

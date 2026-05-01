@@ -4,7 +4,7 @@ import { LOGIN_ACCESS_CARDS } from "../login.config";
 
 export function LoginHeroPanel() {
   return (
-    <section className="relative hidden w-[420px] flex-col justify-between overflow-hidden p-10 text-white lg:flex">
+    <section className="relative hidden w-90 flex-col justify-between overflow-hidden p-7 text-white xl:w-100 xl:p-8 lg:flex">
       <div className="pointer-events-none absolute inset-0 opacity-10">
         {[...Array(6)].map((_, index) => (
           <div
@@ -22,7 +22,7 @@ export function LoginHeroPanel() {
       </div>
 
       <div className="relative z-10">
-        <div className="mb-8 flex items-center gap-3">
+        <div className="mb-6 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20">
             <Shield className="h-7 w-7 text-white" />
           </div>
@@ -30,15 +30,15 @@ export function LoginHeroPanel() {
             <div className="text-xs font-medium tracking-widest text-blue-200 uppercase">
               SafeCampus
             </div>
-            <div className="text-3xl leading-7 font-bold text-white">PUCP</div>
+            <div className="text-2xl leading-7 font-bold text-white">PUCP</div>
           </div>
         </div>
 
-        <h1 className="mb-4 text-5xl leading-tight font-bold">
+        <h1 className="mb-4 text-4xl leading-tight font-bold xl:text-[2.8rem]">
           Sistema Omnicanal de Gestion de Incidentes
         </h1>
 
-        <p className="text-2xl leading-relaxed text-blue-200">
+        <p className="text-lg leading-relaxed text-blue-200 xl:text-xl">
           Plataforma centralizada para la seguridad de la Pontificia Universidad
           Catolica del Peru. Tres interfaces complementarias para toda la
           comunidad universitaria.

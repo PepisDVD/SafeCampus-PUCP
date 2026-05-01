@@ -123,6 +123,8 @@ Completar al menos:
 - `DATABASE_URL` (DSN `postgresql+asyncpg://...` con `?ssl=require`)
 - `SUPABASE_PROJECT_ID` (opcional si ya tienes `NEXT_PUBLIC_SUPABASE_URL`)
 - `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SCHEMAS` (por defecto incluye `public` y todos los esquemas `sc_*`)
 - `SUPABASE_ACCESS_TOKEN` (recomendado para `pnpm gen:types`)
 - `NEXT_PUBLIC_API_URL` (por defecto `http://localhost:8000/api/v1`)
 
@@ -145,14 +147,23 @@ Completar como minimo:
 
 #### 3.3 Variables web (`apps/web/.env.local`)
 
-Si no existe, crear `apps/web/.env.local`:
+```bash
+cp apps/web/.env.local.example apps/web/.env.local
+```
+
+Completar o validar:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
+BACKEND_URL=http://localhost:8000/api/v1
 NEXT_PUBLIC_DOMAIN=
 NEXT_PUBLIC_GOOGLE_MAPS_KEY=
+NEXT_PUBLIC_SUPABASE_URL=https://PROJECT_REF.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 ```
+
+`BACKEND_URL` es server-only para proxy, Server Components y Server Actions de Next.js. Puede coincidir con `NEXT_PUBLIC_API_URL` en local.
 
 La web no debe iniciar OAuth directamente contra Supabase. El login redirige al backend:
 

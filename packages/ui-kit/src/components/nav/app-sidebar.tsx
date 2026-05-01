@@ -21,6 +21,7 @@ export type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
+  section?: string;
 };
 
 type AppSidebarProps = {
@@ -78,29 +79,44 @@ export function AppSidebar({
 
       <SidebarContent className="px-2 py-3">
         <SidebarMenu className="gap-1.5">
-          {navItems.map((item) => {
+          {navItems.map((item, index) => {
             const isActive =
               pathname === item.href ||
               pathname.startsWith(item.href + "/");
+            const previousSection = index > 0 ? navItems[index - 1]?.section : undefined;
+            const showSectionHeader = !!item.section && item.section !== previousSection;
+
             return (
-              <SidebarMenuItem key={item.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive}
-                  tooltip={item.label}
-                  className={cn(
-                    "h-10 rounded-xl text-blue-100 hover:bg-white/10 hover:text-white",
-                    "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center",
-                    isActive &&
-                      "bg-white/15 text-white shadow-sm ring-1 ring-white/10 hover:bg-white/20 hover:text-white data-[active=true]:bg-white/15 data-[active=true]:text-white",
-                  )}
-                >
-                  <a href={item.href}>
-                    <item.icon className="size-4" />
-                    <span>{item.label}</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              <React.Fragment key={item.href}>
+                {showSectionHeader && (
+                  <>
+                    {index > 0 && <SidebarSeparator className="my-2 bg-white/10" />}
+                    <div className="px-3 py-1 group-data-[collapsible=icon]:hidden">
+                      <p className="text-[10px] font-semibold tracking-wide text-blue-200/85 uppercase">
+                        {item.section}
+                      </p>
+                    </div>
+                  </>
+                )}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive}
+                    tooltip={item.label}
+                    className={cn(
+                      "h-10 rounded-xl text-blue-100 hover:bg-white/10 hover:text-white",
+                      "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center",
+                      isActive &&
+                        "bg-white/15 text-white shadow-sm ring-1 ring-white/10 hover:bg-white/20 hover:text-white data-[active=true]:bg-white/15 data-[active=true]:text-white",
+                    )}
+                  >
+                    <a href={item.href}>
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </React.Fragment>
             );
           })}
         </SidebarMenu>
