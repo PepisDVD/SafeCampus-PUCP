@@ -1,22 +1,20 @@
 /**
  * 📁 apps/web/src/app/(admin)/auditoria/page.tsx
- * 🎯 Log de auditoría transversal (UC-GU-07).
- *    Cada acción realizada en los otros tabs escribe eventos aquí.
+ * 🎯 Log centralizado de acciones del sistema con filtros por usuario, módulo y fecha.
  * 📦 Módulo: Admin / Auditoría
  */
 
-import { AuditoriaPanel } from "@/features/auditoria";
-
-import { AdminPageHeader } from "../_components/admin-page-header";
-
 export default function AuditoriaPage() {
   return (
-    <section>
-      <AdminPageHeader
-        title="Log de Auditoría"
-        description="Registro centralizado de acciones administrativas y alertas del sistema."
-      />
-      <AuditoriaPanel />
-    </section>
+    <div className="p-6">
+      <h1 className="text-2xl font-bold">Log de Auditoría</h1>
+      <p className="text-muted-foreground mt-2">
+        Registro centralizado de todas las acciones del sistema
+      </p>
+      {/* TODO: Implementar tabla de eventos de auditoría */}
+      {/* TODO: Implementar filtros: usuario, módulo, acción, fecha */}
+      {/* TODO: Implementar detalle expandible con payload del evento */}
+      {/* TODO: Implementar exportación a CSV/Excel */}
+    </div>
   );
 }

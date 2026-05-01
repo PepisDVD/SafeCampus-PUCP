@@ -25,8 +25,7 @@ export async function createServerSupabaseClient<
               const safeOptions: CookieOptions = {
                 ...SERVER_COOKIE_OPTIONS,
                 ...options,
-                httpOnly:
-                  options?.httpOnly ?? SERVER_COOKIE_OPTIONS.httpOnly ?? false,
+                httpOnly: options?.httpOnly ?? true,
                 sameSite:
                   (options?.sameSite as CookieOptions["sameSite"]) ?? "lax",
               };
