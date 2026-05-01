@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@safecampus/data";
 
@@ -35,7 +35,7 @@ function toLoginUrl(origin: string, code: string): string {
   return loginUrl.toString();
 }
 
-export default function CallbackClientPage() {
+function CallbackClientContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -119,5 +119,23 @@ export default function CallbackClientPage() {
         Completando autenticacion segura...
       </div>
     </main>
+  );
+}
+
+function CallbackClientFallback() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
+      <div className="rounded-lg border border-gray-200 bg-white px-6 py-4 text-sm text-gray-600 shadow-sm">
+        Completando autenticacion segura...
+      </div>
+    </main>
+  );
+}
+
+export default function CallbackClientPage() {
+  return (
+    <Suspense fallback={<CallbackClientFallback />}>
+      <CallbackClientContent />
+    </Suspense>
   );
 }
