@@ -2,16 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, LifeBuoy, MapPinPlus, PackageSearch, UserCircle2 } from "lucide-react";
+import {
+  ClipboardList,
+  Home,
+  MapPinPlus,
+  PackageSearch,
+  Shield,
+  UserCircle2,
+} from "lucide-react";
 import { cn } from "@safecampus/ui-kit";
 
 import { LogoutButton } from "@/features/auth/components";
 
 const items = [
+  { href: "/inicio", label: "Inicio", icon: Home },
   { href: "/reportar", label: "Reportar", icon: MapPinPlus },
   { href: "/mis-casos", label: "Mis casos", icon: ClipboardList },
   { href: "/lost-found", label: "Lost & Found", icon: PackageSearch },
-  { href: "/acompanamiento", label: "Acompanamiento", icon: LifeBuoy },
   { href: "/perfil", label: "Perfil", icon: UserCircle2 },
 ];
 
@@ -24,18 +31,25 @@ export function ComunidadShell({ children }: ComunidadShellProps) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-20 border-b bg-white/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Comunidad SafeCampus</p>
-            <p className="text-xs text-slate-500">Reportes, acompanamiento y perfil personal</p>
+      <header className="sticky top-0 z-20 bg-[#001C55] px-4 py-3 text-white shadow-md">
+        <div className="mx-auto flex w-full max-w-md items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
+              <Shield className="h-5 w-5 text-white" />
+            </div>
+            <div className="leading-tight">
+              <p className="text-sm font-bold">SafeCampus</p>
+              <p className="text-[11px] text-white/70">PUCP</p>
+            </div>
           </div>
-          <LogoutButton className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60" />
+          <LogoutButton className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/30 bg-transparent px-3 text-xs font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60" />
         </div>
       </header>
-      <main className="mx-auto w-full max-w-5xl pb-20">{children}</main>
+
+      <main className="mx-auto w-full max-w-md pb-24">{children}</main>
+
       <nav className="fixed right-0 bottom-0 left-0 border-t bg-white/95 backdrop-blur">
-        <div className="mx-auto grid max-w-5xl grid-cols-5 px-2 py-2">
+        <div className="mx-auto grid max-w-md grid-cols-5 px-2 py-2">
           {items.map((item) => {
             const activo = pathname === item.href;
             return (
@@ -49,7 +63,7 @@ export function ComunidadShell({ children }: ComunidadShellProps) {
                     : "text-muted-foreground hover:bg-muted",
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-5 w-5" />
                 {item.label}
               </Link>
             );

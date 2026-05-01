@@ -1,7 +1,14 @@
 /**
  * 📁 apps/web/src/features/incidentes/types.ts
- * 🎯 Tipos TypeScript específicos del módulo de incidentes.
+ * 🎯 Reexporta los tipos del contrato API definidos en shared-types.
  * 📦 Feature: Incidentes
  */
 
-export {};
+export type {
+  Incidente,
+  IncidenteCreated,
+  IncidenteCreateInput,
+  IncidenteListItem,
+  IncidenteListResponse,
+} from "@safecampus/shared-types";
+export { EstadoIncidente, NivelSeveridad, TipoCanal } from "@safecampus/shared-types";

@@ -14,6 +14,11 @@ engine = create_async_engine(
     echo=settings.DATABASE_ECHO,
     pool_size=20,
     max_overflow=10,
+    # Supabase pooler (PgBouncer en modo transaction) no soporta prepared statements.
+    connect_args={
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+    },
 )
 
 AsyncSessionLocal = async_sessionmaker(
