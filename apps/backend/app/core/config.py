@@ -5,7 +5,7 @@
 """
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "CHANGE-ME-IN-PRODUCTION-safecampus-secret-key-2026"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     ALGORITHM: str = "HS256"
+    SESSION_COOKIE_NAME: str = "safecampus_session"
+    SESSION_COOKIE_SECURE: bool = False
+    SESSION_COOKIE_DOMAIN: str | None = None
+    WEB_APP_URL: str = "http://localhost:3000"
+    BACKEND_PUBLIC_URL: str = "http://localhost:8000"
 
     # --- Integraciones externas ---
     OPENAI_API_KEY: str = ""
@@ -41,6 +46,12 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
+    # --- Supabase Auth / User Sync ---
+    SUPABASE_URL: str
+    SUPABASE_ANON_KEY: str
+    ALLOWED_INSTITUTIONAL_DOMAIN: str
+    DEFAULT_COMMUNITY_ROLE_ID: str
+
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_database_url(cls, value: str) -> str:
@@ -51,7 +62,23 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL debe exigir SSL (agrega '?ssl=require').")
         return value
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": True}
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="forbid",
+    )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return init_settings, dotenv_settings, env_settings, file_secret_settings
 
 
 settings = Settings()

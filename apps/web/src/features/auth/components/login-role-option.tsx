@@ -23,14 +23,14 @@ export function LoginRoleOption({
       type="button"
       onClick={() => onSelect(role.id)}
       className={cn(
-        "flex items-center gap-4 rounded-xl border-2 p-4 text-left transition-all duration-200",
+        "flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-all duration-200 sm:p-3.5",
         selected
           ? `${styles.border} bg-gray-50 ring-2 ${styles.ring} ring-offset-1`
           : "border-gray-200 hover:border-gray-300 hover:bg-gray-50",
       )}
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-        <role.icono className={cn("h-5 w-5", selected ? styles.icon : "text-gray-500")} />
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 sm:h-10 sm:w-10">
+        <role.icono className={cn("h-4 w-4 sm:h-5 sm:w-5", selected ? styles.icon : "text-gray-500")} />
       </div>
 
       <div className="min-w-0 flex-1">

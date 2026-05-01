@@ -68,7 +68,7 @@ function LoginPageContent() {
 
   return (
     <div
-      className="min-h-screen flex"
+      className="flex min-h-dvh overflow-hidden lg:h-dvh"
       style={{
         background:
           "linear-gradient(135deg, #001C55 0%, #003087 50%, #C8102E 100%)",
@@ -76,25 +76,27 @@ function LoginPageContent() {
     >
       <LoginHeroPanel />
 
-      <div className="flex flex-1 items-center justify-center bg-gray-100 p-4 lg:p-8">
-        <div className="w-full max-w-3xl rounded-2xl bg-white p-8 shadow-xl">
-          <h2 className="text-5xl font-bold text-gray-900">Iniciar sesion</h2>
-          <p className="mt-2 text-2xl text-gray-500">
+      <div className="flex flex-1 items-center justify-center bg-gray-100 p-3 sm:p-4 lg:p-5">
+        <div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl sm:max-h-[calc(100dvh-2rem)] sm:p-6 lg:max-h-[calc(100dvh-2.5rem)] lg:p-7">
+          <h2 className="text-3xl leading-tight font-bold text-gray-900 sm:text-4xl lg:text-[2.6rem]">
+            Iniciar sesion
+          </h2>
+          <p className="mt-1 text-base text-gray-500 sm:text-lg lg:text-xl">
             Credenciales institucionales PUCP
           </p>
 
           {(callbackError || clientError) && (
-            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {clientError ?? callbackError}
             </div>
           )}
 
-          <form className="mt-7" onSubmit={onSubmit}>
-            <label className="mb-3 block text-xs font-semibold tracking-wider text-gray-600 uppercase">
+          <form className="mt-5" onSubmit={onSubmit}>
+            <label className="mb-2 block text-xs font-semibold tracking-wider text-gray-600 uppercase">
               Selecciona tu perfil
             </label>
 
-            <div className="grid grid-cols-1 gap-3">
+            <div className="grid grid-cols-1 gap-2.5">
               {LOGIN_ROLES.map((role) => (
                 <LoginRoleOption
                   key={role.id}
@@ -105,7 +107,7 @@ function LoginPageContent() {
               ))}
             </div>
 
-            <div className="mt-6 space-y-4">
+            <div className="mt-5 space-y-3">
               <div>
                 <Label className="mb-1.5 block text-xs font-semibold tracking-wider text-gray-600 uppercase">
                   Usuario institucional
@@ -156,12 +158,12 @@ function LoginPageContent() {
             <Button
               type="submit"
               disabled={loading}
-              className="mt-6 h-auto w-full rounded-xl bg-[#001C55] px-6 py-3 text-sm font-semibold text-white shadow-lg hover:bg-[#002580] hover:shadow-xl disabled:bg-gray-300"
+              className="mt-5 h-auto w-full rounded-xl bg-[#001C55] px-6 py-2.5 text-sm font-semibold text-white shadow-lg hover:bg-[#002580] hover:shadow-xl disabled:bg-gray-300"
             >
               {loading ? "Redirigiendo a Google SSO..." : "Iniciar sesion con PUCP SSO"}
             </Button>
 
-            <p className="mt-4 text-center text-xs text-gray-400">
+            <p className="mt-3 text-center text-xs text-gray-400">
               Autenticacion segura via Google Workspace · PUCP DITIC
             </p>
           </form>

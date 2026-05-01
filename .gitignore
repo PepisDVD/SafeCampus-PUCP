@@ -12,8 +12,10 @@ build/
 
 # === Environment ===
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!**/.env.example
+!**/.env.local.example
 
 # === IDE ===
 .vscode/settings.json
@@ -36,6 +38,11 @@ infra/docker/safecampus_pgdata/
 
 # === Turbo ===
 .turbo/
+
+# === Framework / tooling state ===
+.vercel/
+*.tsbuildinfo
+coverage/
 
 # === Expo ===
 apps/mobile/.expo/

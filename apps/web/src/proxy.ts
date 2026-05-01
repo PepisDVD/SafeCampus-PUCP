@@ -1,27 +1,63 @@
-import { updateSession } from "@safecampus/data/server";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+const BACKEND_URL =
+  process.env.BACKEND_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:8000/api/v1";
+
+const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME ?? "safecampus_session";
+
+const LAYOUT_GUARDED_PREFIXES = [
+  "/bienvenida",
+  "/dashboard",
+  "/incidentes",
+  "/mapa",
+  "/kpis",
+  "/mensajes",
+  "/usuarios",
+  "/roles",
+  "/integraciones",
+  "/auditoria",
+  "/perfil",
+];
+
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/login") return true;
-  if (pathname.startsWith("/auth/callback")) return true;
   return false;
 }
 
-function requestOrigin(request: NextRequest) {
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const host = request.headers.get("host");
-  const proto = forwardedProto ?? request.nextUrl.protocol.replace(":", "") ?? "http";
-  return `${proto}://${forwardedHost ?? host}${request.nextUrl.pathname}${request.nextUrl.search}`;
+async function hasBackendSession(request: NextRequest): Promise<boolean> {
+  const response = await fetch(`${BACKEND_URL.replace(/\/$/, "")}/auth/me`, {
+    headers: {
+      cookie: request.headers.get("cookie") ?? "",
+    },
+    cache: "no-store",
+  }).catch(() => null);
+
+  return response?.ok ?? false;
+}
+
+function hasSessionCookie(request: NextRequest): boolean {
+  return Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+}
+
+function isLayoutGuardedPath(pathname: string): boolean {
+  return LAYOUT_GUARDED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
 }
 
 export async function proxy(request: NextRequest) {
-  const headers = new Headers(request.headers);
-  headers.set("x-current-url", requestOrigin(request));
-  const { supabaseResponse, user } = await updateSession(request, headers);
+  const pathname = request.nextUrl.pathname;
 
-  if (!user && !isPublicPath(request.nextUrl.pathname)) {
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  const sessionCookiePresent = hasSessionCookie(request);
+
+  if (!sessionCookiePresent) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set(
       "next",
@@ -30,7 +66,22 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return supabaseResponse;
+  if (isLayoutGuardedPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  const isAuthenticated = await hasBackendSession(request);
+
+  if (!isAuthenticated) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set(
+      "next",
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    );
+    return NextResponse.redirect(loginUrl);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

@@ -13,5 +13,13 @@ export function mapAuthError(rawError: string | null): string | null {
     return "No se recibio respuesta valida del proveedor de autenticacion.";
   }
 
+  if (rawError === "profile_sync_failed") {
+    return "No se pudo sincronizar tu perfil SafeCampus. Verifica que el backend este activo e intenta nuevamente.";
+  }
+
+  if (rawError === "backend_auth_required") {
+    return "El inicio de sesion ahora se completa desde el backend. Intenta ingresar nuevamente.";
+  }
+
   return "No se pudo iniciar sesion en este momento.";
 }
