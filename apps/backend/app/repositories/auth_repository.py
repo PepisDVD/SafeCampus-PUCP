@@ -5,7 +5,7 @@ Repository for backend-owned auth using normalized SQLAlchemy schema models.
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -91,6 +91,9 @@ class AuthRepository:
                 Usuario.nombre,
                 Usuario.apellido,
                 Usuario.avatar_url,
+                Usuario.codigo_institucional,
+                Usuario.telefono,
+                Usuario.departamento,
                 Usuario.estado,
             )
             .where(Usuario.id == UUID(usuario_id), Usuario.deleted_at.is_(None))
@@ -99,3 +102,17 @@ class AuthRepository:
         result = await self.db.execute(statement)
         row = result.mappings().one_or_none()
         return dict(row) if row else None
+
+    async def update_user_profile(self, usuario_id: str, data: dict[str, Any]) -> None:
+        statement = (
+            update(Usuario)
+            .where(Usuario.id == UUID(usuario_id), Usuario.deleted_at.is_(None))
+            .values(
+                nombre=data["nombre"],
+                apellido=data["apellido"],
+                telefono=data.get("telefono"),
+                departamento=data.get("departamento"),
+                updated_at=func.now(),
+            )
+        )
+        await self.db.execute(statement)

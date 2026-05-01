@@ -13,6 +13,14 @@ export type EstadoIntegracion = {
 };
 
 export async function listarIntegraciones(): Promise<EstadoIntegracion[]> {
-  const res = await serverApi.get<{ items: EstadoIntegracion[] }>("/admin/integraciones");
+  const res = await serverApi.get<{ items: EstadoIntegracion[] }>(
+    "/admin/integraciones",
+    undefined,
+    {
+      cache: "force-cache",
+      revalidate: 45,
+      tags: ["admin-catalogs", "admin-integraciones"],
+    },
+  );
   return res.items;
 }

@@ -8,9 +8,9 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response, 
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_session
+from app.api.deps import get_current_user, get_session
 from app.core.config import settings
-from app.schemas.auth import AuthUserResponse
+from app.schemas.auth import AuthProfileUpdateInput, AuthUserResponse
 from app.services.auth_service import AuthService
 
 router = APIRouter()
@@ -94,6 +94,15 @@ async def me(
     service: AuthService = Depends(get_service),
 ) -> AuthUserResponse:
     return await service.get_user_from_session_token(session_token)
+
+
+@router.patch("/me", response_model=AuthUserResponse, tags=["Auth"])
+async def update_me(
+    body: AuthProfileUpdateInput,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: AuthService = Depends(get_service),
+) -> AuthUserResponse:
+    return await service.update_current_user_profile(current_user.id, body)
 
 
 @router.post("/logout", tags=["Auth"])

@@ -25,7 +25,28 @@ type UserNavProps = {
   collapsed?: boolean;
   onLogout?: () => void;
   editProfileHref?: string;
+  LinkComponent?: React.ComponentType<{
+    href: string;
+    children: React.ReactNode;
+    className?: string;
+  }>;
 };
+
+function DefaultUserNavLink({
+  href,
+  children,
+  className,
+}: {
+  href: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  );
+}
 
 function getInitials(name: string): string {
   return name
@@ -41,7 +62,10 @@ export function UserNav({
   collapsed = false,
   onLogout,
   editProfileHref = "/perfil",
+  LinkComponent,
 }: UserNavProps) {
+  const UserNavLink = LinkComponent ?? DefaultUserNavLink;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -91,10 +115,10 @@ export function UserNav({
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <a href={editProfileHref} className="cursor-pointer">
+          <UserNavLink href={editProfileHref} className="cursor-pointer">
             <User className="mr-2 h-4 w-4" />
             Editar perfil
-          </a>
+          </UserNavLink>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

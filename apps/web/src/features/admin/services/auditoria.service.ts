@@ -38,6 +38,14 @@ export async function listarAuditoria(
 }
 
 export async function obtenerModulosDistintos(): Promise<string[]> {
-  const res = await serverApi.get<{ modulos: string[] }>("/admin/auditoria/modulos");
+  const res = await serverApi.get<{ modulos: string[] }>(
+    "/admin/auditoria/modulos",
+    undefined,
+    {
+      cache: "force-cache",
+      revalidate: 120,
+      tags: ["admin-catalogs", "admin-auditoria-modulos"],
+    },
+  );
   return res.modulos;
 }

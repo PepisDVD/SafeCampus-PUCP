@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   AppSidebar,
@@ -21,6 +22,7 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
+import { OfficialLogoMark } from "@/components/branding/official-logo-mark";
 import { signOut } from "@/lib/auth";
 
 const ADMIN_NAV: NavItem[] = [
@@ -110,12 +112,13 @@ export function AdminShell({ user, children }: AdminShellProps) {
     <SidebarProvider>
       <AppSidebar
         appName="SafeCampus Control"
-        AppLogo={Shield}
+        AppLogo={OfficialLogoMark}
         navItems={ADMIN_NAV}
         pathname={pathname}
         user={user}
         onLogout={handleLogout}
         editProfileHref="/perfil"
+        LinkComponent={Link}
       />
       <SidebarInset className="bg-[#f7f8fb]">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur">

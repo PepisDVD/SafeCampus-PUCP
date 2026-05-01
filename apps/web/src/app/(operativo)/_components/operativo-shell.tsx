@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   AppSidebar,
@@ -18,6 +19,7 @@ import {
   MessageSquare,
   ShieldCheck,
 } from "lucide-react";
+import { OfficialLogoMark } from "@/components/branding/official-logo-mark";
 import { signOut } from "@/lib/auth";
 
 const OPERATIVO_NAV: NavItem[] = [
@@ -53,12 +55,13 @@ export function OperativoShell({ user, children }: OperativoShellProps) {
     <SidebarProvider>
       <AppSidebar
         appName="SafeCampus Operativo"
-        AppLogo={ShieldCheck}
+        AppLogo={OfficialLogoMark}
         navItems={OPERATIVO_NAV}
         pathname={pathname}
         user={user}
         onLogout={handleLogout}
         editProfileHref="/perfil"
+        LinkComponent={Link}
       />
       <SidebarInset className="bg-[#f7f8fb]">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur">

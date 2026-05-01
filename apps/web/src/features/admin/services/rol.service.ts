@@ -16,11 +16,27 @@ export type RolConPermisos = {
 };
 
 export async function listarRoles(): Promise<RolConPermisos[]> {
-  const res = await serverApi.get<{ items: RolConPermisos[] }>("/admin/roles");
+  const res = await serverApi.get<{ items: RolConPermisos[] }>(
+    "/admin/roles",
+    undefined,
+    {
+      cache: "force-cache",
+      revalidate: 60,
+      tags: ["admin-catalogs", "admin-roles"],
+    },
+  );
   return res.items;
 }
 
 export async function listarPermisos(): Promise<Permiso[]> {
-  const res = await serverApi.get<{ items: Permiso[] }>("/admin/roles/permisos");
+  const res = await serverApi.get<{ items: Permiso[] }>(
+    "/admin/roles/permisos",
+    undefined,
+    {
+      cache: "force-cache",
+      revalidate: 60,
+      tags: ["admin-catalogs", "admin-permisos"],
+    },
+  );
   return res.items;
 }

@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import create_access_token, decode_access_token
 from app.repositories.auth_repository import AuthRepository
-from app.schemas.auth import AuthUserResponse
+from app.schemas.auth import AuthProfileUpdateInput, AuthUserResponse
 
 
 class AuthService:
@@ -108,19 +108,12 @@ class AuthService:
 
         roles = await self._repo.list_role_names(str(usuario["id"]))
         if not roles:
-            role_id = await self._repo.get_role_id_by_name("comunidad")
+            role_id = await self._repo.get_role_id_by_name("administrador")
             if role_id:
                 await self._repo.assign_role(str(usuario["id"]), role_id)
                 roles = await self._repo.list_role_names(str(usuario["id"]))
 
-        return AuthUserResponse(
-            id=str(usuario["id"]),
-            email=str(usuario["email"]),
-            nombre=str(usuario["nombre"]),
-            apellido=str(usuario["apellido"]),
-            avatar_url=usuario["avatar_url"],
-            roles=roles,
-        )
+        return self._build_auth_user_response(usuario, roles)
 
     async def get_user_from_session_token(self, session_token: str | None) -> AuthUserResponse:
         if not session_token:
@@ -144,14 +137,32 @@ class AuthService:
             )
 
         roles = await self._repo.list_role_names(str(profile["id"]))
-        return AuthUserResponse(
-            id=str(profile["id"]),
-            email=str(profile["email"]),
-            nombre=str(profile["nombre"]),
-            apellido=str(profile["apellido"]),
-            avatar_url=profile["avatar_url"],
-            roles=roles,
+        return self._build_auth_user_response(profile, roles)
+
+    async def update_current_user_profile(
+        self,
+        current_user_id: str,
+        data: AuthProfileUpdateInput,
+    ) -> AuthUserResponse:
+        await self._repo.update_user_profile(
+            current_user_id,
+            {
+                "nombre": data.nombre.strip(),
+                "apellido": data.apellido.strip(),
+                "telefono": data.telefono.strip() if data.telefono else None,
+                "departamento": data.departamento.strip() if data.departamento else None,
+            },
         )
+
+        profile = await self._repo.get_user_profile(current_user_id)
+        if not profile:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado.",
+            )
+
+        roles = await self._repo.list_role_names(str(profile["id"]))
+        return self._build_auth_user_response(profile, roles)
 
     async def _exchange_code_for_session(self, code: str, code_verifier: str) -> dict[str, Any]:
         if not code_verifier:
@@ -217,3 +228,20 @@ class AuthService:
         parts = urlsplit(callback_url)
         query = urlencode({"oauth_state": oauth_state})
         return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+    @staticmethod
+    def _build_auth_user_response(
+        profile: dict[str, Any],
+        roles: list[str],
+    ) -> AuthUserResponse:
+        return AuthUserResponse(
+            id=str(profile["id"]),
+            email=str(profile["email"]),
+            nombre=str(profile["nombre"]),
+            apellido=str(profile["apellido"]),
+            avatar_url=profile.get("avatar_url"),
+            codigo_institucional=profile.get("codigo_institucional"),
+            telefono=profile.get("telefono"),
+            departamento=profile.get("departamento"),
+            roles=roles,
+        )

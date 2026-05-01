@@ -1,9 +1,15 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import type { UserNavUser } from "@safecampus/ui-kit";
 
 type UserProfile = {
   id: string;
   roles: string[];
+  nombre: string;
+  apellido: string;
+  codigoInstitucional: string | null;
+  telefono: string | null;
+  departamento: string | null;
   navUser: UserNavUser;
 };
 
@@ -13,6 +19,9 @@ type BackendAuthUser = {
   nombre: string;
   apellido: string;
   avatar_url: string | null;
+  codigo_institucional: string | null;
+  telefono: string | null;
+  departamento: string | null;
   roles: string[];
 };
 
@@ -21,7 +30,7 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://localhost:8000/api/v1";
 
-export async function getCurrentUserProfile(): Promise<UserProfile | null> {
+const fetchCurrentUserProfile = cache(async (): Promise<UserProfile | null> => {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore
     .getAll()
@@ -42,10 +51,19 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
   return {
     id: user.id,
     roles: user.roles,
+    nombre: user.nombre,
+    apellido: user.apellido,
+    codigoInstitucional: user.codigo_institucional,
+    telefono: user.telefono,
+    departamento: user.departamento,
     navUser: {
       name: `${user.nombre} ${user.apellido}`.trim(),
       email: user.email,
       avatarUrl: user.avatar_url,
     },
   };
+});
+
+export async function getCurrentUserProfile(): Promise<UserProfile | null> {
+  return fetchCurrentUserProfile();
 }

@@ -14,10 +14,18 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://localhost:8000/api/v1";
 
+type ServerApiRequestOptions = {
+  params?: Record<string, string>;
+  body?: unknown;
+  cache?: RequestCache;
+  revalidate?: number;
+  tags?: string[];
+};
+
 async function request<T>(
   method: string,
   path: string,
-  options: { params?: Record<string, string>; body?: unknown } = {},
+  options: ServerApiRequestOptions = {},
 ): Promise<T> {
   const url = new URL(BACKEND_URL + path);
   if (options.params) {
@@ -32,9 +40,28 @@ async function request<T>(
     .map((cookie) => `${cookie.name}=${cookie.value}`)
     .join("; ");
 
+  const isGet = method === "GET";
+  const cacheMode = options.cache ?? "no-store";
+  const shouldUseNextOptions =
+    isGet && cacheMode !== "no-store" &&
+    (typeof options.revalidate === "number" ||
+      (Array.isArray(options.tags) && options.tags.length > 0));
+
   const res = await fetch(url.toString(), {
     method,
-    cache: "no-store",
+    cache: cacheMode,
+    ...(shouldUseNextOptions
+      ? {
+          next: {
+            ...(typeof options.revalidate === "number"
+              ? { revalidate: options.revalidate }
+              : {}),
+            ...(Array.isArray(options.tags) && options.tags.length > 0
+              ? { tags: options.tags }
+              : {}),
+          },
+        }
+      : {}),
     headers: {
       "Content-Type": "application/json",
       ...(cookieHeader ? { cookie: cookieHeader } : {}),
@@ -51,8 +78,11 @@ async function request<T>(
 }
 
 export const serverApi = {
-  get: <T>(path: string, params?: Record<string, string>) =>
-    request<T>("GET", path, { params }),
+  get: <T>(
+    path: string,
+    params?: Record<string, string>,
+    options?: Omit<ServerApiRequestOptions, "params" | "body">,
+  ) => request<T>("GET", path, { params, ...options }),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, { body }),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, { body }),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, { body }),

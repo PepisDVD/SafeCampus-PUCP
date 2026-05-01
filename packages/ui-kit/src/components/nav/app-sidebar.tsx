@@ -24,15 +24,32 @@ export type NavItem = {
   section?: string;
 };
 
+type AppLogoComponent = React.ComponentType<{ className?: string }>;
+
+type SidebarLinkProps = {
+  href: string;
+  children: React.ReactNode;
+  className?: string;
+};
+
 type AppSidebarProps = {
   appName: string;
-  AppLogo: LucideIcon;
+  AppLogo: AppLogoComponent;
   navItems: NavItem[];
   pathname: string;
   user?: UserNavUser;
   onLogout?: () => void;
   editProfileHref?: string;
+  LinkComponent?: React.ComponentType<SidebarLinkProps>;
 };
+
+function DefaultSidebarLink({ href, children, className }: SidebarLinkProps) {
+  return (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  );
+}
 
 export function AppSidebar({
   appName,
@@ -42,9 +59,11 @@ export function AppSidebar({
   user,
   onLogout,
   editProfileHref = "/perfil",
+  LinkComponent,
 }: AppSidebarProps) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const SidebarLink = LinkComponent ?? DefaultSidebarLink;
 
   return (
     <Sidebar
@@ -110,10 +129,10 @@ export function AppSidebar({
                         "bg-white/15 text-white shadow-sm ring-1 ring-white/10 hover:bg-white/20 hover:text-white data-[active=true]:bg-white/15 data-[active=true]:text-white",
                     )}
                   >
-                    <a href={item.href}>
+                    <SidebarLink href={item.href}>
                       <item.icon className="size-4" />
                       <span>{item.label}</span>
-                    </a>
+                    </SidebarLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </React.Fragment>
@@ -131,6 +150,7 @@ export function AppSidebar({
               collapsed={collapsed}
               onLogout={onLogout}
               editProfileHref={editProfileHref}
+              LinkComponent={SidebarLink}
             />
           </SidebarFooter>
         </>
