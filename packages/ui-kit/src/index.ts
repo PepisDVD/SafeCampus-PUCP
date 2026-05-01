@@ -9,6 +9,37 @@ export { cn } from "./lib/utils";
 // Hooks
 export { useIsMobile } from "./hooks/use-mobile";
 
+// Nav — shared sidebar + user nav
+export { AppSidebar, type NavItem } from "./components/nav/app-sidebar";
+export { UserNav, type UserNavUser } from "./components/nav/user-nav";
+
+// Sidebar primitives
+export {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupAction,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
+} from "./components/ui/sidebar";
+
 // Components
 export { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./components/ui/accordion";
 export { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";

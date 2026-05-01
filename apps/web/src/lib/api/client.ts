@@ -1,10 +1,5 @@
-/**
- * 📁 apps/web/src/lib/api/client.ts
- * 🎯 Cliente HTTP centralizado con interceptores de auth, manejo de errores y tipado.
- * 📦 Capa: Lib / Servicios
- */
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
@@ -17,7 +12,10 @@ class ApiClient {
     this.baseUrl = baseUrl;
   }
 
-  private async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  private async request<T>(
+    endpoint: string,
+    options: RequestOptions = {},
+  ): Promise<T> {
     const { params, headers: customHeaders, ...restOptions } = options;
 
     let url = `${this.baseUrl}${endpoint}`;
@@ -26,19 +24,21 @@ class ApiClient {
       url += `?${searchParams.toString()}`;
     }
 
-    // TODO: Obtener token de sesión
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-
     const headers: HeadersInit = {
       "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
       ...customHeaders,
     };
 
-    const response = await fetch(url, { ...restOptions, headers });
+    const response = await fetch(url, {
+      ...restOptions,
+      credentials: "include",
+      headers,
+    });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: "Error desconocido" }));
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Error desconocido" }));
       throw new Error(error.detail || `Error ${response.status}`);
     }
 
@@ -50,15 +50,27 @@ class ApiClient {
   }
 
   post<T>(endpoint: string, body?: unknown, options?: RequestOptions) {
-    return this.request<T>(endpoint, { ...options, method: "POST", body: JSON.stringify(body) });
+    return this.request<T>(endpoint, {
+      ...options,
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   }
 
   put<T>(endpoint: string, body?: unknown, options?: RequestOptions) {
-    return this.request<T>(endpoint, { ...options, method: "PUT", body: JSON.stringify(body) });
+    return this.request<T>(endpoint, {
+      ...options,
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
   }
 
   patch<T>(endpoint: string, body?: unknown, options?: RequestOptions) {
-    return this.request<T>(endpoint, { ...options, method: "PATCH", body: JSON.stringify(body) });
+    return this.request<T>(endpoint, {
+      ...options,
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
   }
 
   delete<T>(endpoint: string, options?: RequestOptions) {

@@ -15,6 +15,7 @@ export const ALLOWED_INSTITUTIONAL_DOMAIN = "pucp.edu.pe";
 export const AUTH_ERROR_DOMAIN_NOT_ALLOWED = "dominio_no_permitido";
 export const AUTH_ERROR_OAUTH_EXCHANGE_FAILED = "oauth_exchange_failed";
 export const AUTH_ERROR_OAUTH_MISSING_CODE = "oauth_missing_code";
+export const AUTH_ERROR_PROFILE_SYNC_FAILED = "profile_sync_failed";
 
 function escapeForRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -1,20 +1,25 @@
-/**
- * 📁 apps/web/src/app/(admin)/usuarios/page.tsx
- * 🎯 Gestión de usuarios del sistema: alta, edición, roles, estado.
- * 📦 Módulo: Admin / Usuarios
- */
+import { listarUsuarios } from "@/features/admin/services/usuario.service";
+import { listarRoles } from "@/features/admin/services/rol.service";
+import { UsuariosClient } from "@/features/admin/components/usuarios/usuarios-client";
 
-export default function UsuariosPage() {
+export default async function UsuariosPage() {
+  const [usuariosRes, roles] = await Promise.all([
+    listarUsuarios(),
+    listarRoles(),
+  ]);
+
+  const stats = {
+    total: usuariosRes.total,
+    activos: usuariosRes.activos,
+    inactivos: usuariosRes.inactivos,
+    suspendidos: usuariosRes.suspendidos,
+  };
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">Gestión de Usuarios</h1>
-      <p className="text-muted-foreground mt-2">
-        Administración de cuentas, roles y estados de usuarios del sistema
-      </p>
-      {/* TODO: Implementar tabla de usuarios con búsqueda */}
-      {/* TODO: Implementar formulario de creación/edición de usuario */}
-      {/* TODO: Implementar asignación de roles */}
-      {/* TODO: Implementar acciones: activar, suspender, desactivar */}
-    </div>
+    <UsuariosClient
+      initialUsuarios={usuariosRes.items}
+      roles={roles}
+      stats={stats}
+    />
   );
 }

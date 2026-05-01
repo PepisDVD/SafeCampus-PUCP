@@ -1,5 +1,3 @@
-import { createBrowserClient } from "@safecampus/data";
-
 import {
   ALLOWED_INSTITUTIONAL_DOMAIN,
   isAllowedInstitutionalEmail,
@@ -10,11 +8,13 @@ type SignInWithPucpSsoOptions = {
   nextPath: string;
 };
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
 export async function signInWithPucpSso({
   email,
   nextPath,
 }: SignInWithPucpSsoOptions): Promise<void> {
-  const supabase = createBrowserClient();
   const normalizedEmail = email.trim().toLowerCase();
   if (!isAllowedInstitutionalEmail(normalizedEmail)) {
     throw new Error(
@@ -26,28 +26,17 @@ export async function signInWithPucpSso({
     nextPath.startsWith("/") && !nextPath.startsWith("//")
       ? nextPath
       : "/dashboard";
-  const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeNextPath)}`;
-
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo,
-      queryParams: {
-        hd: ALLOWED_INSTITUTIONAL_DOMAIN,
-        prompt: "select_account",
-        login_hint: normalizedEmail,
-      },
-    },
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  const loginUrl = new URL(`${API_BASE_URL.replace(/\/$/, "")}/auth/google/login`);
+  loginUrl.searchParams.set("email", normalizedEmail);
+  loginUrl.searchParams.set("next", safeNextPath);
+  window.location.assign(loginUrl.toString());
 }
 
-export async function signOut(): Promise<unknown> {
-  const supabase = createBrowserClient();
-  return supabase.auth.signOut();
+export async function signOut(): Promise<void> {
+  await fetch(`${API_BASE_URL.replace(/\/$/, "")}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
 }
 
 export { isAllowedInstitutionalEmail };

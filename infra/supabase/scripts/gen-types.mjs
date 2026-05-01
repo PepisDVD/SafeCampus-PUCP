@@ -10,6 +10,19 @@ const outputPath = resolve(
 const rootEnvPath = resolve(process.cwd(), "../../.env");
 const webEnvLocalPath = resolve(process.cwd(), "../../apps/web/.env.local");
 
+const DEFAULT_SCHEMAS = [
+  "public",
+  "sc_users",
+  "sc_omnicanal",
+  "sc_incidentes",
+  "sc_clasificacion",
+  "sc_notificaciones",
+  "sc_dashboard",
+  "sc_lost_found",
+  "sc_acompanamiento",
+  "sc_auditoria",
+];
+
 const assignEnvIfMissing = (key, value) => {
   const current = process.env[key];
   if (!current || !current.trim()) {
@@ -67,6 +80,31 @@ const getProjectIdFromUrl = (url) => {
   }
 };
 
+const parseSchemas = (rawSchemas) => {
+  if (!rawSchemas || !rawSchemas.trim()) {
+    return [...DEFAULT_SCHEMAS];
+  }
+
+  const unique = new Set();
+  for (const raw of rawSchemas.split(",")) {
+    const schema = raw.trim();
+    if (!schema) continue;
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema)) {
+      console.error(
+        `Schema invalido en SUPABASE_SCHEMAS: "${schema}". Usa nombres SQL validos separados por coma.`,
+      );
+      process.exit(1);
+    }
+    unique.add(schema);
+  }
+
+  if (!unique.has("public")) {
+    unique.add("public");
+  }
+
+  return [...unique];
+};
+
 const projectId =
   process.env.SUPABASE_PROJECT_ID?.trim() ||
   getProjectIdFromUrl(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
@@ -78,9 +116,12 @@ if (!projectId) {
   process.exit(1);
 }
 
+const schemas = parseSchemas(process.env.SUPABASE_SCHEMAS);
+const schemaArgs = schemas.map((schema) => `--schema ${schema}`).join(" ");
+
 try {
   const generated = execSync(
-    `supabase gen types --lang typescript --project-id ${projectId} --schema public`,
+    `supabase gen types --lang typescript --project-id ${projectId} ${schemaArgs}`,
     {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -94,6 +135,7 @@ try {
 
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, generated, "utf8");
+  console.log(`Esquemas incluidos: ${schemas.join(", ")}`);
   console.log(`Tipos Supabase generados en ${outputPath}`);
 } catch (error) {
   console.error("Fallo la generacion de tipos Supabase.");

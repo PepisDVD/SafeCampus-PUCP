@@ -2,14 +2,14 @@
 
 Monorepo de SafeCampus PUCP para web, backend y mobile.
 
-Fecha de referencia de este estado: **2026-04-19**.
+Fecha de referencia de este estado: **2026-05-01**.
 
 ## 1) Estado actual del monorepo
 
-- `apps/web`: Next.js 16 + React 19. Login, reportar y dashboard operativo con UI funcional. Modulos admin y varios modulos aun estan en modo scaffold.
-- `apps/backend`: FastAPI con arquitectura en capas (`api -> service -> repository`) y vertical inicial de incidentes.
+- `apps/web`: Next.js 16 + React 19. Login, reportar, dashboard operativo y modulos admin con UI funcional.
+- `apps/backend`: FastAPI con arquitectura en capas (`models -> repositories -> services -> api/v1`), auth centralizada, Alembic y modelos SQLAlchemy por esquema.
 - `apps/mobile`: skeleton Expo integrado al monorepo.
-- `packages/data`: clientes Supabase browser/server + middleware de sesion.
+- `packages/data`: clientes Supabase compartidos para casos puntuales de datos/tipos. La autenticacion de apps no debe iniciarse desde frontend.
 - `packages/shared-types`: tipos de dominio compartidos (`Incidente`, `Usuario`, enums).
 - Base de datos: **Supabase remoto** (no se levanta Postgres local en Docker para SafeCampus).
 
@@ -22,7 +22,7 @@ Fecha de referencia de este estado: **2026-04-19**.
 | `apps/mobile` | App Expo (base) |
 | `packages/ui-kit` | Componentes UI compartidos (shadcn/Radix) |
 | `packages/shared-types` | Tipos de dominio + `Database` |
-| `packages/data` | Cliente Supabase y utilidades |
+| `packages/data` | Cliente Supabase y utilidades compartidas |
 | `packages/config` | ESLint/TSConfig/Prettier compartidos |
 | `infra/db` | SQL base (DDL y bootstrap) |
 | `infra/supabase` | CLI/scripts para generar tipos TS desde Supabase |
@@ -136,6 +136,12 @@ Completar como minimo:
 
 - `DATABASE_URL`
 - `SECRET_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `ALLOWED_INSTITUTIONAL_DOMAIN`
+- `WEB_APP_URL` (local: `http://localhost:3000`)
+- `BACKEND_PUBLIC_URL` (local: `http://localhost:8000`)
+- `SESSION_COOKIE_NAME` (por defecto `safecampus_session`)
 
 #### 3.3 Variables web (`apps/web/.env.local`)
 
@@ -144,10 +150,29 @@ Si no existe, crear `apps/web/.env.local`:
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_DOMAIN=
 NEXT_PUBLIC_GOOGLE_MAPS_KEY=
+```
+
+La web no debe iniciar OAuth directamente contra Supabase. El login redirige al backend:
+
+```text
+GET http://localhost:8000/api/v1/auth/google/login
+GET http://localhost:8000/api/v1/auth/google/callback
+GET http://localhost:8000/api/v1/auth/me
+POST http://localhost:8000/api/v1/auth/logout
+```
+
+En Supabase Auth, agrega como Redirect URL permitida:
+
+```text
+http://localhost:8000/api/v1/auth/google/callback
+```
+
+Si Supabase exige patron con query string, agrega tambien:
+
+```text
+http://localhost:8000/api/v1/auth/google/callback**
 ```
 
 ### Paso 4. Sincronizar base de datos (Supabase remoto)
@@ -184,6 +209,21 @@ pnpm gen:types
 ```
 
 Esto escribe en `packages/shared-types/src/database.types.ts`.
+
+5. Verificar cobertura de modelos SQLAlchemy del backend:
+
+```bash
+pnpm db:model-coverage
+```
+
+Este comando compara las tablas reales de los esquemas `sc_*` contra los modelos registrados en `apps/backend/app/models`. Debe terminar con:
+
+```text
+Missing models: 0
+Extra models:    0
+```
+
+Si la BD cambia, agrega o actualiza modelos en `apps/backend/app/models/sc_*.py`; no generes un archivo gigante tipo `database.types.py`.
 
 ### Paso 5. Levantar servicios auxiliares (opcional)
 
@@ -252,6 +292,7 @@ pnpm db:migrate
 pnpm db:makemigrations
 pnpm db:current
 pnpm db:history
+pnpm db:model-coverage
 pnpm gen:types
 pnpm supabase:login
 ```
@@ -260,6 +301,10 @@ pnpm supabase:login
 
 - Alembic es el dueno de migraciones (`apps/backend/alembic`).
 - No usar `supabase db push` para SafeCampus.
+- Supabase es remoto. No se levanta una BD local como fuente principal.
+- La autenticacion Google/Supabase es responsabilidad del backend. Frontend y mobile deben llamar/redirigir al backend.
+- El backend mantiene modelos SQLAlchemy por esquema en `apps/backend/app/models/sc_*.py`.
+- Despues de cambiar la BD: `pnpm db:migrate`, `pnpm gen:types`, `pnpm db:model-coverage`.
 - Reusar `@safecampus/ui-kit` y `@safecampus/shared-types` en apps.
 - `infra/docker` no levanta Postgres local para SafeCampus.
 
@@ -268,3 +313,4 @@ pnpm supabase:login
 - Estructura del repo: `docs/ESTRUCTURA.md`
 - Tokens de diseno: `docs/DESIGN_TOKENS.md`
 - Herramientas/plugins del monorepo: `docs/README_HERRAMIENTAS_Y_PLUGINS.md`
+- Backend: `apps/backend/README.md`
