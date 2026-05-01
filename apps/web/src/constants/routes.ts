@@ -28,7 +28,4 @@ export const ROUTES = {
   ROLES: "/roles",
   INTEGRACIONES: "/integraciones",
   AUDITORIA: "/auditoria",
-
-  // Perfil transversal
-  PERFIL: "/perfil",
 } as const;

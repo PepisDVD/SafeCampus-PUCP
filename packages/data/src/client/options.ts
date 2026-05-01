@@ -22,8 +22,7 @@ export const BROWSER_COOKIE_OPTIONS: CookieOptions = {
 
 export const SERVER_COOKIE_OPTIONS: CookieOptions = {
   ...BASE_COOKIE_OPTIONS,
-  // Supabase browser client needs to read auth cookies to hydrate session.
-  httpOnly: false,
+  httpOnly: true,
 };
 
 // Backward compatibility alias.
