@@ -7,16 +7,21 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_current_user, get_session, require_roles
+from app.core.constants import EstadoIncidente, NivelSeveridad
 from app.schemas.auth import AuthUserResponse
 from app.schemas.incidente import (
     IncidenteCreated,
     IncidenteCreateInput,
+    IncidenteDetail,
     IncidenteListResponse,
 )
 from app.services.incidente_service import IncidenteService
 
 router = APIRouter()
+
+# Roles autorizados a ver/gestionar el listado operativo de incidentes.
+OPERATIVO_ROLES = {"supervisor", "operador", "administrador"}
 
 
 def get_service(db: AsyncSession = Depends(get_session)) -> IncidenteService:
@@ -25,11 +30,23 @@ def get_service(db: AsyncSession = Depends(get_session)) -> IncidenteService:
 
 @router.get("/", response_model=IncidenteListResponse)
 async def listar_incidentes(
-    limit: int = Query(default=20, ge=1, le=100),
+    search: str | None = Query(default=None, description="Filtra por código o título."),
+    severidad: NivelSeveridad | None = Query(default=None),
+    estado: EstadoIncidente | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
 ):
-    """Listado general de incidentes (vista operativa)."""
-    items = await service.listar_recentes(limit=limit)
+    """Listado operativo de incidentes — filtrable por búsqueda, severidad y estado.
+
+    Restringido a roles supervisor / operador / administrador.
+    """
+    items = await service.listar_recentes(
+        search=search,
+        severidad=severidad.value if severidad else None,
+        estado=estado.value if estado else None,
+        limit=limit,
+    )
     return IncidenteListResponse(items=items, total=len(items))
 
 
@@ -45,6 +62,19 @@ async def listar_mis_incidentes(
         limit=limit,
     )
     return IncidenteListResponse(items=items, total=len(items))
+
+
+@router.get("/{incidente_id}", response_model=IncidenteDetail)
+async def obtener_detalle_incidente(
+    incidente_id: str,
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Detalle completo de un incidente — incluye reportante, asignación e historial.
+
+    Restringido a roles supervisor / operador / administrador.
+    """
+    return await service.obtener_detalle(incidente_id)
 
 
 @router.post(

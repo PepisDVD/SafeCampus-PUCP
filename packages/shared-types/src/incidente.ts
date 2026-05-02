@@ -41,7 +41,56 @@ export interface IncidenteListItem {
   lugar_referencia: string | null;
   canal_origen: TipoCanal;
   operador_nombre: string | null;
+  operador_avatar_url: string | null;
   created_at: string;
+}
+
+/** Filtros aceptados por GET /api/v1/incidentes (vista operativa). */
+export interface IncidenteListFilters {
+  search?: string;
+  severidad?: NivelSeveridad;
+  estado?: EstadoIncidente;
+  limit?: number;
+}
+
+/** Representación reducida de usuario en respuestas de incidente. */
+export interface UsuarioMini {
+  id: string;
+  nombre_completo: string;
+  email: string | null;
+  avatar_url: string | null;
+}
+
+/** Evento del historial de un incidente. */
+export interface HistorialEvento {
+  id: string;
+  estado_anterior: EstadoIncidente | null;
+  estado_nuevo: EstadoIncidente;
+  accion: string;
+  comentario: string | null;
+  ejecutado_por: UsuarioMini | null;
+  created_at: string;
+}
+
+/** Respuesta de GET /api/v1/incidentes/{id}. */
+export interface IncidenteDetail {
+  id: string;
+  codigo: string;
+  titulo: string;
+  descripcion: string;
+  estado: EstadoIncidente;
+  severidad: NivelSeveridad | null;
+  categoria: string | null;
+  lugar_referencia: string | null;
+  canal_origen: TipoCanal;
+  fecha_primera_respuesta: string | null;
+  fecha_resolucion: string | null;
+  created_at: string;
+  updated_at: string;
+  reportante: UsuarioMini | null;
+  operador_asignado: UsuarioMini | null;
+  supervisor: UsuarioMini | null;
+  historial: HistorialEvento[];
 }
 
 /** Wrapper de respuesta para listados. */

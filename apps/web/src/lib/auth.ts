@@ -1,6 +1,6 @@
 import {
-  ALLOWED_INSTITUTIONAL_DOMAIN,
   isAllowedInstitutionalEmail,
+  isAllowedLoginEmail,
 } from "@/features/auth/auth.policy";
 
 type SignInWithPucpSsoOptions = {
@@ -23,10 +23,8 @@ export async function signInWithPucpSso({
   nextPath,
 }: SignInWithPucpSsoOptions): Promise<void> {
   const normalizedEmail = email.trim().toLowerCase();
-  if (!isAllowedInstitutionalEmail(normalizedEmail)) {
-    throw new Error(
-      `Solo se permite el acceso con correos institucionales @${ALLOWED_INSTITUTIONAL_DOMAIN}`,
-    );
+  if (!isAllowedLoginEmail(normalizedEmail)) {
+    throw new Error("Correo no autorizado para iniciar sesión.");
   }
 
   const safeNextPath =

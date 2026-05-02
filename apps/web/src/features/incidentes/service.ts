@@ -8,6 +8,8 @@
 import "server-only";
 
 import type {
+  IncidenteDetail,
+  IncidenteListFilters,
   IncidenteListResponse,
 } from "@safecampus/shared-types";
 
@@ -23,4 +25,33 @@ export async function listarMisIncidentes(
   return serverApi.get<IncidenteListResponse>("/incidentes/mis", {
     limit: String(limit),
   });
+}
+
+/**
+ * Lista operativa de incidentes para roles supervisor / operador / administrador.
+ * Soporta filtros por búsqueda libre, severidad y estado.
+ */
+export async function listarIncidentes(
+  filters: IncidenteListFilters = {},
+): Promise<IncidenteListResponse> {
+  const params: Record<string, string> = {
+    limit: String(filters.limit ?? 50),
+  };
+  if (filters.search) params.search = filters.search;
+  if (filters.severidad) params.severidad = filters.severidad;
+  if (filters.estado) params.estado = filters.estado;
+
+  return serverApi.get<IncidenteListResponse>("/incidentes/", params);
+}
+
+/**
+ * Detalle completo de un incidente — incluye reportante, asignación e historial.
+ * Restringido a roles operativos por el backend.
+ */
+export async function obtenerDetalleIncidente(
+  incidenteId: string,
+): Promise<IncidenteDetail> {
+  return serverApi.get<IncidenteDetail>(
+    `/incidentes/${encodeURIComponent(incidenteId)}`,
+  );
 }

@@ -25,10 +25,10 @@ class AuthService:
 
     def build_google_login_url(self, email: str, next_path: str) -> str:
         normalized_email = email.strip().lower()
-        if not normalized_email.endswith(f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}"):
+        if not self._is_allowed_login_email(normalized_email):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Correo institucional no permitido.",
+                detail="Correo no autorizado para iniciar sesión.",
             )
 
         safe_next_path = self._sanitize_next_path(next_path)
@@ -45,15 +45,19 @@ class AuthService:
         )
 
         callback_url = self._callback_url_with_oauth_state(state)
-        params = {
+        params: dict[str, str] = {
             "provider": "google",
             "redirect_to": callback_url,
             "code_challenge": code_challenge,
             "code_challenge_method": "s256",
-            "hd": settings.ALLOWED_INSTITUTIONAL_DOMAIN,
             "prompt": "select_account",
             "login_hint": normalized_email,
         }
+        # Solo restringir el chooser de Google al dominio institucional cuando
+        # NO se trata de un correo en la dev allowlist (los gmail dev fallarían
+        # con `hd=pucp.edu.pe`).
+        if normalized_email not in settings.dev_allowed_emails_set:
+            params["hd"] = settings.ALLOWED_INSTITUTIONAL_DOMAIN
         return f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/authorize?{urlencode(params)}"
 
     async def complete_google_callback(
@@ -84,10 +88,10 @@ class AuthService:
 
     async def sync_supabase_user_data(self, supabase_user: dict[str, Any]) -> AuthUserResponse:
         email = str(supabase_user.get("email", "")).strip().lower()
-        if not email.endswith(f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}"):
+        if not self._is_allowed_login_email(email):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Correo institucional no permitido.",
+                detail="Correo no autorizado para iniciar sesión.",
             )
 
         metadata = supabase_user.get("user_metadata") or {}
@@ -195,6 +199,13 @@ class AuthService:
                 detail="Respuesta OAuth incompleta.",
             )
         return data
+
+    @staticmethod
+    def _is_allowed_login_email(email: str) -> bool:
+        normalized = email.strip().lower()
+        if normalized.endswith(f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}"):
+            return True
+        return normalized in settings.dev_allowed_emails_set
 
     @staticmethod
     def _resolve_names(email: str, metadata: dict[str, Any]) -> tuple[str, str]:
