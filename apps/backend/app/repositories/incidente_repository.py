@@ -4,17 +4,17 @@
 📦 Capa: Repositorios
 """
 
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.constants import INCIDENT_CODE_PREFIX
 from app.models.sc_incidentes import HistorialIncidente, Incidente
-from app.models.sc_users import Usuario
+from app.models.sc_users import Rol, Usuario, UsuarioRol
 
 
 class IncidenteRepository:
@@ -164,6 +164,197 @@ class IncidenteRepository:
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
+    async def get_stats(self) -> dict[str, int]:
+        """Métricas agregadas en una sola consulta (counts con FILTER)."""
+        cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+        statement = select(
+            func.count().label("total"),
+            func.count()
+            .filter(Incidente.estado.notin_(("RESUELTO", "CERRADO")))
+            .label("activos"),
+            func.count()
+            .filter(Incidente.severidad == "CRITICO")
+            .label("criticos"),
+            func.count()
+            .filter(Incidente.estado == "EN_ATENCION")
+            .label("en_atencion"),
+            func.count()
+            .filter(
+                and_(
+                    Incidente.estado == "RESUELTO",
+                    Incidente.fecha_resolucion >= cutoff_24h,
+                )
+            )
+            .label("resueltos_24h"),
+        ).where(Incidente.deleted_at.is_(None))
+
+        result = await self.db.execute(statement)
+        row = result.mappings().one()
+        return {
+            "total": int(row["total"] or 0),
+            "activos": int(row["activos"] or 0),
+            "criticos": int(row["criticos"] or 0),
+            "en_atencion": int(row["en_atencion"] or 0),
+            "resueltos_24h": int(row["resueltos_24h"] or 0),
+        }
+
+    async def get_period_aggregates(
+        self,
+        start: datetime,
+        end: datetime,
+    ) -> dict[str, Any]:
+        """Agregados de un rango de fechas en una sola query.
+
+        Devuelve total, resueltos, criticos, escalados, FRT/TMR promedio
+        (en minutos) y conteo de incidentes con FRT <= 5 min.
+        """
+        epoch_frt = func.extract(
+            "epoch",
+            Incidente.fecha_primera_respuesta - Incidente.created_at,
+        )
+        epoch_tmr = func.extract(
+            "epoch",
+            Incidente.fecha_resolucion - Incidente.created_at,
+        )
+
+        statement = select(
+            func.count().label("total"),
+            func.count()
+            .filter(Incidente.estado.in_(("RESUELTO", "CERRADO")))
+            .label("resueltos"),
+            func.count()
+            .filter(Incidente.severidad == "CRITICO")
+            .label("criticos"),
+            func.count().filter(Incidente.estado == "ESCALADO").label("escalados"),
+            (func.avg(epoch_frt) / 60.0)
+            .filter(Incidente.fecha_primera_respuesta.is_not(None))
+            .label("frt_min"),
+            (func.avg(epoch_tmr) / 60.0)
+            .filter(Incidente.fecha_resolucion.is_not(None))
+            .label("tmr_min"),
+            func.count()
+            .filter(
+                Incidente.fecha_primera_respuesta.is_not(None),
+                epoch_frt <= 5 * 60,
+            )
+            .label("frt_within_target"),
+            func.count()
+            .filter(
+                Incidente.severidad == "CRITICO",
+                Incidente.fecha_primera_respuesta.is_not(None),
+                epoch_frt <= 2 * 60,
+            )
+            .label("criticos_sla_ok"),
+        ).where(
+            Incidente.deleted_at.is_(None),
+            Incidente.created_at >= start,
+            Incidente.created_at < end,
+        )
+        result = await self.db.execute(statement)
+        row = result.mappings().one()
+        return {
+            "total": int(row["total"] or 0),
+            "resueltos": int(row["resueltos"] or 0),
+            "criticos": int(row["criticos"] or 0),
+            "escalados": int(row["escalados"] or 0),
+            "frt_min": float(row["frt_min"]) if row["frt_min"] is not None else 0.0,
+            "tmr_min": float(row["tmr_min"]) if row["tmr_min"] is not None else 0.0,
+            "frt_within_target": int(row["frt_within_target"] or 0),
+            "criticos_sla_ok": int(row["criticos_sla_ok"] or 0),
+        }
+
+    async def get_evolucion_diaria(
+        self,
+        start: datetime,
+        end: datetime,
+    ) -> list[dict[str, Any]]:
+        """Series de tiempo bucketed por día con total / resueltos / críticos."""
+        bucket = func.date_trunc("day", Incidente.created_at).label("dia")
+        statement = (
+            select(
+                bucket,
+                func.count().label("total"),
+                func.count()
+                .filter(Incidente.estado.in_(("RESUELTO", "CERRADO")))
+                .label("resueltos"),
+                func.count()
+                .filter(Incidente.severidad == "CRITICO")
+                .label("criticos"),
+            )
+            .where(
+                Incidente.deleted_at.is_(None),
+                Incidente.created_at >= start,
+                Incidente.created_at < end,
+            )
+            .group_by(bucket)
+            .order_by(bucket)
+        )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def get_count_por_tipo(
+        self,
+        start: datetime,
+        end: datetime,
+    ) -> list[dict[str, Any]]:
+        """Conteo agrupado por categoría dentro del rango."""
+        total = func.count().label("total")
+        statement = (
+            select(
+                func.coalesce(Incidente.categoria, "otro").label("tipo"),
+                total,
+            )
+            .where(
+                Incidente.deleted_at.is_(None),
+                Incidente.created_at >= start,
+                Incidente.created_at < end,
+            )
+            .group_by(func.coalesce(Incidente.categoria, "otro"))
+            .order_by(desc(total))
+        )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def get_count_por_zona(
+        self,
+        start: datetime,
+        end: datetime,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Conteo agrupado por lugar_referencia dentro del rango."""
+        total = func.count().label("total")
+        statement = (
+            select(Incidente.lugar_referencia.label("zona"), total)
+            .where(
+                Incidente.deleted_at.is_(None),
+                Incidente.lugar_referencia.is_not(None),
+                Incidente.created_at >= start,
+                Incidente.created_at < end,
+            )
+            .group_by(Incidente.lugar_referencia)
+            .order_by(desc(total))
+            .limit(limit)
+        )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def get_top_zonas(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Top zonas con más incidentes (excluyendo cerrados/resueltos)."""
+        zona_total = func.count().label("total")
+        statement = (
+            select(Incidente.lugar_referencia.label("zona"), zona_total)
+            .where(
+                Incidente.deleted_at.is_(None),
+                Incidente.lugar_referencia.is_not(None),
+                Incidente.estado.notin_(("RESUELTO", "CERRADO")),
+            )
+            .group_by(Incidente.lugar_referencia)
+            .order_by(desc(zona_total))
+            .limit(limit)
+        )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
     async def list_by_reportante(
         self,
         usuario_id: str,
@@ -200,6 +391,145 @@ class IncidenteRepository:
         count = await self.db.scalar(statement) or 0
         secuencia = int(count) + 1
         return f"{INCIDENT_CODE_PREFIX}-{ahora.strftime('%Y%m%d')}-{secuencia:04d}"
+
+    async def get_estado_actual(self, incidente_id: str) -> dict[str, Any] | None:
+        """Devuelve el estado, fecha_primera_respuesta y supervisor_id actuales (para el flow de updates)."""
+        statement = (
+            select(
+                Incidente.id,
+                Incidente.estado,
+                Incidente.fecha_primera_respuesta,
+                Incidente.supervisor_id,
+                Incidente.operador_asignado_id,
+            )
+            .where(
+                Incidente.id == UUID(incidente_id),
+                Incidente.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        result = await self.db.execute(statement)
+        row = result.mappings().one_or_none()
+        return dict(row) if row else None
+
+    async def update_estado(
+        self,
+        incidente_id: str,
+        new_estado: str,
+        ejecutor_id: str,
+        comentario: str | None,
+    ) -> dict[str, Any] | None:
+        """Cambia el estado del incidente, autopobla fechas y registra historial."""
+        actual = await self.get_estado_actual(incidente_id)
+        if actual is None:
+            return None
+
+        ahora = datetime.now(timezone.utc)
+        estado_anterior: str = str(actual["estado"])
+
+        values: dict[str, Any] = {"estado": new_estado, "updated_at": ahora}
+        # FRT: setear si aún no se había seteado y se sale de RECIBIDO.
+        if (
+            actual["fecha_primera_respuesta"] is None
+            and new_estado != "RECIBIDO"
+        ):
+            values["fecha_primera_respuesta"] = ahora
+        # TMR: setear cuando se resuelve.
+        if new_estado == "RESUELTO":
+            values["fecha_resolucion"] = ahora
+
+        statement = (
+            update(Incidente)
+            .where(Incidente.id == UUID(incidente_id))
+            .values(**values)
+            .returning(Incidente.id)
+        )
+        result = await self.db.execute(statement)
+        if result.scalar_one_or_none() is None:
+            return None
+
+        await self.db.execute(
+            HistorialIncidente.__table__.insert().values(
+                incidente_id=UUID(incidente_id),
+                estado_anterior=estado_anterior,
+                estado_nuevo=new_estado,
+                accion="Cambio de estado",
+                comentario=comentario,
+                ejecutado_por_id=UUID(ejecutor_id),
+            )
+        )
+        return {"id": incidente_id, "estado_nuevo": new_estado}
+
+    async def assign_operador(
+        self,
+        incidente_id: str,
+        operador_id: str,
+        ejecutor_id: str,
+        comentario: str | None,
+    ) -> dict[str, Any] | None:
+        """Asigna operador. Registra supervisor si está vacío. Inserta historial."""
+        actual = await self.get_estado_actual(incidente_id)
+        if actual is None:
+            return None
+
+        ahora = datetime.now(timezone.utc)
+        estado_actual: str = str(actual["estado"])
+
+        values: dict[str, Any] = {
+            "operador_asignado_id": UUID(operador_id),
+            "updated_at": ahora,
+        }
+        # Marcar supervisor si todavía no se había marcado (lo es quien asigna).
+        if actual["supervisor_id"] is None:
+            values["supervisor_id"] = UUID(ejecutor_id)
+        # FRT: la asignación cuenta como primera respuesta si aún no la hay.
+        if actual["fecha_primera_respuesta"] is None:
+            values["fecha_primera_respuesta"] = ahora
+
+        statement = (
+            update(Incidente)
+            .where(Incidente.id == UUID(incidente_id))
+            .values(**values)
+            .returning(Incidente.id)
+        )
+        result = await self.db.execute(statement)
+        if result.scalar_one_or_none() is None:
+            return None
+
+        await self.db.execute(
+            HistorialIncidente.__table__.insert().values(
+                incidente_id=UUID(incidente_id),
+                estado_anterior=estado_actual,
+                estado_nuevo=estado_actual,
+                accion="Asignación de operador",
+                comentario=comentario,
+                ejecutado_por_id=UUID(ejecutor_id),
+            )
+        )
+        return {"id": incidente_id}
+
+    async def list_operadores(self) -> list[dict[str, Any]]:
+        """Lista de usuarios con rol operador o supervisor (para asignación)."""
+        statement = (
+            select(
+                Usuario.id,
+                Usuario.nombre,
+                Usuario.apellido,
+                Usuario.email,
+                Usuario.avatar_url,
+                func.lower(Rol.nombre).label("rol"),
+            )
+            .join(UsuarioRol, UsuarioRol.usuario_id == Usuario.id)
+            .join(Rol, Rol.id == UsuarioRol.rol_id)
+            .where(
+                Usuario.deleted_at.is_(None),
+                Usuario.estado == "ACTIVO",
+                func.lower(Rol.nombre).in_(("operador", "supervisor")),
+            )
+            .order_by(Rol.nombre, Usuario.nombre)
+        )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
 
     async def create_incidente(
         self,

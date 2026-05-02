@@ -1,11 +1,11 @@
 /**
  * 📁 apps/web/src/app/(operativo)/incidentes/page.tsx
  * 🎯 Vista maestra de incidentes (supervisor / operador):
- *    búsqueda, filtros y tabla con datos reales del backend.
+ *    búsqueda, filtros, tabla y kanban con datos reales del backend.
  * 📦 Módulo: Operativo / Incidentes
  *
- * Server Component: lee filtros desde la URL y consulta el backend (FastAPI →
- * sc_incidentes.incidente). No accede a la BD directamente.
+ * Server Component: lee filtros + modo de vista desde la URL y consulta el
+ * backend (FastAPI → sc_incidentes.incidente). No accede a la BD directamente.
  */
 
 import { EstadoIncidente, NivelSeveridad } from "@safecampus/shared-types";
@@ -13,10 +13,13 @@ import { EstadoIncidente, NivelSeveridad } from "@safecampus/shared-types";
 import { listarIncidentes } from "@/features/incidentes/service";
 
 import { IncidentesFilters } from "./_components/incidentes-filters";
+import { IncidentesKanban } from "./_components/incidentes-kanban";
 import { IncidentesTable } from "./_components/incidentes-table";
+import { ViewToggle, type IncidentesView } from "./_components/view-toggle";
 
 const SEVERIDAD_VALUES = new Set<string>(Object.values(NivelSeveridad));
 const ESTADO_VALUES = new Set<string>(Object.values(EstadoIncidente));
+const VIEW_VALUES = new Set<string>(["tabla", "kanban"]);
 
 function pickOne(value: string | string[] | undefined): string | undefined {
   if (!value) return undefined;
@@ -34,6 +37,7 @@ export default async function IncidentesPage({
   const search = pickOne(params.search) ?? "";
   const rawSeveridad = pickOne(params.severidad);
   const rawEstado = pickOne(params.estado);
+  const rawView = pickOne(params.view);
 
   const severidad =
     rawSeveridad && SEVERIDAD_VALUES.has(rawSeveridad)
@@ -43,6 +47,8 @@ export default async function IncidentesPage({
     rawEstado && ESTADO_VALUES.has(rawEstado)
       ? (rawEstado as EstadoIncidente)
       : null;
+  const view: IncidentesView =
+    rawView && VIEW_VALUES.has(rawView) ? (rawView as IncidentesView) : "tabla";
 
   const { items, total } = await listarIncidentes({
     search: search || undefined,
@@ -52,7 +58,7 @@ export default async function IncidentesPage({
   }).catch(() => ({ items: [], total: 0 }));
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5 p-6">
+    <div className="w-full min-w-0 space-y-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Gestión de Casos</h1>
@@ -60,24 +66,7 @@ export default async function IncidentesPage({
             {total} {total === 1 ? "incidente encontrado" : "incidentes encontrados"}
           </p>
         </div>
-
-        {/* Toggle Tabla / Kanban — Kanban aún no implementado */}
-        <div className="inline-flex rounded-full bg-slate-100 p-1">
-          <button
-            type="button"
-            className="rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-slate-900 shadow-sm"
-          >
-            Tabla
-          </button>
-          <button
-            type="button"
-            disabled
-            title="Próximamente"
-            className="rounded-full px-4 py-1.5 text-sm font-medium text-slate-500 disabled:cursor-not-allowed"
-          >
-            Kanban
-          </button>
-        </div>
+        <ViewToggle current={view} />
       </div>
 
       <IncidentesFilters
@@ -86,7 +75,11 @@ export default async function IncidentesPage({
         estado={estado}
       />
 
-      <IncidentesTable items={items} />
+      {view === "kanban" ? (
+        <IncidentesKanban items={items} />
+      ) : (
+        <IncidentesTable items={items} />
+      )}
     </div>
   );
 }

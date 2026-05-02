@@ -82,7 +82,7 @@ export function OperativoShell({ user, children }: OperativoShellProps) {
             <Bell className="h-4 w-4" />
           </button>
         </header>
-        <main>{children}</main>
+        <main className="min-w-0 overflow-x-hidden">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );

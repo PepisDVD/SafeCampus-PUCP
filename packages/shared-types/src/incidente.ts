@@ -72,6 +72,73 @@ export interface HistorialEvento {
   created_at: string;
 }
 
+/** Conteo de incidentes por zona (lugar_referencia). */
+export interface ZonaCount {
+  zona: string;
+  total: number;
+}
+
+/** Respuesta de GET /api/v1/incidentes/stats. */
+export interface DashboardStats {
+  total: number;
+  activos: number;
+  criticos: number;
+  en_atencion: number;
+  resueltos_24h: number;
+  por_zona: ZonaCount[];
+}
+
+/** Métrica con valor actual y % de cambio respecto al periodo anterior. */
+export interface KpiCard {
+  valor: number;
+  cambio_pct: number;
+  unidad: string;
+}
+
+/** Punto de evolución diaria en el chart de timeseries. */
+export interface EvolucionPunto {
+  fecha: string; // YYYY-MM-DD
+  total: number;
+  resueltos: number;
+  criticos: number;
+}
+
+/** Conteo por tipo (categoría) con porcentaje del total. */
+export interface TipoCount {
+  tipo: string;
+  total: number;
+  porcentaje: number;
+}
+
+/** Indicador SLA con valor actual vs objetivo. */
+export interface SlaIndicador {
+  actual: number;
+  objetivo: number;
+  unidad: string;
+}
+
+export type KpisPeriod = "semana" | "mes" | "trimestre";
+
+/** Respuesta de GET /api/v1/incidentes/kpis. */
+export interface KpisResponse {
+  period: KpisPeriod;
+  frt: KpiCard;
+  tmr: KpiCard;
+  total_incidentes: KpiCard;
+  tasa_resolucion: KpiCard;
+  criticos: KpiCard;
+  sla_cumplimiento: KpiCard;
+  evolucion: EvolucionPunto[];
+  por_tipo: TipoCount[];
+  por_zona: ZonaCount[];
+  sla: {
+    frt: SlaIndicador;
+    tmr: SlaIndicador;
+    escalamiento: SlaIndicador;
+    criticos_sla: SlaIndicador;
+  };
+}
+
 /** Respuesta de GET /api/v1/incidentes/{id}. */
 export interface IncidenteDetail {
   id: string;
@@ -115,4 +182,25 @@ export interface IncidenteCreated {
   codigo: string;
   estado: EstadoIncidente;
   created_at: string;
+}
+
+/** Body de PATCH /api/v1/incidentes/{id}/estado. */
+export interface IncidenteEstadoUpdate {
+  estado: EstadoIncidente;
+  comentario?: string | null;
+}
+
+/** Body de PATCH /api/v1/incidentes/{id}/asignar. */
+export interface IncidenteAsignacionUpdate {
+  operador_asignado_id: string;
+  comentario?: string | null;
+}
+
+/** Item devuelto por GET /api/v1/incidentes/operadores. */
+export interface OperadorListItem {
+  id: string;
+  nombre_completo: string;
+  email: string;
+  avatar_url: string | null;
+  rol: string;
 }

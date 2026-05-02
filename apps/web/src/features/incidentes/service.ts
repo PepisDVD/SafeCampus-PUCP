@@ -8,9 +8,13 @@
 import "server-only";
 
 import type {
+  DashboardStats,
   IncidenteDetail,
   IncidenteListFilters,
   IncidenteListResponse,
+  KpisPeriod,
+  KpisResponse,
+  OperadorListItem,
 } from "@safecampus/shared-types";
 
 import { serverApi } from "@/lib/api/server";
@@ -54,4 +58,31 @@ export async function obtenerDetalleIncidente(
   return serverApi.get<IncidenteDetail>(
     `/incidentes/${encodeURIComponent(incidenteId)}`,
   );
+}
+
+/**
+ * Métricas agregadas + top zonas para el dashboard operativo.
+ * Restringido a roles operativos por el backend.
+ */
+export async function obtenerStats(): Promise<DashboardStats> {
+  return serverApi.get<DashboardStats>("/incidentes/stats");
+}
+
+/**
+ * KPIs operativos del periodo + comparación vs periodo anterior + breakdowns
+ * por tipo y zona + indicadores SLA.
+ * Restringido a roles operativos por el backend.
+ */
+export async function obtenerKpis(
+  period: KpisPeriod = "mes",
+): Promise<KpisResponse> {
+  return serverApi.get<KpisResponse>("/incidentes/kpis", { period });
+}
+
+/**
+ * Lista de operadores y supervisores disponibles para asignar a un incidente.
+ * Usado por el panel de acciones del detalle (prefetch desde el server).
+ */
+export async function listarOperadores(): Promise<OperadorListItem[]> {
+  return serverApi.get<OperadorListItem[]>("/incidentes/operadores");
 }

@@ -11,10 +11,15 @@ from app.api.deps import get_current_user, get_session, require_roles
 from app.core.constants import EstadoIncidente, NivelSeveridad
 from app.schemas.auth import AuthUserResponse
 from app.schemas.incidente import (
+    DashboardStats,
+    IncidenteAsignacionUpdate,
     IncidenteCreated,
     IncidenteCreateInput,
     IncidenteDetail,
+    IncidenteEstadoUpdate,
     IncidenteListResponse,
+    KpisResponse,
+    OperadorListItem,
 )
 from app.services.incidente_service import IncidenteService
 
@@ -64,6 +69,40 @@ async def listar_mis_incidentes(
     return IncidenteListResponse(items=items, total=len(items))
 
 
+@router.get("/kpis", response_model=KpisResponse)
+async def obtener_kpis(
+    period: str = Query(default="mes", pattern="^(semana|mes|trimestre)$"),
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """KPIs operativos con comparación contra el periodo anterior + breakdowns.
+
+    Restringido a roles supervisor / operador / administrador.
+    """
+    return await service.obtener_kpis(period=period)
+
+
+@router.get("/stats", response_model=DashboardStats)
+async def obtener_stats(
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Métricas agregadas + top zonas para el dashboard operativo.
+
+    Restringido a roles supervisor / operador / administrador.
+    """
+    return await service.obtener_stats()
+
+
+@router.get("/operadores", response_model=list[OperadorListItem])
+async def listar_operadores(
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Lista de operadores y supervisores activos para asignar a incidentes."""
+    return await service.listar_operadores()
+
+
 @router.get("/{incidente_id}", response_model=IncidenteDetail)
 async def obtener_detalle_incidente(
     incidente_id: str,
@@ -75,6 +114,36 @@ async def obtener_detalle_incidente(
     Restringido a roles supervisor / operador / administrador.
     """
     return await service.obtener_detalle(incidente_id)
+
+
+@router.patch("/{incidente_id}/estado", response_model=IncidenteDetail)
+async def cambiar_estado_incidente(
+    incidente_id: str,
+    body: IncidenteEstadoUpdate,
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Cambia el estado del incidente, autopobla fechas SLA y registra historial."""
+    return await service.cambiar_estado(
+        incidente_id=incidente_id,
+        ejecutor_id=current_user.id,
+        data=body,
+    )
+
+
+@router.patch("/{incidente_id}/asignar", response_model=IncidenteDetail)
+async def asignar_operador_incidente(
+    incidente_id: str,
+    body: IncidenteAsignacionUpdate,
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Asigna operador, registra supervisor (quien ejecuta) e inserta historial."""
+    return await service.asignar_operador(
+        incidente_id=incidente_id,
+        ejecutor_id=current_user.id,
+        data=body,
+    )
 
 
 @router.post(

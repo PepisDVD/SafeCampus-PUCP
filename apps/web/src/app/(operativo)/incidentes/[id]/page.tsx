@@ -21,7 +21,10 @@ import {
 } from "lucide-react";
 import { Badge, cn } from "@safecampus/ui-kit";
 
-import { obtenerDetalleIncidente } from "@/features/incidentes/service";
+import {
+  listarOperadores,
+  obtenerDetalleIncidente,
+} from "@/features/incidentes/service";
 import {
   CANAL_LABEL,
   ESTADO_STYLE,
@@ -30,6 +33,7 @@ import {
   formatCategoria,
 } from "@/features/incidentes/presentation";
 
+import { IncidenteAcciones } from "./_components/incidente-acciones";
 import { IncidenteHistorial } from "./_components/incidente-historial";
 import { UsuarioCard } from "./_components/usuario-card";
 
@@ -86,6 +90,8 @@ export default async function IncidenteDetallePage({
     throw error;
   }
 
+  const operadores = await listarOperadores().catch(() => []);
+
   const estadoStyle = ESTADO_STYLE[detalle.estado];
   const severidadColor = detalle.severidad
     ? SEVERIDAD_COLOR[detalle.severidad]
@@ -95,7 +101,7 @@ export default async function IncidenteDetallePage({
     : "Sin severidad";
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5 p-6">
+    <div className="w-full space-y-5 p-6">
       {/* Back */}
       <Link
         href="/incidentes"
@@ -165,8 +171,10 @@ export default async function IncidenteDetallePage({
           </section>
         </div>
 
-        {/* Right: info + people */}
+        {/* Right: actions + info + people */}
         <aside className="space-y-5">
+          <IncidenteAcciones detalle={detalle} operadores={operadores} />
+
           <section className="rounded-2xl border border-slate-200 bg-white p-5">
             <h2 className="mb-4 text-sm font-semibold tracking-wide text-slate-500 uppercase">
               Información
