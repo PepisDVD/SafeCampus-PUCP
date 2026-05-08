@@ -25,6 +25,8 @@ from app.schemas.incidente import (
     IncidenteDetail,
     IncidenteEstadoUpdate,
     IncidenteListItem,
+    IncidenteMapaItem,
+    IncidenteMapaResponse,
     KpiCard,
     KpisResponse,
     OperadorListItem,
@@ -86,6 +88,32 @@ class IncidenteService:
         safe_limit = max(1, min(limit, 100))
         rows = await self._repo.list_by_reportante(usuario_id, limit=safe_limit)
         return [self._map_list_item(r) for r in rows]
+
+    async def listar_mapa(
+        self,
+        *,
+        severidad: str | None = None,
+        estado: str | None = None,
+        activos_only: bool = True,
+        limit: int = 300,
+    ) -> IncidenteMapaResponse:
+        safe_limit = max(1, min(limit, 500))
+        rows = await self._repo.list_mapa(
+            severidad=severidad,
+            estado=estado,
+            activos_only=activos_only,
+            limit=safe_limit,
+        )
+        items = [self._map_mapa_item(row) for row in rows]
+        georreferenciados = sum(
+            1 for item in items if item.latitud is not None and item.longitud is not None
+        )
+        return IncidenteMapaResponse(
+            items=items,
+            total=len(items),
+            georreferenciados=georreferenciados,
+            sin_coordenadas=len(items) - georreferenciados,
+        )
 
     async def obtener_stats(self) -> DashboardStats:
         """Métricas agregadas + top zonas para el dashboard operativo."""
@@ -261,6 +289,8 @@ class IncidenteService:
             severidad=row.get("severidad"),
             categoria=row.get("categoria"),
             lugar_referencia=row.get("lugar_referencia"),
+            latitud=row.get("latitud"),
+            longitud=row.get("longitud"),
             canal_origen=row["canal_origen"],
             fecha_primera_respuesta=row.get("fecha_primera_respuesta"),
             fecha_resolucion=row.get("fecha_resolucion"),
@@ -322,6 +352,8 @@ class IncidenteService:
             severidad=row.get("severidad"),
             categoria=row.get("categoria"),
             lugar_referencia=row.get("lugar_referencia"),
+            latitud=row.get("latitud"),
+            longitud=row.get("longitud"),
             canal_origen=row["canal_origen"],
             fecha_primera_respuesta=row.get("fecha_primera_respuesta"),
             fecha_resolucion=row.get("fecha_resolucion"),
@@ -529,6 +561,8 @@ class IncidenteService:
                 "descripcion": data.descripcion.strip(),
                 "severidad": data.severidad.value if data.severidad else None,
                 "categoria": data.categoria.strip() if data.categoria else None,
+                "latitud": data.latitud,
+                "longitud": data.longitud,
                 "lugar_referencia": (
                     data.lugar_referencia.strip() if data.lugar_referencia else None
                 ),
@@ -640,8 +674,25 @@ class IncidenteService:
             severidad=row.get("severidad"),
             categoria=row.get("categoria"),
             lugar_referencia=row.get("lugar_referencia"),
+            latitud=row.get("latitud"),
+            longitud=row.get("longitud"),
             canal_origen=row["canal_origen"],
             operador_nombre=row.get("operador_nombre"),
             operador_avatar_url=row.get("operador_avatar_url"),
+            created_at=row.get("created_at"),
+        )
+
+    @staticmethod
+    def _map_mapa_item(row: dict[str, Any]) -> IncidenteMapaItem:
+        return IncidenteMapaItem(
+            id=str(row["id"]),
+            codigo=row["codigo"],
+            titulo=row["titulo"],
+            estado=row["estado"],
+            severidad=row.get("severidad"),
+            categoria=row.get("categoria"),
+            lugar_referencia=row.get("lugar_referencia"),
+            latitud=row.get("latitud"),
+            longitud=row.get("longitud"),
             created_at=row.get("created_at"),
         )

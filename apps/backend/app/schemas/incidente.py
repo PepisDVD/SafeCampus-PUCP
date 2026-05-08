@@ -22,6 +22,8 @@ class IncidenteListItem(BaseModel):
     severidad: NivelSeveridad | None = None
     categoria: str | None = None
     lugar_referencia: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
     canal_origen: TipoCanal
     operador_nombre: str | None = None
     operador_avatar_url: str | None = None
@@ -31,6 +33,26 @@ class IncidenteListItem(BaseModel):
 class IncidenteListResponse(BaseModel):
     items: list[IncidenteListItem]
     total: int
+
+
+class IncidenteMapaItem(BaseModel):
+    id: str
+    codigo: str
+    titulo: str
+    estado: EstadoIncidente
+    severidad: NivelSeveridad | None = None
+    categoria: str | None = None
+    lugar_referencia: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
+    created_at: datetime | None = None
+
+
+class IncidenteMapaResponse(BaseModel):
+    items: list[IncidenteMapaItem]
+    total: int
+    georreferenciados: int
+    sin_coordenadas: int
 
 
 class IncidenteCreateInput(BaseModel):
@@ -168,6 +190,8 @@ class IncidenteDetail(BaseModel):
     severidad: NivelSeveridad | None = None
     categoria: str | None = None
     lugar_referencia: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
     canal_origen: TipoCanal
     fecha_primera_respuesta: datetime | None = None
     fecha_resolucion: datetime | None = None

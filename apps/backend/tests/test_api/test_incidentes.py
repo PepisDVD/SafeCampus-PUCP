@@ -10,6 +10,7 @@ from app.core.constants import EstadoIncidente, NivelSeveridad, TipoCanal
 from app.main import app
 from app.schemas.auth import AuthUserResponse
 from app.schemas.incidente import IncidenteListItem
+from app.schemas.incidente import IncidenteMapaItem, IncidenteMapaResponse
 
 
 class FakeIncidenteService:
@@ -59,6 +60,47 @@ class FakeIncidenteService:
             filtered = [i for i in filtered if i.severidad == severidad]
         return filtered[:limit]
 
+    async def listar_mapa(
+        self,
+        *,
+        severidad: str | None = None,
+        estado: str | None = None,
+        activos_only: bool = True,
+        limit: int = 300,
+    ) -> IncidenteMapaResponse:
+        items = [
+            IncidenteMapaItem(
+                id="e5ce13d7-1e7b-4d8f-9e63-bf032f95b14b",
+                codigo="INC-20260418-0001",
+                titulo="Robo de laptop en biblioteca central",
+                estado=EstadoIncidente.EN_ATENCION,
+                severidad=NivelSeveridad.ALTO,
+                categoria="robo",
+                lugar_referencia="Biblioteca Central",
+                latitud=-12.06925,
+                longitud=-77.0805,
+                created_at=datetime(2026, 4, 18, 9, 15, tzinfo=timezone.utc),
+            ),
+            IncidenteMapaItem(
+                id="7f63d3eb-7ab9-4ef3-80e4-6f01b594f40e",
+                codigo="INC-20260418-0002",
+                titulo="Persona sospechosa en estacionamiento",
+                estado=EstadoIncidente.RECIBIDO,
+                severidad=NivelSeveridad.MEDIO,
+                categoria="persona_sospechosa",
+                lugar_referencia="Estacionamiento Principal",
+                latitud=None,
+                longitud=None,
+                created_at=datetime(2026, 4, 18, 9, 40, tzinfo=timezone.utc),
+            ),
+        ]
+        return IncidenteMapaResponse(
+            items=items[:limit],
+            total=len(items[:limit]),
+            georreferenciados=1,
+            sin_coordenadas=1,
+        )
+
 
 def _fake_supervisor() -> AuthUserResponse:
     return AuthUserResponse(
@@ -99,6 +141,21 @@ def test_listar_incidentes_filtra_por_estado(client):
         payload = response.json()
         assert payload["total"] == 1
         assert payload["items"][0]["estado"] == "EN_ATENCION"
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_listar_incidentes_mapa(client):
+    app.dependency_overrides[get_service] = lambda: FakeIncidenteService()
+    app.dependency_overrides[get_current_user] = _fake_supervisor
+    try:
+        response = client.get("/api/v1/incidentes/mapa")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["georreferenciados"] == 1
+        assert payload["sin_coordenadas"] == 1
+        assert payload["items"][0]["latitud"] == -12.06925
     finally:
         app.dependency_overrides.pop(get_service, None)
         app.dependency_overrides.pop(get_current_user, None)

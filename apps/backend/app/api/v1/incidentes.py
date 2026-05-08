@@ -20,6 +20,7 @@ from app.schemas.incidente import (
     IncidenteDetail,
     IncidenteEstadoUpdate,
     IncidenteListResponse,
+    IncidenteMapaResponse,
     KpisResponse,
     OperadorListItem,
 )
@@ -95,6 +96,24 @@ async def obtener_kpis(
     Restringido a roles supervisor / operador / administrador.
     """
     return await service.obtener_kpis(period=period)
+
+
+@router.get("/mapa", response_model=IncidenteMapaResponse)
+async def listar_incidentes_mapa(
+    severidad: NivelSeveridad | None = Query(default=None),
+    estado: EstadoIncidente | None = Query(default=None),
+    activos_only: bool = Query(default=True),
+    limit: int = Query(default=300, ge=1, le=500),
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Incidentes para mapa tactico operativo con coordenadas cuando existan."""
+    return await service.listar_mapa(
+        severidad=severidad.value if severidad else None,
+        estado=estado.value if estado else None,
+        activos_only=activos_only,
+        limit=limit,
+    )
 
 
 @router.get("/stats", response_model=DashboardStats)

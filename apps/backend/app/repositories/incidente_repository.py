@@ -49,6 +49,8 @@ class IncidenteRepository:
                 Incidente.severidad,
                 Incidente.categoria,
                 Incidente.lugar_referencia,
+                func.ST_Y(Incidente.geom).label("latitud"),
+                func.ST_X(Incidente.geom).label("longitud"),
                 Incidente.canal_origen,
                 Incidente.created_at,
                 operador_nombre,
@@ -104,6 +106,8 @@ class IncidenteRepository:
                 Incidente.severidad,
                 Incidente.categoria,
                 Incidente.lugar_referencia,
+                func.ST_Y(Incidente.geom).label("latitud"),
+                func.ST_X(Incidente.geom).label("longitud"),
                 Incidente.canal_origen,
                 Incidente.fecha_primera_respuesta,
                 Incidente.fecha_resolucion,
@@ -167,6 +171,8 @@ class IncidenteRepository:
                 Incidente.severidad,
                 Incidente.categoria,
                 Incidente.lugar_referencia,
+                func.ST_Y(Incidente.geom).label("latitud"),
+                func.ST_X(Incidente.geom).label("longitud"),
                 Incidente.canal_origen,
                 Incidente.fecha_primera_respuesta,
                 Incidente.fecha_resolucion,
@@ -221,6 +227,43 @@ class IncidenteRepository:
             .where(HistorialIncidente.incidente_id == UUID(incidente_id))
             .order_by(HistorialIncidente.created_at.asc())
         )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def list_mapa(
+        self,
+        *,
+        severidad: str | None = None,
+        estado: str | None = None,
+        activos_only: bool = True,
+        limit: int = 300,
+    ) -> list[dict[str, Any]]:
+        statement = (
+            select(
+                Incidente.id,
+                Incidente.codigo,
+                Incidente.titulo,
+                Incidente.estado,
+                Incidente.severidad,
+                Incidente.categoria,
+                Incidente.lugar_referencia,
+                func.ST_Y(Incidente.geom).label("latitud"),
+                func.ST_X(Incidente.geom).label("longitud"),
+                Incidente.created_at,
+            )
+            .where(Incidente.deleted_at.is_(None))
+            .order_by(Incidente.created_at.desc())
+            .limit(limit)
+        )
+        if severidad:
+            statement = statement.where(Incidente.severidad == severidad)
+        if estado:
+            statement = statement.where(Incidente.estado == estado)
+        if activos_only:
+            statement = statement.where(
+                Incidente.estado.notin_(("RESUELTO", "CERRADO"))
+            )
+
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
@@ -703,6 +746,10 @@ class IncidenteRepository:
             reportante_id=UUID(reportante_id),
             estado="RECIBIDO",
         )
+        latitud = data.get("latitud")
+        longitud = data.get("longitud")
+        if latitud is not None and longitud is not None:
+            nuevo.geom = func.ST_SetSRID(func.ST_MakePoint(longitud, latitud), 4326)
         self.db.add(nuevo)
         await self.db.flush()
         await self.db.refresh(nuevo)

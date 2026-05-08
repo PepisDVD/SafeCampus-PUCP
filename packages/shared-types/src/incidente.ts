@@ -39,6 +39,8 @@ export interface IncidenteListItem {
   severidad: NivelSeveridad | null;
   categoria: string | null;
   lugar_referencia: string | null;
+  latitud: number | null;
+  longitud: number | null;
   canal_origen: TipoCanal;
   operador_nombre: string | null;
   operador_avatar_url: string | null;
@@ -160,6 +162,8 @@ export interface IncidenteDetail {
   severidad: NivelSeveridad | null;
   categoria: string | null;
   lugar_referencia: string | null;
+  latitud: number | null;
+  longitud: number | null;
   canal_origen: TipoCanal;
   fecha_primera_respuesta: string | null;
   fecha_resolucion: string | null;
@@ -176,6 +180,28 @@ export interface IncidenteDetail {
 export interface IncidenteListResponse {
   items: IncidenteListItem[];
   total: number;
+}
+
+/** Item para mapa tactico operativo. */
+export interface IncidenteMapaItem {
+  id: string;
+  codigo: string;
+  titulo: string;
+  estado: EstadoIncidente;
+  severidad: NivelSeveridad | null;
+  categoria: string | null;
+  lugar_referencia: string | null;
+  latitud: number | null;
+  longitud: number | null;
+  created_at: string | null;
+}
+
+/** Respuesta de GET /api/v1/incidentes/mapa. */
+export interface IncidenteMapaResponse {
+  items: IncidenteMapaItem[];
+  total: number;
+  georreferenciados: number;
+  sin_coordenadas: number;
 }
 
 /** Body de POST /api/v1/incidentes (creación desde el PWA Comunidad). */
