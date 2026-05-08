@@ -1,13 +1,194 @@
-from fastapi import APIRouter, Query
+"""
+📁 apps/backend/app/api/v1/incidentes.py
+🎯 Endpoints REST del módulo de incidentes.
+📦 Capa: API
+"""
 
-from app.schemas.incidente import IncidenteListResponse
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user, get_session, require_roles
+from app.core.constants import EstadoIncidente, NivelSeveridad
+from app.schemas.auth import AuthUserResponse
+from app.schemas.incidente import (
+    ComentarioIncidenteCreateInput,
+    ComentarioIncidenteItem,
+    DashboardStats,
+    IncidenteAsignacionUpdate,
+    IncidenteCreated,
+    IncidenteCreateInput,
+    IncidenteDetail,
+    IncidenteEstadoUpdate,
+    IncidenteListResponse,
+    KpisResponse,
+    OperadorListItem,
+)
 from app.services.incidente_service import IncidenteService
 
 router = APIRouter()
 
+# Roles autorizados a ver/gestionar el listado operativo de incidentes.
+OPERATIVO_ROLES = {"supervisor", "operador", "administrador"}
+
+
+def get_service(db: AsyncSession = Depends(get_session)) -> IncidenteService:
+    return IncidenteService(db)
+
 
 @router.get("/", response_model=IncidenteListResponse)
-async def listar_incidentes(limit: int = Query(default=20, ge=1, le=100)):
-    service = IncidenteService()
-    items = await service.listar_recentes(limit=limit)
+async def listar_incidentes(
+    search: str | None = Query(default=None, description="Filtra por código o título."),
+    severidad: NivelSeveridad | None = Query(default=None),
+    estado: EstadoIncidente | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Listado operativo de incidentes — filtrable por búsqueda, severidad y estado.
+
+    Restringido a roles supervisor / operador / administrador.
+    """
+    items = await service.listar_recentes(
+        search=search,
+        severidad=severidad.value if severidad else None,
+        estado=estado.value if estado else None,
+        limit=limit,
+    )
     return IncidenteListResponse(items=items, total=len(items))
+
+
+@router.get("/mis", response_model=IncidenteListResponse)
+async def listar_mis_incidentes(
+    limit: int = Query(default=50, ge=1, le=100),
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: IncidenteService = Depends(get_service),
+):
+    """Listado de incidentes reportados por el usuario autenticado (PWA Comunidad)."""
+    items = await service.listar_mis_incidentes(
+        usuario_id=current_user.id,
+        limit=limit,
+    )
+    return IncidenteListResponse(items=items, total=len(items))
+
+
+@router.get("/mis/{incidente_ref}", response_model=IncidenteDetail)
+async def obtener_mi_detalle_incidente(
+    incidente_ref: str,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: IncidenteService = Depends(get_service),
+):
+    """Detalle de un incidente propio de comunidad, por codigo o UUID."""
+    return await service.obtener_mi_detalle(
+        incidente_ref=incidente_ref,
+        usuario_id=current_user.id,
+    )
+
+
+@router.get("/kpis", response_model=KpisResponse)
+async def obtener_kpis(
+    period: str = Query(default="mes", pattern="^(semana|mes|trimestre)$"),
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """KPIs operativos con comparación contra el periodo anterior + breakdowns.
+
+    Restringido a roles supervisor / operador / administrador.
+    """
+    return await service.obtener_kpis(period=period)
+
+
+@router.get("/stats", response_model=DashboardStats)
+async def obtener_stats(
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Métricas agregadas + top zonas para el dashboard operativo.
+
+    Restringido a roles supervisor / operador / administrador.
+    """
+    return await service.obtener_stats()
+
+
+@router.get("/operadores", response_model=list[OperadorListItem])
+async def listar_operadores(
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Lista de operadores y supervisores activos para asignar a incidentes."""
+    return await service.listar_operadores()
+
+
+@router.get("/{incidente_id}", response_model=IncidenteDetail)
+async def obtener_detalle_incidente(
+    incidente_id: str,
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Detalle completo de un incidente — incluye reportante, asignación e historial.
+
+    Restringido a roles supervisor / operador / administrador.
+    """
+    return await service.obtener_detalle(incidente_id)
+
+
+@router.patch("/{incidente_id}/estado", response_model=IncidenteDetail)
+async def cambiar_estado_incidente(
+    incidente_id: str,
+    body: IncidenteEstadoUpdate,
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Cambia el estado del incidente, autopobla fechas SLA y registra historial."""
+    return await service.cambiar_estado(
+        incidente_id=incidente_id,
+        ejecutor_id=current_user.id,
+        data=body,
+    )
+
+
+@router.patch("/{incidente_id}/asignar", response_model=IncidenteDetail)
+async def asignar_operador_incidente(
+    incidente_id: str,
+    body: IncidenteAsignacionUpdate,
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Asigna operador, registra supervisor (quien ejecuta) e inserta historial."""
+    return await service.asignar_operador(
+        incidente_id=incidente_id,
+        ejecutor_id=current_user.id,
+        data=body,
+    )
+
+
+@router.post("/{incidente_id}/comentarios", response_model=ComentarioIncidenteItem)
+async def crear_comentario_incidente(
+    incidente_id: str,
+    body: ComentarioIncidenteCreateInput,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: IncidenteService = Depends(get_service),
+):
+    """Agrega un mensaje al incidente y genera notificaciones internas."""
+    return await service.crear_comentario(
+        incidente_id=incidente_id,
+        autor_id=current_user.id,
+        roles=current_user.roles,
+        data=body,
+    )
+
+
+@router.post(
+    "/",
+    response_model=IncidenteCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+async def crear_incidente(
+    body: IncidenteCreateInput,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: IncidenteService = Depends(get_service),
+):
+    """Crea un nuevo incidente reportado por el usuario autenticado."""
+    return await service.crear_incidente(
+        reportante_id=current_user.id,
+        data=body,
+    )

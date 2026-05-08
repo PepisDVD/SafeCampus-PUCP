@@ -1,7 +1,15 @@
+/**
+ * Wizard de reporte de incidente.
+ *
+ * Client Component: persiste el reporte via API HTTP. No accede a la BD
+ * directamente.
+ */
+
 "use client";
 
 import { useMemo, useState, type ChangeEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Badge,
   Button,
@@ -18,15 +26,67 @@ import {
   SelectValue,
   Textarea,
 } from "@safecampus/ui-kit";
-import { CheckCircle2, Flame, HeartPulse, MapPin, ShieldAlert } from "lucide-react";
+import {
+  CheckCircle2,
+  Flame,
+  HeartPulse,
+  Loader2,
+  MapPin,
+  ShieldAlert,
+} from "lucide-react";
+import {
+  NivelSeveridad,
+  type IncidenteCreated,
+  type IncidenteCreateInput,
+} from "@safecampus/shared-types";
 
-type Step = 0 | 1 | 2 | 3;
+import {
+  SEVERIDAD_COLOR,
+  SEVERIDAD_LABEL,
+} from "@/features/incidentes/presentation";
+import { api } from "@/lib/api/client";
+
+type Step = 0 | 1 | 2 | 3 | 4;
 
 const tiposIncidente = [
-  { id: "robo", label: "Robo / Hurto", icon: ShieldAlert },
-  { id: "emergencia", label: "Emergencia medica", icon: HeartPulse },
-  { id: "incendio", label: "Incendio / Humo", icon: Flame },
-];
+  {
+    id: "robo",
+    label: "Robo / Hurto",
+    icon: ShieldAlert,
+    titulo: "Robo o hurto reportado",
+  },
+  {
+    id: "emergencia_medica",
+    label: "Emergencia medica",
+    icon: HeartPulse,
+    titulo: "Emergencia medica reportada",
+  },
+  {
+    id: "incendio",
+    label: "Incendio / Humo",
+    icon: Flame,
+    titulo: "Incendio o humo reportado",
+  },
+] as const;
+
+const severidades = [
+  {
+    id: NivelSeveridad.BAJO,
+    descripcion: "Situacion sin riesgo inmediato.",
+  },
+  {
+    id: NivelSeveridad.MEDIO,
+    descripcion: "Requiere seguimiento del equipo.",
+  },
+  {
+    id: NivelSeveridad.ALTO,
+    descripcion: "Riesgo relevante o atencion pronta.",
+  },
+  {
+    id: NivelSeveridad.CRITICO,
+    descripcion: "Emergencia o peligro inmediato.",
+  },
+] as const;
 
 const zonasCampus = [
   "Biblioteca Central",
@@ -38,21 +98,27 @@ const zonasCampus = [
 ];
 
 export default function ReportarPage() {
+  const router = useRouter();
   const [step, setStep] = useState<Step>(0);
-  const [tipo, setTipo] = useState("");
+  const [tipo, setTipo] = useState<string>("");
+  const [severidad, setSeveridad] = useState<NivelSeveridad | "">("");
   const [descripcion, setDescripcion] = useState("");
   const [zona, setZona] = useState("");
   const [referencia, setReferencia] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [creado, setCreado] = useState<IncidenteCreated | null>(null);
 
   const puedeContinuar = useMemo(() => {
     if (step === 0) return Boolean(tipo);
-    if (step === 1) return descripcion.trim().length > 12;
-    if (step === 2) return Boolean(zona);
+    if (step === 1) return Boolean(severidad);
+    if (step === 2) return descripcion.trim().length > 12;
+    if (step === 3) return Boolean(zona);
     return true;
-  }, [descripcion, step, tipo, zona]);
+  }, [descripcion, severidad, step, tipo, zona]);
 
   const siguiente = () => {
-    if (!puedeContinuar || step === 3) return;
+    if (!puedeContinuar || step === 4) return;
     setStep((actual) => (actual + 1) as Step);
   };
 
@@ -61,7 +127,48 @@ export default function ReportarPage() {
     setStep((actual) => (actual - 1) as Step);
   };
 
-  if (step === 3) {
+  const reset = () => {
+    setStep(0);
+    setTipo("");
+    setSeveridad("");
+    setDescripcion("");
+    setZona("");
+    setReferencia("");
+    setError(null);
+    setCreado(null);
+  };
+
+  const enviar = async () => {
+    if (!puedeContinuar || enviando) return;
+    setEnviando(true);
+    setError(null);
+
+    const tipoSeleccionado = tiposIncidente.find((t) => t.id === tipo);
+    const lugar = referencia.trim()
+      ? `${zona} - ${referencia.trim()}`
+      : zona;
+
+    const payload: IncidenteCreateInput = {
+      titulo: tipoSeleccionado?.titulo ?? "Incidente reportado",
+      descripcion: descripcion.trim(),
+      severidad: severidad || null,
+      categoria: tipo,
+      lugar_referencia: lugar,
+    };
+
+    try {
+      const result = await api.post<IncidenteCreated>("/incidentes/", payload);
+      setCreado(result);
+      setStep(4);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo registrar el reporte.");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  if (step === 4 && creado) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10 pb-24">
         <Card className="border-green-200">
@@ -72,7 +179,7 @@ export default function ReportarPage() {
             <CardTitle>Reporte enviado</CardTitle>
             <CardDescription>
               Tu caso fue registrado como{" "}
-              <span className="font-semibold text-foreground">INC-20260418-0198</span>
+              <span className="font-semibold text-foreground">{creado.codigo}</span>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -83,13 +190,7 @@ export default function ReportarPage() {
               type="button"
               variant="outline"
               className="w-full"
-              onClick={() => {
-                setStep(0);
-                setTipo("");
-                setDescripcion("");
-                setZona("");
-                setReferencia("");
-              }}
+              onClick={reset}
             >
               Crear nuevo reporte
             </Button>
@@ -108,8 +209,8 @@ export default function ReportarPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {["Tipo", "Detalle", "Ubicacion"].map((label, index) => (
+      <div className="grid grid-cols-4 gap-2">
+        {["Tipo", "Prioridad", "Detalle", "Ubicacion"].map((label, index) => (
           <div key={label} className="space-y-1">
             <div
               className={`h-1.5 rounded-full ${
@@ -118,7 +219,9 @@ export default function ReportarPage() {
             />
             <p
               className={`text-xs ${
-                index === step ? "font-semibold text-[#001C55]" : "text-muted-foreground"
+                index === step
+                  ? "font-semibold text-[#001C55]"
+                  : "text-muted-foreground"
               }`}
             >
               {label}
@@ -131,13 +234,15 @@ export default function ReportarPage() {
         <CardHeader>
           <CardTitle>
             {step === 0 && "Selecciona el tipo de incidente"}
-            {step === 1 && "Describe lo ocurrido"}
-            {step === 2 && "Confirma la ubicacion"}
+            {step === 1 && "Indica la prioridad"}
+            {step === 2 && "Describe lo ocurrido"}
+            {step === 3 && "Confirma la ubicacion"}
           </CardTitle>
           <CardDescription>
-            {step === 0 && "Esto permite priorizar la atencion operativa."}
-            {step === 1 && "Incluye contexto util para responder mas rapido."}
-            {step === 2 && "Ubicacion precisa para despacho de operadores."}
+            {step === 0 && "Esto permite clasificar la atencion operativa."}
+            {step === 1 && "Selecciona el nivel de severidad percibido."}
+            {step === 2 && "Incluye contexto util para responder mas rapido."}
+            {step === 3 && "Ubicacion precisa para despacho de operadores."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -162,6 +267,35 @@ export default function ReportarPage() {
           )}
 
           {step === 1 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {severidades.map((opcion) => (
+                <button
+                  key={opcion.id}
+                  type="button"
+                  onClick={() => setSeveridad(opcion.id)}
+                  className={`rounded-xl border p-4 text-left transition ${
+                    severidad === opcion.id
+                      ? "border-[#001C55] bg-[#001C55]/5"
+                      : "hover:border-[#001C55]/40"
+                  }`}
+                >
+                  <span
+                    className={`mb-2 block h-2.5 w-2.5 rounded-full ${
+                      SEVERIDAD_COLOR[opcion.id]
+                    }`}
+                  />
+                  <p className="text-sm font-semibold">
+                    {SEVERIDAD_LABEL[opcion.id]}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {opcion.descripcion}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-2">
                 <p className="text-sm font-medium">Descripcion del incidente</p>
@@ -181,7 +315,7 @@ export default function ReportarPage() {
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div className="space-y-4">
               <div className="space-y-2">
                 <p className="text-sm font-medium">Zona del campus</p>
@@ -214,22 +348,45 @@ export default function ReportarPage() {
                   Resumen previo al envio
                 </div>
                 <p>Tipo: {tipo || "-"}</p>
+                <p>
+                  Prioridad: {severidad ? SEVERIDAD_LABEL[severidad] : "-"}
+                </p>
                 <p>Zona: {zona || "-"}</p>
               </div>
             </div>
           )}
 
+          {error && (
+            <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </p>
+          )}
+
           <div className="flex gap-3 pt-1">
-            <Button type="button" variant="outline" onClick={volver} disabled={step === 0}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={volver}
+              disabled={step === 0 || enviando}
+            >
               Atras
             </Button>
             <Button
               type="button"
               className="bg-[#001C55] hover:bg-[#032E84]"
-              onClick={step === 2 ? () => setStep(3) : siguiente}
-              disabled={!puedeContinuar}
+              onClick={step === 3 ? enviar : siguiente}
+              disabled={!puedeContinuar || enviando}
             >
-              {step === 2 ? "Enviar reporte" : "Continuar"}
+              {enviando ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : step === 3 ? (
+                "Enviar reporte"
+              ) : (
+                "Continuar"
+              )}
             </Button>
           </div>
         </CardContent>

@@ -1,5 +1,4 @@
 from app.models.base import SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.incidente_view import IncidenteView
 from app.models.sc_acompanamiento import (
     AcompanamientoSeguro,
     AlertaAcompanamiento,
@@ -51,7 +50,6 @@ __all__ = [
     "HistorialCasoLf",
     "HistorialIncidente",
     "Incidente",
-    "IncidenteView",
     "KpiOperativo",
     "Notificacion",
     "Permiso",

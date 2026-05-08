@@ -52,6 +52,19 @@ class Settings(BaseSettings):
     ALLOWED_INSTITUTIONAL_DOMAIN: str
     DEFAULT_COMMUNITY_ROLE_ID: str
 
+    # --- Dev allowlist (excepción a ALLOWED_INSTITUTIONAL_DOMAIN) ---
+    # Lista separada por comas de correos puntuales (típicamente @gmail.com de devs)
+    # autorizados a iniciar sesión. Debe quedar vacío en producción.
+    DEV_ALLOWED_EMAILS: str = ""
+
+    @property
+    def dev_allowed_emails_set(self) -> set[str]:
+        return {
+            value.strip().lower()
+            for value in self.DEV_ALLOWED_EMAILS.split(",")
+            if value.strip()
+        }
+
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_database_url(cls, value: str) -> str:

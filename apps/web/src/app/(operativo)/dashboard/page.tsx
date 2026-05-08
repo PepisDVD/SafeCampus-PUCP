@@ -1,8 +1,15 @@
-"use client";
+/**
+ * 📁 apps/web/src/app/(operativo)/dashboard/page.tsx
+ * 🎯 Dashboard operativo — métricas, feed de activos, top zonas y tabla reciente.
+ * 📦 Módulo: Operativo / Dashboard
+ *
+ * Server Component: obtiene stats + lista vía backend (FastAPI → sc_incidentes).
+ * No accede a la BD directamente.
+ */
 
+import Link from "next/link";
 import {
   Badge,
-  Button,
   Card,
   CardContent,
   CardDescription,
@@ -14,51 +21,63 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  cn,
 } from "@safecampus/ui-kit";
-import { EstadoIncidente, NivelSeveridad } from "@safecampus/shared-types";
+import {
+  EstadoIncidente,
+  type IncidenteListItem,
+} from "@safecampus/shared-types";
 import {
   AlertTriangle,
+  ChevronRight,
   Clock3,
   MapPin,
-  RefreshCw,
   ShieldCheck,
   Siren,
 } from "lucide-react";
-import { incidentesMock } from "@/features/incidentes/mock-data";
 
-const severityStyles: Record<NivelSeveridad, string> = {
-  BAJO: "bg-emerald-100 text-emerald-700",
-  MEDIO: "bg-amber-100 text-amber-700",
-  ALTO: "bg-orange-100 text-orange-700",
-  CRITICO: "bg-red-100 text-red-700",
-};
+import { listarIncidentes, obtenerStats } from "@/features/incidentes/service";
+import {
+  ESTADO_STYLE,
+  SEVERIDAD_COLOR,
+  SEVERIDAD_LABEL,
+} from "@/features/incidentes/presentation";
 
-const estadoStyles: Partial<Record<EstadoIncidente, string>> = {
-  RECIBIDO: "bg-blue-100 text-blue-700",
-  EN_ATENCION: "bg-amber-100 text-amber-700",
-  RESUELTO: "bg-green-100 text-green-700",
-};
+const ESTADOS_TERMINALES = new Set<EstadoIncidente>([
+  EstadoIncidente.RESUELTO,
+  EstadoIncidente.CERRADO,
+]);
 
 function MetricCard({
   title,
   value,
   hint,
   icon: Icon,
+  tone = "default",
 }: {
   title: string;
   value: string | number;
   hint: string;
   icon: typeof AlertTriangle;
+  tone?: "default" | "danger" | "warning" | "success";
 }) {
+  const toneStyles: Record<typeof tone, string> = {
+    default: "bg-[#001C55]/10 text-[#001C55]",
+    danger: "bg-red-100 text-red-600",
+    warning: "bg-amber-100 text-amber-700",
+    success: "bg-emerald-100 text-emerald-700",
+  };
   return (
     <Card>
       <CardContent className="flex items-start justify-between pt-6">
         <div>
-          <p className="text-xs tracking-wide text-muted-foreground uppercase">{title}</p>
+          <p className="text-xs tracking-wide text-muted-foreground uppercase">
+            {title}
+          </p>
           <p className="mt-1 text-3xl font-bold">{value}</p>
           <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
         </div>
-        <div className="rounded-xl bg-[#001C55]/10 p-2 text-[#001C55]">
+        <div className={cn("rounded-xl p-2", toneStyles[tone])}>
           <Icon className="h-5 w-5" />
         </div>
       </CardContent>
@@ -66,158 +85,262 @@ function MetricCard({
   );
 }
 
-export default function DashboardPage() {
-  const activos = incidentesMock.filter(
-    (item) =>
-      item.estado === EstadoIncidente.RECIBIDO ||
-      item.estado === EstadoIncidente.EN_ATENCION,
-  );
-  const criticos = incidentesMock.filter(
-    (item) => item.severidad === NivelSeveridad.CRITICO,
-  );
-  const resueltos = incidentesMock.filter(
-    (item) => item.estado === EstadoIncidente.RESUELTO,
+export default async function DashboardPage() {
+  const [stats, recientes] = await Promise.all([
+    obtenerStats().catch(() => ({
+      total: 0,
+      activos: 0,
+      criticos: 0,
+      en_atencion: 0,
+      resueltos_24h: 0,
+      por_zona: [],
+    })),
+    listarIncidentes({ limit: 20 }).catch(() => ({
+      items: [] as IncidenteListItem[],
+      total: 0,
+    })),
+  ]);
+
+  const activos = recientes.items
+    .filter((item) => !ESTADOS_TERMINALES.has(item.estado))
+    .slice(0, 6);
+  const tablaRecientes = recientes.items.slice(0, 10);
+  const maxZonaTotal = stats.por_zona.reduce(
+    (max, z) => (z.total > max ? z.total : max),
+    0,
   );
 
   return (
-    <div className="space-y-5 p-4 sm:p-6">
+    <div className="w-full min-w-0 space-y-5 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#001C55]">Dashboard operativo</h1>
+          <h1 className="text-2xl font-bold text-[#001C55]">
+            Dashboard operativo
+          </h1>
           <p className="text-sm text-muted-foreground">
             Monitoreo de incidentes en tiempo real del campus.
           </p>
         </div>
-        <Button variant="outline" className="gap-2">
-          <RefreshCw className="h-4 w-4" />
-          Actualizar
-        </Button>
       </div>
 
+      {/* Métricas */}
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           title="Incidentes activos"
-          value={activos.length}
+          value={stats.activos}
           hint="Con seguimiento en curso"
           icon={Siren}
         />
         <MetricCard
-          title="Criticos"
-          value={criticos.length}
-          hint="Prioridad alta"
+          title="Críticos"
+          value={stats.criticos}
+          hint="Severidad máxima"
           icon={AlertTriangle}
+          tone="danger"
         />
         <MetricCard
-          title="En atencion"
-          value={
-            incidentesMock.filter((item) => item.estado === EstadoIncidente.EN_ATENCION)
-              .length
-          }
-          hint="FRT promedio 4.2 min"
+          title="En atención"
+          value={stats.en_atencion}
+          hint="Operadores asignados"
           icon={Clock3}
+          tone="warning"
         />
         <MetricCard
-          title="Resueltos"
-          value={resueltos.length}
-          hint="Ultimas 24 horas"
+          title="Resueltos 24h"
+          value={stats.resueltos_24h}
+          hint="Cerrados en las últimas 24 horas"
           icon={ShieldCheck}
+          tone="success"
         />
       </section>
 
+      {/* Top zonas + Feed */}
       <section className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <MapPin className="h-4 w-4 text-[#001C55]" />
-              Mapa del campus
+              Top zonas con más incidentes
             </CardTitle>
             <CardDescription>
-              Vista referencial de ubicacion de incidentes activos.
+              Lugares con más casos abiertos en el campus.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="relative h-80 overflow-hidden rounded-xl border bg-[linear-gradient(135deg,#eef7ff_0%,#f8fbff_100%)]">
-              <div className="absolute inset-0 bg-[radial-gradient(#001C55_1px,transparent_1px)] bg-size-[18px_18px] opacity-20" />
-              {activos.map((item) => (
-                <div
-                  key={item.id}
-                  className="absolute -translate-x-1/2 -translate-y-1/2"
-                  style={{
-                    left: `${item.posicion_mapa.x}%`,
-                    top: `${item.posicion_mapa.y}%`,
-                  }}
-                >
-                  <div className="relative">
-                    <span
-                      className={`block h-4 w-4 rounded-full border-2 border-white shadow ${item.severidad === NivelSeveridad.CRITICO ? "bg-red-500" : "bg-[#001C55]"}`}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            {stats.por_zona.length === 0 ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">
+                No hay zonas con incidentes abiertos.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {stats.por_zona.map((z) => {
+                  const pct =
+                    maxZonaTotal > 0
+                      ? Math.round((z.total / maxZonaTotal) * 100)
+                      : 0;
+                  return (
+                    <li key={z.zona} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-slate-900">
+                          {z.zona}
+                        </span>
+                        <span className="font-semibold text-slate-700">
+                          {z.total}
+                        </span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-[#001C55]"
+                          style={{ width: `${pct}%` }}
+                          aria-hidden
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Feed de incidentes activos</CardTitle>
+            <CardTitle className="flex items-center justify-between text-base">
+              <span>Feed de incidentes activos</span>
+              <Link
+                href="/incidentes"
+                className="flex items-center gap-0.5 text-xs font-medium text-[#001C55]"
+              >
+                Ver todos <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {activos.map((item) => (
-              <article key={item.id} className="rounded-lg border p-3">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-muted-foreground">
-                    {item.codigo}
-                  </p>
-                  <Badge className={severityStyles[item.severidad]}>
-                    {item.severidad}
-                  </Badge>
-                </div>
-                <p className="text-sm font-semibold">{item.titulo}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{item.zona}</p>
-              </article>
-            ))}
+            {activos.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No hay incidentes activos.
+              </p>
+            ) : (
+              activos.map((item) => {
+                const severidadColor = item.severidad
+                  ? SEVERIDAD_COLOR[item.severidad]
+                  : "bg-slate-300";
+                return (
+                  <Link
+                    key={item.id}
+                    href={`/incidentes/${item.id}`}
+                    className="block rounded-lg border p-3 transition hover:bg-slate-50"
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="font-mono text-xs font-semibold text-muted-foreground">
+                        {item.codigo}
+                      </p>
+                      {item.severidad && (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                          <span
+                            aria-hidden
+                            className={cn(
+                              "h-2 w-2 rounded-full",
+                              severidadColor,
+                            )}
+                          />
+                          {SEVERIDAD_LABEL[item.severidad]}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-semibold">{item.titulo}</p>
+                    {item.lugar_referencia && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {item.lugar_referencia}
+                      </p>
+                    )}
+                  </Link>
+                );
+              })
+            )}
           </CardContent>
         </Card>
       </section>
 
+      {/* Tabla reciente */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Incidentes recientes</CardTitle>
+          <CardTitle className="flex items-center justify-between text-base">
+            <span>Incidentes recientes</span>
+            <Link
+              href="/incidentes"
+              className="flex items-center gap-0.5 text-xs font-medium text-[#001C55]"
+            >
+              Ver todos <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Codigo</TableHead>
-                <TableHead>Titulo</TableHead>
-                <TableHead>Zona</TableHead>
-                <TableHead>Severidad</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Operador</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {incidentesMock.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.codigo}</TableCell>
-                  <TableCell>{item.titulo}</TableCell>
-                  <TableCell>{item.zona}</TableCell>
-                  <TableCell>
-                    <Badge className={severityStyles[item.severidad]}>
-                      {item.severidad}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={estadoStyles[item.estado] ?? "bg-gray-100 text-gray-700"}>
-                      {item.estado}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{item.operador_nombre ?? "Sin asignar"}</TableCell>
+          {tablaRecientes.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Aún no hay incidentes registrados.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Código</TableHead>
+                  <TableHead>Título</TableHead>
+                  <TableHead>Zona</TableHead>
+                  <TableHead>Severidad</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Operador</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {tablaRecientes.map((item) => {
+                  const estadoStyle = ESTADO_STYLE[item.estado];
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-mono font-medium">
+                        {item.codigo}
+                      </TableCell>
+                      <TableCell>{item.titulo}</TableCell>
+                      <TableCell className="text-slate-600">
+                        {item.lugar_referencia ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        {item.severidad ? (
+                          <span className="inline-flex items-center gap-1.5 text-sm">
+                            <span
+                              aria-hidden
+                              className={cn(
+                                "h-2 w-2 rounded-full",
+                                SEVERIDAD_COLOR[item.severidad],
+                              )}
+                            />
+                            {SEVERIDAD_LABEL[item.severidad]}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={cn(
+                            "rounded-full border-0 px-2.5 py-0.5 text-xs font-medium",
+                            estadoStyle.className,
+                          )}
+                        >
+                          {estadoStyle.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {item.operador_nombre ?? (
+                          <span className="text-slate-400">Sin asignar</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

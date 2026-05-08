@@ -9,7 +9,8 @@ import { LoginHeroPanel, LoginRoleOption } from "@/features/auth/components";
 import { mapAuthError } from "@/features/auth/login.errors";
 import { LOGIN_ROLES } from "@/features/auth/login.config";
 import type { LoginRoleId } from "@/features/auth/types";
-import { isAllowedInstitutionalEmail, signInWithPucpSso } from "@/lib/auth";
+import { isAllowedLoginEmail } from "@/features/auth/auth.policy";
+import { signInWithPucpSso } from "@/lib/auth";
 
 function LoginPageContent() {
   const searchParams = useSearchParams();
@@ -41,7 +42,7 @@ function LoginPageContent() {
     if (!selectedRole || loading) return;
 
     const normalizedEmail = email.trim().toLowerCase();
-    if (!isAllowedInstitutionalEmail(normalizedEmail)) {
+    if (!isAllowedLoginEmail(normalizedEmail)) {
       setClientError(
         "Ingresa un correo institucional PUCP valido (@pucp.edu.pe).",
       );

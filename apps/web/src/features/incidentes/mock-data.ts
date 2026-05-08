@@ -1,3 +1,10 @@
+/**
+ * 📁 apps/web/src/features/incidentes/mock-data.ts
+ * 🎯 Datos mock usados por el dashboard operativo (todavía no integrado al backend).
+ *    NO usar para Comunidad — esa vista ya consume serverApi (real DB vía backend).
+ * 📦 Feature: Incidentes
+ */
+
 import {
   EstadoIncidente,
   NivelSeveridad,
