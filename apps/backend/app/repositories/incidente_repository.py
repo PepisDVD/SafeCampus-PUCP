@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.constants import INCIDENT_CODE_PREFIX
-from app.models.sc_incidentes import HistorialIncidente, Incidente
+from app.models.sc_incidentes import ComentarioIncidente, HistorialIncidente, Incidente
 from app.models.sc_users import Rol, Usuario, UsuarioRol
 
 
@@ -138,6 +138,66 @@ class IncidenteRepository:
         row = result.mappings().one_or_none()
         return dict(row) if row else None
 
+    async def get_detail_by_code_or_id_for_reportante(
+        self,
+        incidente_ref: str,
+        reportante_id: str,
+    ) -> dict[str, Any] | None:
+        """Detalle de un incidente propio de comunidad, por codigo o UUID."""
+        Reportante = aliased(Usuario, name="reportante")
+        Operador = aliased(Usuario, name="operador")
+        Supervisor = aliased(Usuario, name="supervisor")
+
+        filters = [
+            Incidente.reportante_id == UUID(reportante_id),
+            Incidente.deleted_at.is_(None),
+        ]
+        try:
+            filters.append(Incidente.id == UUID(incidente_ref))
+        except ValueError:
+            filters.append(Incidente.codigo == incidente_ref)
+
+        statement = (
+            select(
+                Incidente.id,
+                Incidente.codigo,
+                Incidente.titulo,
+                Incidente.descripcion,
+                Incidente.estado,
+                Incidente.severidad,
+                Incidente.categoria,
+                Incidente.lugar_referencia,
+                Incidente.canal_origen,
+                Incidente.fecha_primera_respuesta,
+                Incidente.fecha_resolucion,
+                Incidente.created_at,
+                Incidente.updated_at,
+                Incidente.reportante_id,
+                Reportante.nombre.label("reportante_nombre"),
+                Reportante.apellido.label("reportante_apellido"),
+                Reportante.email.label("reportante_email"),
+                Reportante.avatar_url.label("reportante_avatar_url"),
+                Incidente.operador_asignado_id,
+                Operador.nombre.label("operador_nombre"),
+                Operador.apellido.label("operador_apellido"),
+                Operador.email.label("operador_email"),
+                Operador.avatar_url.label("operador_avatar_url"),
+                Incidente.supervisor_id,
+                Supervisor.nombre.label("supervisor_nombre"),
+                Supervisor.apellido.label("supervisor_apellido"),
+                Supervisor.email.label("supervisor_email"),
+                Supervisor.avatar_url.label("supervisor_avatar_url"),
+            )
+            .outerjoin(Reportante, Reportante.id == Incidente.reportante_id)
+            .outerjoin(Operador, Operador.id == Incidente.operador_asignado_id)
+            .outerjoin(Supervisor, Supervisor.id == Incidente.supervisor_id)
+            .where(*filters)
+            .limit(1)
+        )
+        result = await self.db.execute(statement)
+        row = result.mappings().one_or_none()
+        return dict(row) if row else None
+
     async def list_historial(
         self,
         incidente_id: str,
@@ -160,6 +220,99 @@ class IncidenteRepository:
             .outerjoin(Usuario, Usuario.id == HistorialIncidente.ejecutado_por_id)
             .where(HistorialIncidente.incidente_id == UUID(incidente_id))
             .order_by(HistorialIncidente.created_at.asc())
+        )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def list_comentarios(
+        self,
+        incidente_id: str,
+        *,
+        include_internal: bool = False,
+    ) -> list[dict[str, Any]]:
+        statement = (
+            select(
+                ComentarioIncidente.id,
+                ComentarioIncidente.incidente_id,
+                ComentarioIncidente.autor_id,
+                ComentarioIncidente.contenido,
+                ComentarioIncidente.es_interno,
+                ComentarioIncidente.created_at,
+                ComentarioIncidente.updated_at,
+                Usuario.nombre.label("autor_nombre"),
+                Usuario.apellido.label("autor_apellido"),
+                Usuario.email.label("autor_email"),
+                Usuario.avatar_url.label("autor_avatar_url"),
+            )
+            .outerjoin(Usuario, Usuario.id == ComentarioIncidente.autor_id)
+            .where(ComentarioIncidente.incidente_id == UUID(incidente_id))
+            .order_by(ComentarioIncidente.created_at.asc())
+        )
+        if not include_internal:
+            statement = statement.where(ComentarioIncidente.es_interno.is_(False))
+
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def create_comentario(
+        self,
+        incidente_id: str,
+        autor_id: str,
+        contenido: str,
+        *,
+        es_interno: bool = False,
+    ) -> dict[str, Any]:
+        comentario = ComentarioIncidente(
+            incidente_id=UUID(incidente_id),
+            autor_id=UUID(autor_id),
+            contenido=contenido,
+            es_interno=es_interno,
+        )
+        self.db.add(comentario)
+        await self.db.flush()
+        await self.db.refresh(comentario)
+        return {
+            "id": comentario.id,
+            "incidente_id": comentario.incidente_id,
+            "autor_id": comentario.autor_id,
+            "contenido": comentario.contenido,
+            "es_interno": comentario.es_interno,
+            "created_at": comentario.created_at,
+            "updated_at": comentario.updated_at,
+        }
+
+    async def get_participantes(self, incidente_id: str) -> dict[str, Any] | None:
+        statement = (
+            select(
+                Incidente.id,
+                Incidente.codigo,
+                Incidente.titulo,
+                Incidente.estado,
+                Incidente.reportante_id,
+                Incidente.operador_asignado_id,
+                Incidente.supervisor_id,
+            )
+            .where(
+                Incidente.id == UUID(incidente_id),
+                Incidente.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        result = await self.db.execute(statement)
+        row = result.mappings().one_or_none()
+        return dict(row) if row else None
+
+    async def list_usuarios_by_roles(self, roles: set[str]) -> list[dict[str, Any]]:
+        statement = (
+            select(Usuario.id)
+            .join(UsuarioRol, UsuarioRol.usuario_id == Usuario.id)
+            .join(Rol, Rol.id == UsuarioRol.rol_id)
+            .where(
+                Usuario.deleted_at.is_(None),
+                Usuario.estado == "ACTIVO",
+                func.lower(Rol.nombre).in_({r.lower() for r in roles}),
+            )
+            .distinct()
         )
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
@@ -543,6 +696,7 @@ class IncidenteRepository:
             codigo=codigo,
             titulo=data["titulo"],
             descripcion=data["descripcion"],
+            severidad=data.get("severidad"),
             categoria=data.get("categoria"),
             canal_origen=data.get("canal_origen", "WEB"),
             lugar_referencia=data.get("lugar_referencia"),

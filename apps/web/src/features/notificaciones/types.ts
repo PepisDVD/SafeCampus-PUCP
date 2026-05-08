@@ -4,4 +4,12 @@
  * 📦 Feature: Notificaciones
  */
 
-export {};
+export type {
+  NotificacionItem,
+  NotificacionListResponse,
+  NotificacionUnreadCount,
+} from "@safecampus/shared-types";
+export {
+  CanalNotificacion,
+  EstadoNotificacion,
+} from "@safecampus/shared-types";

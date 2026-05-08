@@ -36,6 +36,7 @@ class IncidenteListResponse(BaseModel):
 class IncidenteCreateInput(BaseModel):
     titulo: str = Field(min_length=3, max_length=200)
     descripcion: str = Field(min_length=10)
+    severidad: NivelSeveridad | None = None
     categoria: str | None = Field(default=None, max_length=100)
     lugar_referencia: str | None = Field(default=None, max_length=255)
     latitud: float | None = None
@@ -84,6 +85,21 @@ class HistorialEvento(BaseModel):
     comentario: str | None = None
     ejecutado_por: UsuarioMini | None = None
     created_at: datetime
+
+
+class ComentarioIncidenteItem(BaseModel):
+    id: str
+    incidente_id: str
+    autor: UsuarioMini | None = None
+    contenido: str
+    es_interno: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ComentarioIncidenteCreateInput(BaseModel):
+    contenido: str = Field(min_length=2, max_length=2000)
+    es_interno: bool = False
 
 
 class ZonaCount(BaseModel):
@@ -161,3 +177,4 @@ class IncidenteDetail(BaseModel):
     operador_asignado: UsuarioMini | None = None
     supervisor: UsuarioMini | None = None
     historial: list[HistorialEvento] = []
+    comentarios: list[ComentarioIncidenteItem] = []

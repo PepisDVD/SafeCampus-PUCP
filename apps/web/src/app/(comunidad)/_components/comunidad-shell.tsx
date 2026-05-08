@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ClipboardList,
+  Bell,
   Home,
   MapPinPlus,
   PackageSearch,
@@ -13,11 +14,13 @@ import {
 import { cn } from "@safecampus/ui-kit";
 
 import { LogoutButton } from "@/features/auth/components";
+import { NotificationBadge } from "@/features/notificaciones/components/notification-badge";
 
 const items = [
   { href: "/inicio", label: "Inicio", icon: Home },
   { href: "/reportar", label: "Reportar", icon: MapPinPlus },
   { href: "/mis-casos", label: "Mis casos", icon: ClipboardList },
+  { href: "/notificaciones", label: "Avisos", icon: Bell },
   { href: "/lost-found", label: "Lost & Found", icon: PackageSearch },
   { href: "/perfil", label: "Perfil", icon: UserCircle2 },
 ];
@@ -49,7 +52,7 @@ export function ComunidadShell({ children }: ComunidadShellProps) {
       <main className="mx-auto w-full max-w-md pb-24">{children}</main>
 
       <nav className="fixed right-0 bottom-0 left-0 border-t bg-white/95 backdrop-blur">
-        <div className="mx-auto grid max-w-md grid-cols-5 px-2 py-2">
+        <div className="mx-auto grid max-w-md grid-cols-6 px-2 py-2">
           {items.map((item) => {
             const activo = pathname === item.href;
             return (
@@ -63,7 +66,10 @@ export function ComunidadShell({ children }: ComunidadShellProps) {
                     : "text-muted-foreground hover:bg-muted",
                 )}
               >
-                <item.icon className="h-5 w-5" />
+                <span className="relative">
+                  <item.icon className="h-5 w-5" />
+                  {item.href === "/notificaciones" && <NotificationBadge />}
+                </span>
                 {item.label}
               </Link>
             );

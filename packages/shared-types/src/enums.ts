@@ -27,6 +27,21 @@ export enum TipoCanal {
   MENSAJERIA = "MENSAJERIA",
 }
 
+export enum CanalNotificacion {
+  EMAIL = "EMAIL",
+  PUSH = "PUSH",
+  SMS = "SMS",
+  WHATSAPP = "WHATSAPP",
+  INAPP = "INAPP",
+}
+
+export enum EstadoNotificacion {
+  PENDIENTE = "PENDIENTE",
+  ENVIADA = "ENVIADA",
+  FALLIDA = "FALLIDA",
+  DESCARTADA = "DESCARTADA",
+}
+
 export enum EstadoCasoLF {
   ABIERTO = "ABIERTO",
   EN_REVISION = "EN_REVISION",

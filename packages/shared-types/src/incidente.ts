@@ -72,6 +72,17 @@ export interface HistorialEvento {
   created_at: string;
 }
 
+/** Mensaje asociado al expediente de incidente. */
+export interface ComentarioIncidenteItem {
+  id: string;
+  incidente_id: string;
+  autor: UsuarioMini | null;
+  contenido: string;
+  es_interno: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Conteo de incidentes por zona (lugar_referencia). */
 export interface ZonaCount {
   zona: string;
@@ -158,6 +169,7 @@ export interface IncidenteDetail {
   operador_asignado: UsuarioMini | null;
   supervisor: UsuarioMini | null;
   historial: HistorialEvento[];
+  comentarios: ComentarioIncidenteItem[];
 }
 
 /** Wrapper de respuesta para listados. */
@@ -170,6 +182,7 @@ export interface IncidenteListResponse {
 export interface IncidenteCreateInput {
   titulo: string;
   descripcion: string;
+  severidad?: NivelSeveridad | null;
   categoria?: string | null;
   lugar_referencia?: string | null;
   latitud?: number | null;
@@ -194,6 +207,12 @@ export interface IncidenteEstadoUpdate {
 export interface IncidenteAsignacionUpdate {
   operador_asignado_id: string;
   comentario?: string | null;
+}
+
+/** Body de POST /api/v1/incidentes/{id}/comentarios. */
+export interface ComentarioIncidenteCreateInput {
+  contenido: string;
+  es_interno?: boolean;
 }
 
 /** Item devuelto por GET /api/v1/incidentes/operadores. */

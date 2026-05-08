@@ -8,6 +8,8 @@
 
 import type {
   IncidenteAsignacionUpdate,
+  ComentarioIncidenteCreateInput,
+  ComentarioIncidenteItem,
   IncidenteDetail,
   IncidenteEstadoUpdate,
 } from "@safecampus/shared-types";
@@ -39,6 +41,16 @@ export async function asignarOperadorIncidente(
 ): Promise<IncidenteDetail> {
   return api.patch<IncidenteDetail>(
     `/incidentes/${encodeURIComponent(incidenteId)}/asignar`,
+    body,
+  );
+}
+
+export async function crearComentarioIncidente(
+  incidenteId: string,
+  body: ComentarioIncidenteCreateInput,
+): Promise<ComentarioIncidenteItem> {
+  return api.post<ComentarioIncidenteItem>(
+    `/incidentes/${encodeURIComponent(incidenteId)}/comentarios`,
     body,
   );
 }

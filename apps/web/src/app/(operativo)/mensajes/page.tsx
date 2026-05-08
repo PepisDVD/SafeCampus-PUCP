@@ -1,20 +1,32 @@
 /**
- * 📁 apps/web/src/app/(operativo)/mensajes/page.tsx
- * 🎯 Módulo centralizado de gestión de mensajes entrantes (WhatsApp, web, móvil).
- * 📦 Módulo: Operativo / Mensajes
+ * Centro operativo de mensajes entrantes.
  */
+
+import { Inbox } from "lucide-react";
+import { Card } from "@safecampus/ui-kit";
 
 export default function MensajesPage() {
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">Centro de Mensajes</h1>
-      <p className="text-muted-foreground mt-2">
-        Gestión centralizada de mensajes entrantes por todos los canales
-      </p>
-      {/* TODO: Implementar lista de conversaciones con indicador de canal */}
-      {/* TODO: Implementar vista de chat/mensajes */}
-      {/* TODO: Implementar filtros: canal (WhatsApp, Web, Móvil), estado */}
-      {/* TODO: Implementar acción de crear incidente desde mensaje */}
+    <div className="space-y-5 p-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">
+          Centro de mensajes
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Conversaciones entrantes por canales web, mensajeria y movil.
+        </p>
+      </div>
+
+      <Card className="p-8 text-center">
+        <Inbox className="mx-auto mb-3 h-8 w-8 text-slate-300" />
+        <p className="text-sm font-medium text-slate-700">
+          La bandeja de conversaciones se implementara en una etapa posterior.
+        </p>
+        <p className="mt-1 text-sm text-slate-500">
+          Las notificaciones internas ahora se consultan desde la campana del
+          encabezado.
+        </p>
+      </Card>
     </div>
   );
 }

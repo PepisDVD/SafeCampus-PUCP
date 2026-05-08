@@ -11,6 +11,8 @@ from app.api.deps import get_current_user, get_session, require_roles
 from app.core.constants import EstadoIncidente, NivelSeveridad
 from app.schemas.auth import AuthUserResponse
 from app.schemas.incidente import (
+    ComentarioIncidenteCreateInput,
+    ComentarioIncidenteItem,
     DashboardStats,
     IncidenteAsignacionUpdate,
     IncidenteCreated,
@@ -67,6 +69,19 @@ async def listar_mis_incidentes(
         limit=limit,
     )
     return IncidenteListResponse(items=items, total=len(items))
+
+
+@router.get("/mis/{incidente_ref}", response_model=IncidenteDetail)
+async def obtener_mi_detalle_incidente(
+    incidente_ref: str,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: IncidenteService = Depends(get_service),
+):
+    """Detalle de un incidente propio de comunidad, por codigo o UUID."""
+    return await service.obtener_mi_detalle(
+        incidente_ref=incidente_ref,
+        usuario_id=current_user.id,
+    )
 
 
 @router.get("/kpis", response_model=KpisResponse)
@@ -142,6 +157,22 @@ async def asignar_operador_incidente(
     return await service.asignar_operador(
         incidente_id=incidente_id,
         ejecutor_id=current_user.id,
+        data=body,
+    )
+
+
+@router.post("/{incidente_id}/comentarios", response_model=ComentarioIncidenteItem)
+async def crear_comentario_incidente(
+    incidente_id: str,
+    body: ComentarioIncidenteCreateInput,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: IncidenteService = Depends(get_service),
+):
+    """Agrega un mensaje al incidente y genera notificaciones internas."""
+    return await service.crear_comentario(
+        incidente_id=incidente_id,
+        autor_id=current_user.id,
+        roles=current_user.roles,
         data=body,
     )
 

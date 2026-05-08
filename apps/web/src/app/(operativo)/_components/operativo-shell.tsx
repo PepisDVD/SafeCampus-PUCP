@@ -12,7 +12,6 @@ import {
 } from "@safecampus/ui-kit";
 import {
   BarChart3,
-  Bell,
   House,
   LayoutDashboard,
   MapPinned,
@@ -20,6 +19,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { OfficialLogoMark } from "@/components/branding/official-logo-mark";
+import { NotificationPopover } from "@/features/notificaciones/components/notification-popover";
 import { signOut } from "@/lib/auth";
 
 const OPERATIVO_NAV: NavItem[] = [
@@ -75,12 +75,7 @@ export function OperativoShell({ user, children }: OperativoShellProps) {
             </p>
           </div>
           <div className="flex-1" />
-          <button
-            className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100 hover:text-[#001C55]"
-            aria-label="Notificaciones"
-          >
-            <Bell className="h-4 w-4" />
-          </button>
+          <NotificationPopover incidentBaseHref="/incidentes" />
         </header>
         <main className="min-w-0 overflow-x-hidden">{children}</main>
       </SidebarInset>

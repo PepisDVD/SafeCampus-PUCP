@@ -25,6 +25,7 @@ import {
   listarOperadores,
   obtenerDetalleIncidente,
 } from "@/features/incidentes/service";
+import { IncidenteComunicacion } from "@/features/incidentes/components/incidente-comunicacion";
 import {
   CANAL_LABEL,
   ESTADO_STYLE,
@@ -169,6 +170,8 @@ export default async function IncidenteDetallePage({
             </h2>
             <IncidenteHistorial historial={detalle.historial} />
           </section>
+
+          <IncidenteComunicacion incidente={detalle} allowInternal />
         </div>
 
         {/* Right: actions + info + people */}

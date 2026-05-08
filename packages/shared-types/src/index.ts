@@ -6,5 +6,6 @@
 
 export * from "./enums";
 export * from "./incidente";
+export * from "./notificacion";
 export * from "./usuario";
 export * from "./database.types";

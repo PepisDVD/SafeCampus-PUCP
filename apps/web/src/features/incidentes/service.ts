@@ -31,6 +31,14 @@ export async function listarMisIncidentes(
   });
 }
 
+export async function obtenerMiDetalleIncidente(
+  incidenteRef: string,
+): Promise<IncidenteDetail> {
+  return serverApi.get<IncidenteDetail>(
+    `/incidentes/mis/${encodeURIComponent(incidenteRef)}`,
+  );
+}
+
 /**
  * Lista operativa de incidentes para roles supervisor / operador / administrador.
  * Soporta filtros por búsqueda libre, severidad y estado.

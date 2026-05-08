@@ -12,7 +12,10 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.incidente_repository import IncidenteRepository
+from app.repositories.notificacion_repository import NotificacionRepository
 from app.schemas.incidente import (
+    ComentarioIncidenteCreateInput,
+    ComentarioIncidenteItem,
     DashboardStats,
     EvolucionPunto,
     HistorialEvento,
@@ -56,6 +59,7 @@ def _pct_change(current: float, previous: float) -> float:
 class IncidenteService:
     def __init__(self, db: AsyncSession) -> None:
         self._repo = IncidenteRepository(db)
+        self._notificaciones = NotificacionRepository(db)
 
     async def listar_recentes(
         self,
@@ -243,6 +247,10 @@ class IncidenteService:
             )
 
         historial_rows = await self._repo.list_historial(incidente_id)
+        comentarios_rows = await self._repo.list_comentarios(
+            incidente_id,
+            include_internal=True,
+        )
 
         return IncidenteDetail(
             id=str(row["id"]),
@@ -280,6 +288,68 @@ class IncidenteService:
                 row.get("supervisor_avatar_url"),
             ),
             historial=[self._map_historial(h) for h in historial_rows],
+            comentarios=[self._map_comentario(c) for c in comentarios_rows],
+        )
+
+    async def obtener_mi_detalle(
+        self,
+        incidente_ref: str,
+        usuario_id: str,
+    ) -> IncidenteDetail:
+        row = await self._repo.get_detail_by_code_or_id_for_reportante(
+            incidente_ref,
+            usuario_id,
+        )
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Incidente no encontrado.",
+            )
+
+        incidente_id = str(row["id"])
+        historial_rows = await self._repo.list_historial(incidente_id)
+        comentarios_rows = await self._repo.list_comentarios(
+            incidente_id,
+            include_internal=False,
+        )
+
+        return IncidenteDetail(
+            id=incidente_id,
+            codigo=row["codigo"],
+            titulo=row["titulo"],
+            descripcion=row["descripcion"],
+            estado=row["estado"],
+            severidad=row.get("severidad"),
+            categoria=row.get("categoria"),
+            lugar_referencia=row.get("lugar_referencia"),
+            canal_origen=row["canal_origen"],
+            fecha_primera_respuesta=row.get("fecha_primera_respuesta"),
+            fecha_resolucion=row.get("fecha_resolucion"),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            reportante=self._build_usuario_mini(
+                row.get("reportante_id"),
+                row.get("reportante_nombre"),
+                row.get("reportante_apellido"),
+                row.get("reportante_email"),
+                row.get("reportante_avatar_url"),
+            ),
+            operador_asignado=self._build_usuario_mini(
+                row.get("operador_asignado_id"),
+                row.get("operador_nombre"),
+                row.get("operador_apellido"),
+                row.get("operador_email"),
+                row.get("operador_avatar_url"),
+            ),
+            supervisor=self._build_usuario_mini(
+                row.get("supervisor_id"),
+                row.get("supervisor_nombre"),
+                row.get("supervisor_apellido"),
+                row.get("supervisor_email"),
+                row.get("supervisor_avatar_url"),
+            ),
+            historial=[self._map_historial(h) for h in historial_rows],
+            comentarios=[self._map_comentario(c) for c in comentarios_rows],
         )
 
     async def cambiar_estado(
@@ -306,6 +376,16 @@ class IncidenteService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Incidente no encontrado.",
+            )
+        participantes = await self._repo.get_participantes(incidente_id)
+        if participantes:
+            await self._notify_unique(
+                destinatarios=[participantes["reportante_id"]],
+                tipo_evento="INCIDENTE_ESTADO_CAMBIADO",
+                asunto=f"Estado actualizado: {participantes['codigo']}",
+                contenido=f"Tu incidente ahora esta en estado {data.estado.value}.",
+                incidente_id=incidente_id,
+                exclude={ejecutor_id},
             )
         return await self.obtener_detalle(incidente_id)
 
@@ -335,7 +415,94 @@ class IncidenteService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Incidente no encontrado.",
             )
+        participantes = await self._repo.get_participantes(incidente_id)
+        if participantes:
+            await self._notify_unique(
+                destinatarios=[
+                    data.operador_asignado_id,
+                    participantes["reportante_id"],
+                ],
+                tipo_evento="INCIDENTE_ASIGNADO",
+                asunto=f"Asignacion actualizada: {participantes['codigo']}",
+                contenido=f"Se actualizo la asignacion del incidente {participantes['codigo']}.",
+                incidente_id=incidente_id,
+                exclude={ejecutor_id},
+            )
         return await self.obtener_detalle(incidente_id)
+
+    async def crear_comentario(
+        self,
+        incidente_id: str,
+        autor_id: str,
+        roles: list[str],
+        data: ComentarioIncidenteCreateInput,
+    ) -> ComentarioIncidenteItem:
+        try:
+            UUID(incidente_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ID de incidente invalido.",
+            ) from exc
+
+        participantes = await self._repo.get_participantes(incidente_id)
+        if not participantes:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Incidente no encontrado.",
+            )
+
+        is_operativo = bool({"supervisor", "operador", "administrador"}.intersection(roles))
+        is_reportante = str(participantes["reportante_id"]) == autor_id
+        if not is_operativo and not is_reportante:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para comentar este incidente.",
+            )
+
+        es_interno = bool(data.es_interno and is_operativo)
+        row = await self._repo.create_comentario(
+            incidente_id=incidente_id,
+            autor_id=autor_id,
+            contenido=data.contenido.strip(),
+            es_interno=es_interno,
+        )
+
+        if not es_interno:
+            destinatarios = []
+            if is_reportante:
+                destinatarios.extend(
+                    [
+                        participantes.get("supervisor_id"),
+                        participantes.get("operador_asignado_id"),
+                    ]
+                )
+                if not any(destinatarios):
+                    supervisores = await self._repo.list_usuarios_by_roles(
+                        {"supervisor", "administrador"}
+                    )
+                    destinatarios.extend(row["id"] for row in supervisores)
+            else:
+                destinatarios.append(participantes["reportante_id"])
+
+            await self._notify_unique(
+                destinatarios=destinatarios,
+                tipo_evento="INCIDENTE_NUEVO_MENSAJE",
+                asunto=f"Nuevo mensaje: {participantes['codigo']}",
+                contenido=f"Hay un nuevo mensaje en el incidente {participantes['codigo']}.",
+                incidente_id=incidente_id,
+                exclude={autor_id},
+            )
+
+        return ComentarioIncidenteItem(
+            id=str(row["id"]),
+            incidente_id=str(row["incidente_id"]),
+            autor=self._build_usuario_mini(row["autor_id"], None, None, None, None),
+            contenido=row["contenido"],
+            es_interno=row["es_interno"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
 
     async def listar_operadores(self) -> list[OperadorListItem]:
         rows = await self._repo.list_operadores()
@@ -360,12 +527,24 @@ class IncidenteService:
             data={
                 "titulo": data.titulo.strip(),
                 "descripcion": data.descripcion.strip(),
+                "severidad": data.severidad.value if data.severidad else None,
                 "categoria": data.categoria.strip() if data.categoria else None,
                 "lugar_referencia": (
                     data.lugar_referencia.strip() if data.lugar_referencia else None
                 ),
                 "canal_origen": "WEB",
             },
+        )
+        supervisores = await self._repo.list_usuarios_by_roles(
+            {"supervisor", "administrador"}
+        )
+        await self._notify_unique(
+            destinatarios=[row["id"] for row in supervisores],
+            tipo_evento="INCIDENTE_NUEVO",
+            asunto=f"Nuevo incidente: {creado['codigo']}",
+            contenido=f"Se registro un nuevo incidente desde la PWA: {creado['codigo']}.",
+            incidente_id=creado["id"],
+            exclude={reportante_id},
         )
         return IncidenteCreated.model_validate(creado)
 
@@ -405,6 +584,50 @@ class IncidenteService:
             ejecutado_por=ejecutor,
             created_at=row["created_at"],
         )
+
+    @classmethod
+    def _map_comentario(cls, row: dict[str, Any]) -> ComentarioIncidenteItem:
+        autor = cls._build_usuario_mini(
+            row.get("autor_id"),
+            row.get("autor_nombre"),
+            row.get("autor_apellido"),
+            row.get("autor_email"),
+            row.get("autor_avatar_url"),
+        )
+        return ComentarioIncidenteItem(
+            id=str(row["id"]),
+            incidente_id=str(row["incidente_id"]),
+            autor=autor,
+            contenido=row["contenido"],
+            es_interno=bool(row["es_interno"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    async def _notify_unique(
+        self,
+        *,
+        destinatarios: list[Any],
+        tipo_evento: str,
+        asunto: str,
+        contenido: str,
+        incidente_id: str,
+        exclude: set[str] | None = None,
+    ) -> None:
+        excluded = exclude or set()
+        unique_ids = {
+            str(destinatario)
+            for destinatario in destinatarios
+            if destinatario and str(destinatario) not in excluded
+        }
+        for destinatario_id in unique_ids:
+            await self._notificaciones.create_inapp(
+                destinatario_id=destinatario_id,
+                tipo_evento=tipo_evento,
+                asunto=asunto,
+                contenido=contenido,
+                incidente_id=incidente_id,
+            )
 
     @staticmethod
     def _map_list_item(row: dict[str, Any]) -> IncidenteListItem:

@@ -1,9 +1,8 @@
 /**
- * 📁 apps/web/src/app/(comunidad)/reportar/page.tsx
- * 🎯 Wizard de reporte de incidente — POST al backend (/api/v1/incidentes).
- * 📦 Módulo: Comunidad / Reportar
+ * Wizard de reporte de incidente.
  *
- * Client Component: persiste el reporte vía API HTTP. No accede a la BD directamente.
+ * Client Component: persiste el reporte via API HTTP. No accede a la BD
+ * directamente.
  */
 
 "use client";
@@ -27,12 +26,27 @@ import {
   SelectValue,
   Textarea,
 } from "@safecampus/ui-kit";
-import { CheckCircle2, Flame, HeartPulse, Loader2, MapPin, ShieldAlert } from "lucide-react";
-import type { IncidenteCreated, IncidenteCreateInput } from "@safecampus/shared-types";
+import {
+  CheckCircle2,
+  Flame,
+  HeartPulse,
+  Loader2,
+  MapPin,
+  ShieldAlert,
+} from "lucide-react";
+import {
+  NivelSeveridad,
+  type IncidenteCreated,
+  type IncidenteCreateInput,
+} from "@safecampus/shared-types";
 
+import {
+  SEVERIDAD_COLOR,
+  SEVERIDAD_LABEL,
+} from "@/features/incidentes/presentation";
 import { api } from "@/lib/api/client";
 
-type Step = 0 | 1 | 2 | 3;
+type Step = 0 | 1 | 2 | 3 | 4;
 
 const tiposIncidente = [
   {
@@ -43,9 +57,9 @@ const tiposIncidente = [
   },
   {
     id: "emergencia_medica",
-    label: "Emergencia médica",
+    label: "Emergencia medica",
     icon: HeartPulse,
-    titulo: "Emergencia médica reportada",
+    titulo: "Emergencia medica reportada",
   },
   {
     id: "incendio",
@@ -55,10 +69,29 @@ const tiposIncidente = [
   },
 ] as const;
 
+const severidades = [
+  {
+    id: NivelSeveridad.BAJO,
+    descripcion: "Situacion sin riesgo inmediato.",
+  },
+  {
+    id: NivelSeveridad.MEDIO,
+    descripcion: "Requiere seguimiento del equipo.",
+  },
+  {
+    id: NivelSeveridad.ALTO,
+    descripcion: "Riesgo relevante o atencion pronta.",
+  },
+  {
+    id: NivelSeveridad.CRITICO,
+    descripcion: "Emergencia o peligro inmediato.",
+  },
+] as const;
+
 const zonasCampus = [
   "Biblioteca Central",
-  "Pabellón A",
-  "Pabellón H",
+  "Pabellon A",
+  "Pabellon H",
   "Cafeteria Central",
   "Patio de Letras",
   "Estacionamiento Principal",
@@ -68,6 +101,7 @@ export default function ReportarPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>(0);
   const [tipo, setTipo] = useState<string>("");
+  const [severidad, setSeveridad] = useState<NivelSeveridad | "">("");
   const [descripcion, setDescripcion] = useState("");
   const [zona, setZona] = useState("");
   const [referencia, setReferencia] = useState("");
@@ -77,13 +111,14 @@ export default function ReportarPage() {
 
   const puedeContinuar = useMemo(() => {
     if (step === 0) return Boolean(tipo);
-    if (step === 1) return descripcion.trim().length > 12;
-    if (step === 2) return Boolean(zona);
+    if (step === 1) return Boolean(severidad);
+    if (step === 2) return descripcion.trim().length > 12;
+    if (step === 3) return Boolean(zona);
     return true;
-  }, [descripcion, step, tipo, zona]);
+  }, [descripcion, severidad, step, tipo, zona]);
 
   const siguiente = () => {
-    if (!puedeContinuar || step === 3) return;
+    if (!puedeContinuar || step === 4) return;
     setStep((actual) => (actual + 1) as Step);
   };
 
@@ -95,6 +130,7 @@ export default function ReportarPage() {
   const reset = () => {
     setStep(0);
     setTipo("");
+    setSeveridad("");
     setDescripcion("");
     setZona("");
     setReferencia("");
@@ -109,12 +145,13 @@ export default function ReportarPage() {
 
     const tipoSeleccionado = tiposIncidente.find((t) => t.id === tipo);
     const lugar = referencia.trim()
-      ? `${zona} — ${referencia.trim()}`
+      ? `${zona} - ${referencia.trim()}`
       : zona;
 
     const payload: IncidenteCreateInput = {
       titulo: tipoSeleccionado?.titulo ?? "Incidente reportado",
       descripcion: descripcion.trim(),
+      severidad: severidad || null,
       categoria: tipo,
       lugar_referencia: lugar,
     };
@@ -122,7 +159,7 @@ export default function ReportarPage() {
     try {
       const result = await api.post<IncidenteCreated>("/incidentes/", payload);
       setCreado(result);
-      setStep(3);
+      setStep(4);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo registrar el reporte.");
@@ -131,7 +168,7 @@ export default function ReportarPage() {
     }
   };
 
-  if (step === 3 && creado) {
+  if (step === 4 && creado) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10 pb-24">
         <Card className="border-green-200">
@@ -172,8 +209,8 @@ export default function ReportarPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {["Tipo", "Detalle", "Ubicación"].map((label, index) => (
+      <div className="grid grid-cols-4 gap-2">
+        {["Tipo", "Prioridad", "Detalle", "Ubicacion"].map((label, index) => (
           <div key={label} className="space-y-1">
             <div
               className={`h-1.5 rounded-full ${
@@ -182,7 +219,9 @@ export default function ReportarPage() {
             />
             <p
               className={`text-xs ${
-                index === step ? "font-semibold text-[#001C55]" : "text-muted-foreground"
+                index === step
+                  ? "font-semibold text-[#001C55]"
+                  : "text-muted-foreground"
               }`}
             >
               {label}
@@ -195,13 +234,15 @@ export default function ReportarPage() {
         <CardHeader>
           <CardTitle>
             {step === 0 && "Selecciona el tipo de incidente"}
-            {step === 1 && "Describe lo ocurrido"}
-            {step === 2 && "Confirma la ubicación"}
+            {step === 1 && "Indica la prioridad"}
+            {step === 2 && "Describe lo ocurrido"}
+            {step === 3 && "Confirma la ubicacion"}
           </CardTitle>
           <CardDescription>
-            {step === 0 && "Esto permite priorizar la atención operativa."}
-            {step === 1 && "Incluye contexto útil para responder más rápido."}
-            {step === 2 && "Ubicación precisa para despacho de operadores."}
+            {step === 0 && "Esto permite clasificar la atencion operativa."}
+            {step === 1 && "Selecciona el nivel de severidad percibido."}
+            {step === 2 && "Incluye contexto util para responder mas rapido."}
+            {step === 3 && "Ubicacion precisa para despacho de operadores."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -226,9 +267,38 @@ export default function ReportarPage() {
           )}
 
           {step === 1 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {severidades.map((opcion) => (
+                <button
+                  key={opcion.id}
+                  type="button"
+                  onClick={() => setSeveridad(opcion.id)}
+                  className={`rounded-xl border p-4 text-left transition ${
+                    severidad === opcion.id
+                      ? "border-[#001C55] bg-[#001C55]/5"
+                      : "hover:border-[#001C55]/40"
+                  }`}
+                >
+                  <span
+                    className={`mb-2 block h-2.5 w-2.5 rounded-full ${
+                      SEVERIDAD_COLOR[opcion.id]
+                    }`}
+                  />
+                  <p className="text-sm font-semibold">
+                    {SEVERIDAD_LABEL[opcion.id]}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {opcion.descripcion}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-sm font-medium">Descripción del incidente</p>
+                <p className="text-sm font-medium">Descripcion del incidente</p>
                 <Textarea
                   value={descripcion}
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
@@ -240,12 +310,12 @@ export default function ReportarPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">Canal: web</Badge>
-                <Badge variant="secondary">Atención 24/7</Badge>
+                <Badge variant="secondary">Atencion 24/7</Badge>
               </div>
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div className="space-y-4">
               <div className="space-y-2">
                 <p className="text-sm font-medium">Zona del campus</p>
@@ -275,9 +345,12 @@ export default function ReportarPage() {
               <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
                 <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
                   <MapPin className="h-4 w-4 text-[#001C55]" />
-                  Resumen previo al envío
+                  Resumen previo al envio
                 </div>
                 <p>Tipo: {tipo || "-"}</p>
+                <p>
+                  Prioridad: {severidad ? SEVERIDAD_LABEL[severidad] : "-"}
+                </p>
                 <p>Zona: {zona || "-"}</p>
               </div>
             </div>
@@ -296,12 +369,12 @@ export default function ReportarPage() {
               onClick={volver}
               disabled={step === 0 || enviando}
             >
-              Atrás
+              Atras
             </Button>
             <Button
               type="button"
               className="bg-[#001C55] hover:bg-[#032E84]"
-              onClick={step === 2 ? enviar : siguiente}
+              onClick={step === 3 ? enviar : siguiente}
               disabled={!puedeContinuar || enviando}
             >
               {enviando ? (
@@ -309,7 +382,7 @@ export default function ReportarPage() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Enviando...
                 </>
-              ) : step === 2 ? (
+              ) : step === 3 ? (
                 "Enviar reporte"
               ) : (
                 "Continuar"
