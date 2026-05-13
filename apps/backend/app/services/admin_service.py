@@ -11,6 +11,7 @@ from app.repositories.admin_repository import AdminRepository
 from app.schemas.admin import (
     ActualizarPermisosInput,
     AuditoriaListResponse,
+    AuditoriaUsuarioOut,
     CambiarEstadoInput,
     IntegracionesListResponse,
     ModulosResponse,
@@ -162,6 +163,7 @@ class AdminService:
             RegistroAuditoriaOut(
                 id=str(r["id"]),
                 usuario_id=str(r["usuario_id"]) if r.get("usuario_id") else None,
+                usuario=self._map_auditoria_usuario(r),
                 modulo=r["modulo"],
                 accion=r["accion"],
                 entidad=r.get("entidad"),
@@ -206,6 +208,21 @@ class AdminService:
     # -----------------------------------------------------------------------
     # Helpers
     # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _map_auditoria_usuario(r: dict) -> AuditoriaUsuarioOut | None:
+        usuario_id = r.get("usuario_id")
+        if not usuario_id:
+            return None
+        nombre = str(r.get("usuario_nombre") or "").strip()
+        apellido = str(r.get("usuario_apellido") or "").strip()
+        nombre_completo = f"{nombre} {apellido}".strip() or "Usuario"
+        return AuditoriaUsuarioOut(
+            id=str(usuario_id),
+            nombre_completo=nombre_completo,
+            email=r.get("usuario_email"),
+            avatar_url=r.get("usuario_avatar_url"),
+        )
 
     @staticmethod
     def _map_usuario(r: dict) -> UsuarioOut:

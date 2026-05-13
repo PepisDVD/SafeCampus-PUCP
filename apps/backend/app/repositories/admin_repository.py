@@ -5,7 +5,7 @@ Repository for the admin module using normalized SQLAlchemy schema models.
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, func, literal_column, or_, select, update
+from sqlalchemy import String, cast, delete, func, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -255,12 +255,19 @@ class AdminRepository:
         statement = select(
             RegistroAuditoria.id,
             RegistroAuditoria.usuario_id,
+            Usuario.nombre.label("usuario_nombre"),
+            Usuario.apellido.label("usuario_apellido"),
+            Usuario.email.label("usuario_email"),
+            Usuario.avatar_url.label("usuario_avatar_url"),
             RegistroAuditoria.modulo,
             RegistroAuditoria.accion,
             RegistroAuditoria.entidad,
             RegistroAuditoria.entidad_id,
             RegistroAuditoria.detalle,
             RegistroAuditoria.fecha_registro,
+        ).outerjoin(
+            Usuario,
+            Usuario.id == RegistroAuditoria.usuario_id,
         ).order_by(RegistroAuditoria.fecha_registro.desc()).limit(limit)
 
         if modulo:
@@ -274,7 +281,10 @@ class AdminRepository:
                     RegistroAuditoria.modulo.ilike(pattern),
                     RegistroAuditoria.accion.ilike(pattern),
                     RegistroAuditoria.entidad.ilike(pattern),
-                    RegistroAuditoria.entidad_id.ilike(pattern),
+                    cast(RegistroAuditoria.entidad_id, String).ilike(pattern),
+                    Usuario.nombre.ilike(pattern),
+                    Usuario.apellido.ilike(pattern),
+                    Usuario.email.ilike(pattern),
                 )
             )
         if desde:

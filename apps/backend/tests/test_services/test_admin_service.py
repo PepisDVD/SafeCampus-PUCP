@@ -22,6 +22,10 @@ class FakeAdminRepository:
                 "entidad_id": uuid4(),
                 "detalle": {"campo": "estado"},
                 "fecha_registro": datetime(2026, 5, 1, tzinfo=timezone.utc),
+                "usuario_nombre": "Ana",
+                "usuario_apellido": "Torres",
+                "usuario_email": "ana.torres@pucp.edu.pe",
+                "usuario_avatar_url": None,
             }
         ]
 
@@ -37,3 +41,6 @@ async def test_listar_auditoria_serializes_uuid_fields(monkeypatch):
     assert isinstance(item.id, str)
     assert isinstance(item.usuario_id, str)
     assert isinstance(item.entidad_id, str)
+    assert item.usuario is not None
+    assert item.usuario.nombre_completo == "Ana Torres"
+    assert item.usuario.email == "ana.torres@pucp.edu.pe"

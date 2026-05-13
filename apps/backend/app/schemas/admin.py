@@ -96,9 +96,17 @@ class ActualizarPermisosInput(BaseModel):
 # Auditoría
 # ---------------------------------------------------------------------------
 
+class AuditoriaUsuarioOut(BaseModel):
+    id: str
+    nombre_completo: str
+    email: EmailStr | None = None
+    avatar_url: str | None = None
+
+
 class RegistroAuditoriaOut(BaseModel):
     id: str
     usuario_id: str | None
+    usuario: AuditoriaUsuarioOut | None = None
     modulo: str
     accion: str
     entidad: str | None

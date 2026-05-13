@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.incidente_repository import IncidenteRepository
 from app.repositories.notificacion_repository import NotificacionRepository
 from app.schemas.incidente import (
@@ -61,6 +62,7 @@ def _pct_change(current: float, previous: float) -> float:
 class IncidenteService:
     def __init__(self, db: AsyncSession) -> None:
         self._repo = IncidenteRepository(db)
+        self._auditoria = AuditoriaRepository(db)
         self._notificaciones = NotificacionRepository(db)
 
     async def listar_recentes(
@@ -409,6 +411,17 @@ class IncidenteService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Incidente no encontrado.",
             )
+        await self._registrar_auditoria_incidente(
+            usuario_id=ejecutor_id,
+            accion="cambiar_estado",
+            incidente_id=incidente_id,
+            detalle={
+                "codigo": result["codigo"],
+                "estado_anterior": result["estado_anterior"],
+                "estado_nuevo": result["estado_nuevo"],
+                "comentario": result["comentario"],
+            },
+        )
         participantes = await self._repo.get_participantes(incidente_id)
         if participantes:
             await self._notify_unique(
@@ -447,6 +460,19 @@ class IncidenteService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Incidente no encontrado.",
             )
+        await self._registrar_auditoria_incidente(
+            usuario_id=ejecutor_id,
+            accion="asignar_operador",
+            incidente_id=incidente_id,
+            detalle={
+                "codigo": result["codigo"],
+                "estado": result["estado"],
+                "operador_anterior_id": result["operador_anterior_id"],
+                "operador_nuevo_id": result["operador_nuevo_id"],
+                "supervisor_id": result["supervisor_id"],
+                "comentario": result["comentario"],
+            },
+        )
         participantes = await self._repo.get_participantes(incidente_id)
         if participantes:
             await self._notify_unique(
@@ -499,6 +525,19 @@ class IncidenteService:
             contenido=data.contenido.strip(),
             es_interno=es_interno,
         )
+        if is_operativo:
+            await self._registrar_auditoria_incidente(
+                usuario_id=autor_id,
+                accion="crear_comentario",
+                incidente_id=incidente_id,
+                detalle={
+                    "codigo": participantes["codigo"],
+                    "comentario_id": str(row["id"]),
+                    "es_interno": es_interno,
+                    "contenido_preview": row["contenido"][:160],
+                    "actor_roles": roles,
+                },
+            )
 
         if not es_interno:
             destinatarios = []
@@ -569,6 +608,16 @@ class IncidenteService:
                 "canal_origen": "WEB",
             },
         )
+        await self._registrar_auditoria_incidente(
+            usuario_id=reportante_id,
+            accion="crear_incidente",
+            incidente_id=creado["id"],
+            detalle={
+                "codigo": creado["codigo"],
+                "estado": creado["estado"],
+                "canal_origen": "WEB",
+            },
+        )
         supervisores = await self._repo.list_usuarios_by_roles(
             {"supervisor", "administrador"}
         )
@@ -581,6 +630,23 @@ class IncidenteService:
             exclude={reportante_id},
         )
         return IncidenteCreated.model_validate(creado)
+
+    async def _registrar_auditoria_incidente(
+        self,
+        *,
+        usuario_id: str,
+        accion: str,
+        incidente_id: str,
+        detalle: dict[str, Any],
+    ) -> None:
+        await self._auditoria.create_registro(
+            usuario_id=usuario_id,
+            modulo="incidentes",
+            accion=accion,
+            entidad="incidente",
+            entidad_id=incidente_id,
+            detalle=detalle,
+        )
 
     @staticmethod
     def _build_usuario_mini(

@@ -593,6 +593,7 @@ class IncidenteRepository:
         statement = (
             select(
                 Incidente.id,
+                Incidente.codigo,
                 Incidente.estado,
                 Incidente.fecha_primera_respuesta,
                 Incidente.supervisor_id,
@@ -654,7 +655,13 @@ class IncidenteRepository:
                 ejecutado_por_id=UUID(ejecutor_id),
             )
         )
-        return {"id": incidente_id, "estado_nuevo": new_estado}
+        return {
+            "id": incidente_id,
+            "codigo": actual["codigo"],
+            "estado_anterior": estado_anterior,
+            "estado_nuevo": new_estado,
+            "comentario": comentario,
+        }
 
     async def assign_operador(
         self,
@@ -702,7 +709,21 @@ class IncidenteRepository:
                 ejecutado_por_id=UUID(ejecutor_id),
             )
         )
-        return {"id": incidente_id}
+        return {
+            "id": incidente_id,
+            "codigo": actual["codigo"],
+            "estado": estado_actual,
+            "operador_anterior_id": (
+                str(actual["operador_asignado_id"])
+                if actual["operador_asignado_id"]
+                else None
+            ),
+            "operador_nuevo_id": operador_id,
+            "supervisor_id": str(values.get("supervisor_id") or actual["supervisor_id"])
+            if values.get("supervisor_id") or actual["supervisor_id"]
+            else None,
+            "comentario": comentario,
+        }
 
     async def list_operadores(self) -> list[dict[str, Any]]:
         """Lista de usuarios con rol operador o supervisor (para asignación)."""
