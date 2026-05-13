@@ -1,63 +1,73 @@
-import { EstadoIncidente, NivelSeveridad } from "@safecampus/shared-types";
+export type ConversationState =
+  | "ABIERTA"
+  | "EN_BOT"
+  | "EN_COLA"
+  | "EN_ATENCION"
+  | "CERRADA";
 
-export type WhatsAppQueue = "bot" | "humano" | "esperando" | "cerrado";
-export type WhatsAppAuthor = "usuario" | "bot" | "operador" | "sistema";
-export type WhatsAppDelivery = "sent" | "delivered" | "read" | "failed";
-export type WhatsAppResolution = "bot" | "humano" | null;
+export type AttentionMode = "BOT" | "HUMANO";
+export type ConversationPriority = "BAJO" | "MEDIO" | "ALTO" | "CRITICO";
+export type MessageDirection = "INBOUND" | "OUTBOUND";
+export type MessageAuthor = "CONTACTO" | "BOT" | "OPERADOR" | "SISTEMA";
 
-export type WhatsAppLinkedIncident = {
+export type ConversationUser = {
+  id: string;
+  nombre_completo: string;
+  email?: string | null;
+  avatar_url?: string | null;
+};
+
+export type ConversationIncident = {
   id: string;
   codigo: string;
   titulo: string;
-  estado: EstadoIncidente;
-  severidad: NivelSeveridad;
-  zona: string;
+  estado: string;
+  severidad?: string | null;
 };
 
-export type WhatsAppMessage = {
+export type Conversation = {
   id: string;
-  author: WhatsAppAuthor;
-  text: string;
-  createdAt: string;
-  delivery: WhatsAppDelivery;
+  canal_id: string;
+  external_chat_id: string;
+  telefono_contacto?: string | null;
+  nombre_contacto?: string | null;
+  estado: ConversationState;
+  modo_atencion: AttentionMode;
+  prioridad: ConversationPriority;
+  operador_asignado?: ConversationUser | null;
+  tomado_por?: ConversationUser | null;
+  incidente?: ConversationIncident | null;
+  ultimo_mensaje_preview?: string | null;
+  ultimo_mensaje_at: string;
+  unread_count: number;
+  created_at: string;
+  updated_at: string;
 };
 
-export type WhatsAppConversation = {
+export type ConversationListResponse = {
+  items: Conversation[];
+  total: number;
+};
+
+export type ConversationMessage = {
   id: string;
-  waConversationId: string;
-  contactName: string;
-  phone: string;
-  queue: WhatsAppQueue;
-  unreadCount: number;
-  priority: NivelSeveridad;
-  assignedOperator: string | null;
-  intent: string;
-  botConfidence: number;
-  sentimentScore: number;
-  firstResponseSeconds: number;
-  satisfactionScore: number | null;
-  needsHumanHandoff: boolean;
-  containsIncidentSignal: boolean;
-  slaBreached: boolean;
-  resolvedBy: WhatsAppResolution;
-  lastMessage: string;
-  lastActivityAt: string;
-  aiSummary: string;
-  recommendedPlaybook: string;
-  tags: string[];
-  linkedIncident: WhatsAppLinkedIncident | null;
-  messages: WhatsAppMessage[];
+  conversacion_id: string;
+  external_message_id?: string | null;
+  direccion: MessageDirection;
+  autor_tipo: MessageAuthor;
+  autor_usuario?: ConversationUser | null;
+  contenido?: string | null;
+  tipo_contenido: string;
+  estado_entrega: string;
+  created_at: string;
 };
 
-export type WhatsAppQuickReply = {
-  id: string;
-  label: string;
-  text: string;
+export type ConversationMessagesResponse = {
+  items: ConversationMessage[];
 };
 
-export type OperatorLoad = {
-  name: string;
-  activeChats: number;
-  waitingChats: number;
-  escalatedCases: number;
+export type RealtimeEvent = {
+  type: string;
+  conversacion_id?: string | null;
+  payload?: Record<string, unknown>;
 };

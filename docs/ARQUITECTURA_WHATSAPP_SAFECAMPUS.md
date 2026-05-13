@@ -1,209 +1,123 @@
-# Arquitectura propuesta del modulo WhatsApp para SafeCampus
+# Arquitectura WhatsApp / Omnicanal SafeCampus
 
 ## Objetivo
 
-Definir la arquitectura exacta para incorporar un modulo de atencion por WhatsApp en SafeCampus, respetando el monorepo actual, la separacion frontend/backend ya adoptada y la base de datos vigente. Este documento parte del estado actual del proyecto y deja claro que la implementacion realizada en esta fase es solo un prototipo frontend con mocks.
+Documentar el estado actual de la integracion WhatsApp en SafeCampus y las reglas
+de arquitectura para mantener el modulo operativo, trazable y preparado para la
+clasificacion IA.
 
-## Estado actual de SafeCampus
+## Estado actual
 
-- `apps/web` ya cuenta con shell operativo, dashboard, KPIs, mapa, incidentes y una ruta `mensajes`.
-- `apps/backend` ya concentra la logica de negocio bajo FastAPI y es la unica puerta valida hacia la BD.
-- `packages/shared-types` ya define enums y contratos reutilizables del dominio.
-- La base de datos ya contempla omnicanalidad y notificaciones:
-  - `sc_omnicanal`
-  - `sc_incidentes`
-  - `sc_notificaciones`
-  - `canal_notificacion = 'WHATSAPP'`
-  - `tipo_canal = 'MENSAJERIA'`
+La integracion local usa EvolutionAPI como proveedor de WhatsApp para desarrollo.
+El frontend no se conecta directamente a EvolutionAPI; siempre pasa por el backend
+FastAPI.
 
-## Arquitectura exacta recomendada
+Flujo actual:
 
-### 1. Capa Meta / WhatsApp
+```txt
+WhatsApp
+  -> EvolutionAPI
+  -> POST /api/v1/omnicanal/webhooks/whatsapp
+  -> sc_omnicanal.reporte_entrante
+  -> sc_omnicanal.conversacion
+  -> sc_omnicanal.mensaje_conversacion
+  -> sc_omnicanal.evento_conversacion
+  -> WebSocket /api/v1/omnicanal/ws
+  -> apps/web /mensajes
+```
 
-- Meta WhatsApp Cloud API recibe y entrega mensajes.
-- SafeCampus no debe exponer el frontend directamente a Meta.
-- Meta debe integrarse solo contra webhooks y servicios del backend.
+## Responsabilidades por capa
 
-### 2. Backend SafeCampus (`apps/backend`)
+### EvolutionAPI
 
-Responsabilidades:
+- Mantiene la sesion WhatsApp local.
+- Emite webhooks al backend.
+- Permite enviar respuestas desde SafeCampus hacia WhatsApp.
+- Guarda su propio historial local, pero no es la fuente de verdad de la bandeja.
 
-- Exponer webhook de entrada para mensajes, cambios de estado y eventos de entrega.
-- Validar firma, origen y payload de Meta.
-- Normalizar mensajes entrantes a un modelo interno de conversacion.
-- Persistir conversaciones, mensajes, participantes, cola, asignacion y auditoria.
-- Ejecutar reglas de negocio:
-  - clasificacion automatica
-  - deteccion de riesgo
-  - creacion o vinculacion con incidentes
-  - takeover humano
-  - cierre de conversacion
-- Exponer endpoints REST/WebSocket para la consola operativa web.
+### Backend FastAPI
 
-### 3. Base de datos SafeCampus
+- Recibe y valida webhooks.
+- Normaliza payloads de proveedor.
+- Persiste reporte tecnico, conversacion, mensajes y eventos.
+- Expone endpoints REST para la bandeja.
+- Emite eventos WebSocket para realtime sin polling.
+- Protege la bandeja para roles `administrador` y `supervisor`.
 
-#### Reutilizacion del modelo actual
+### Base de datos
 
-Se puede partir de lo que ya existe:
+Tablas operativas principales:
 
-- `sc_incidentes`: para vincular conversaciones con casos reales.
-- `sc_notificaciones`: para eventos in-app asociados a conversaciones derivadas o criticas.
-- `sc_omnicanal`: como dominio natural para un inbox multicanal.
-- `sc_dashboard`: para KPIs agregados del chatbot y del equipo operativo.
+- `sc_omnicanal.reporte_entrante`: payload tecnico de entrada y auditoria.
+- `sc_omnicanal.conversacion`: estado operativo, asignacion, modo, prioridad.
+- `sc_omnicanal.mensaje_conversacion`: historial visible del chat.
+- `sc_omnicanal.evento_conversacion`: trazabilidad de acciones.
+- `sc_incidentes.incidente`: caso vinculado o creado desde la conversacion.
 
-#### Tablas nuevas recomendadas a futuro
+### Frontend web
 
-No se implementan en esta fase, pero para una integracion profesional faltaria modelar al menos:
+- Ruta: `apps/web/src/app/(operativo)/mensajes`.
+- Feature: `apps/web/src/features/whatsapp`.
+- Consume solo el backend SafeCampus.
+- Usa WebSocket para refrescar conversaciones y mensajes.
+- Permite tomar, asignar, pasar a bot/humano, responder, cerrar y reabrir.
 
-1. `sc_omnicanal.conversacion`
-   - `id`
-   - `canal`
-   - `canal_externo_id`
-   - `telefono_origen`
-   - `nombre_contacto`
-   - `estado_conversacion`
-   - `prioridad`
-   - `operador_asignado_id`
-   - `incidente_id`
-   - `ultima_interaccion_at`
-   - `resuelto_por`
-   - `created_at`
-   - `updated_at`
+## Reglas de implementacion
 
-2. `sc_omnicanal.mensaje_conversacion`
-   - `id`
-   - `conversacion_id`
-   - `direccion` (`INBOUND` / `OUTBOUND`)
-   - `autor_tipo` (`USUARIO`, `BOT`, `OPERADOR`, `SISTEMA`)
-   - `contenido`
-   - `tipo_contenido`
-   - `meta_message_id`
-   - `estado_entrega`
-   - `payload_raw`
-   - `created_at`
+- No exponer claves de EvolutionAPI o Supabase service role al frontend.
+- No consultar Supabase directamente desde la bandeja operativa.
+- No usar polling para realtime del inbox; usar WebSocket.
+- Toda accion operativa debe registrar `evento_conversacion`.
+- Alembic es el unico owner de cambios de esquema.
+- Despues de migraciones, ejecutar `pnpm gen:types` y `pnpm db:model-coverage`.
+- Mantener `docs/EVOLUTION_API_LOCAL.md` sincronizado con cualquier cambio de
+  EvolutionAPI, webhooks o puertos.
 
-3. `sc_omnicanal.participante_conversacion`
-   - `id`
-   - `conversacion_id`
-   - `usuario_id`
-   - `rol`
-   - `joined_at`
+## Diseño operativo
 
-4. `sc_omnicanal.evento_conversacion`
-   - `id`
-   - `conversacion_id`
-   - `tipo_evento`
-   - `payload`
-   - `created_at`
+La bandeja no debe comportarse como un chat personal. Debe priorizar:
 
-5. `sc_dashboard.kpi_chatbot`
-   - agregados por periodo, cola, operador, intent y tipo de resolucion
+- severidad y SLA,
+- estado de atencion,
+- modo `BOT`/`HUMANO`,
+- trazabilidad de operador,
+- vinculacion con incidentes,
+- preparacion para clasificacion IA.
 
-#### Relacion con el modelo actual de incidentes
+Los mensajes deben distinguir autor:
 
-La relacion profesional en SafeCampus no debe ser un chat aislado. La conversacion de WhatsApp debe poder:
+- `CONTACTO`
+- `BOT`
+- `OPERADOR`
+- `SISTEMA`
 
-- crear un incidente
-- quedar vinculada a un incidente existente
-- escalar a un operador o supervisor
-- disparar notificaciones internas
-- alimentar KPIs de atencion y resolucion
+## Integracion IA prevista
 
-## Arquitectura del monorepo
+La UI ya reserva una seccion de clasificacion IA con:
 
-### Ubicacion correcta por capa
+- categoria sugerida,
+- severidad,
+- confidence score,
+- `requires_human_review`.
 
-- `apps/web/src/app/(operativo)/mensajes`
-  - pagina operativa y entrypoint del modulo
-- `apps/web/src/features/whatsapp`
-  - mocks, tipos, componentes y logica puramente frontend del prototipo
-- `packages/ui-kit`
-  - solo primitives compartidas y agnosticas del dominio
-- `packages/shared-types`
-  - enums y contratos compartidos reales del dominio
+La fuente futura debe vivir en backend y persistirse en el dominio omnicanal o de
+clasificacion, no calcularse solo en frontend. El proveedor inicial puede ser
+Gemini y posteriormente OpenAI u otro adaptador, siempre detras de un servicio
+interno del backend.
 
-### Decision de implementacion para esta fase
+## Limitaciones conocidas
 
-En prototipo:
+- Si EvolutionAPI o el backend estan apagados, SafeCampus no garantiza recibir
+  los webhooks de ese periodo.
+- Para produccion, EvolutionAPI debe ejecutarse en infraestructura estable con
+  webhook publico hacia el backend.
+- Se recomienda implementar un job de reconciliacion para recuperar mensajes
+  recientes desde EvolutionAPI cuando exista un hueco operativo.
 
-- la UI especifica del inbox y dashboard se queda en `apps/web`
-- no se crean componentes compartidos en `packages/ui-kit`
-- no se toca backend
-- no se toca BD
-- no se hace integracion e2e
+## Roadmap recomendado
 
-## Comparacion: ChatAssist vs SafeCampus
-
-### Lo que si conviene tomar de ChatAssist
-
-- bandeja con lista lateral de conversaciones
-- vista detallada del chat
-- takeover humano
-- asignacion a agentes
-- filtros por estado y prioridad
-- dashboard con KPIs de operacion y chatbot
-- respuestas rapidas
-
-### Lo que SafeCampus necesita y ChatAssist no resuelve por si solo
-
-1. Contexto operativo y no solo soporte.
-   SafeCampus no atiende solo consultas; atiende riesgo, incidentes y escalamiento.
-
-2. Vinculo fuerte con incidentes.
-   Cada conversacion debe poder conectarse con `sc_incidentes`.
-
-3. Priorizacion por severidad.
-   El inbox debe priorizar casos `ALTO` y `CRITICO`, no solo chats no leidos.
-
-4. Trazabilidad y auditoria.
-   Debe quedar registro de derivacion, reasignacion, cierre, takeover y respuestas del bot.
-
-5. KPIs orientados a seguridad y operacion.
-   No basta con satisfaccion o calidad del bot; tambien se necesita tiempo de primera respuesta, casos escalados, contencion automatizada, saturacion de operadores y conversaciones vinculadas a incidentes.
-
-### Conclusiones de la comparacion
-
-- ChatAssist sirve como referencia de UX para inbox y dashboard.
-- SafeCampus requiere un modelo mas operativo, mas auditable y mas vinculado al dominio de incidentes.
-- La forma profesional para SafeCampus es una consola operativa omnicanal con especializacion en WhatsApp, no un simple panel de soporte.
-
-## Flujo objetivo futuro
-
-1. Usuario escribe por WhatsApp.
-2. Meta envia webhook a FastAPI.
-3. Backend normaliza y persiste la conversacion.
-4. Reglas identifican intencion, riesgo y necesidad de incidente.
-5. Si aplica, se crea o vincula incidente.
-6. La consola operativa recibe el evento en tiempo real.
-7. Operador toma control, responde, deriva o cierra.
-8. El sistema actualiza KPIs y auditoria.
-
-## Modulo frontend prototipo implementado en esta fase
-
-La implementacion frontend hecha en esta fase incluye:
-
-- bandeja de conversaciones WhatsApp con filtros y busqueda
-- gestion de chats con takeover, asignacion, cierre y respuestas rapidas
-- panel de contexto del caso e incidente vinculado
-- dashboard del chatbot con KPIs mock
-- datos mock alineados con el dominio actual de incidentes y severidad
-
-## Alcance fuera de esta fase
-
-No se implementa en esta fase:
-
-- webhook de Meta
-- persistencia backend
-- nuevas tablas SQL
-- integracion real con Supabase/PostgreSQL
-- autenticacion de agentes de Meta
-- sincronizacion en tiempo real real
-
-## Recomendacion de roadmap
-
-1. Validar UX del prototipo con usuarios operativos.
-2. Cerrar modelo de datos omnicanal en `sc_omnicanal`.
-3. Implementar webhook y servicios FastAPI.
-4. Integrar inbox web con endpoints reales.
-5. Agregar realtime y auditoria.
-6. Consolidar KPIs de chatbot y operacion en `sc_dashboard`.
+1. Clasificacion IA real sobre mensajes entrantes.
+2. Creacion/vinculacion de incidentes desde la conversacion.
+3. KPIs de SLA, primera respuesta, saturacion de operadores y bot containment.
+4. Job de reconciliacion de historial.
+5. Adaptador Meta WhatsApp Cloud API cuando existan credenciales oficiales.

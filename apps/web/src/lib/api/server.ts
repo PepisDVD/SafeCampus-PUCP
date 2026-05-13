@@ -71,7 +71,9 @@ async function request<T>(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: `Error ${res.status}` }));
-    throw new Error(err.detail ?? `Error ${res.status}`);
+    const detail =
+      typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail ?? err);
+    throw new Error(`${method} ${path} -> ${res.status}: ${detail}`);
   }
 
   return res.json() as Promise<T>;

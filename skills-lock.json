@@ -42,6 +42,11 @@
       "name": "monorepo-ci-standards",
       "scope": ["."],
       "description": "Mandatory scripts and CI gates for lint, typecheck, test, and build"
+    },
+    {
+      "name": "omnichannel-whatsapp-operations",
+      "scope": ["apps/backend", "apps/web/src/features/whatsapp", "infra/docker/evolution", "docs"],
+      "description": "SafeCampus WhatsApp/EvolutionAPI webhooks, realtime inbox, and sc_omnicanal operations"
     }
   ]
 }

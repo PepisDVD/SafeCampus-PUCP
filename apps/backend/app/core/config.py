@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     GOOGLE_MAPS_API_KEY: str = ""
     WHATSAPP_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
+    WHATSAPP_PROVIDER: str = "evolution"
+    WHATSAPP_ALLOWED_TEST_PHONES: str = ""
+    WHATSAPP_IGNORE_GROUP_MESSAGES: bool = True
+    EVOLUTION_API_URL: str = "http://localhost:8080"
+    EVOLUTION_API_KEY: str = ""
+    EVOLUTION_INSTANCE_NAME: str = "safecampus-dev"
+    EVOLUTION_WEBHOOK_SECRET: str = ""
+    META_WHATSAPP_TOKEN: str = ""
+    META_WHATSAPP_PHONE_NUMBER_ID: str = ""
+    META_WHATSAPP_VERIFY_TOKEN: str = ""
+    META_WHATSAPP_APP_SECRET: str = ""
 
     # --- Gmail OAuth2 ---
     GOOGLE_CLIENT_ID: str = ""
@@ -63,6 +74,14 @@ class Settings(BaseSettings):
             value.strip().lower()
             for value in self.DEV_ALLOWED_EMAILS.split(",")
             if value.strip()
+        }
+
+    @property
+    def whatsapp_allowed_test_phones_set(self) -> set[str]:
+        return {
+            "".join(char for char in value if char.isdigit())
+            for value in self.WHATSAPP_ALLOWED_TEST_PHONES.split(",")
+            if "".join(char for char in value if char.isdigit())
         }
 
     @field_validator("DATABASE_URL")

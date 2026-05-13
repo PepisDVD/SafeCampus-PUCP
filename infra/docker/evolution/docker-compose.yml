@@ -1,0 +1,87 @@
+name: safecampus-evolution
+
+services:
+  evolution-api:
+    image: evoapicloud/evolution-api:latest
+    container_name: safecampus-evolution-api
+    restart: unless-stopped
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_healthy
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-net
+
+  evolution-manager-proxy:
+    image: nginx:1.27-alpine
+    container_name: safecampus-evolution-manager-proxy
+    restart: unless-stopped
+    depends_on:
+      - evolution-api
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./nginx-manager-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
+    networks:
+      - evolution-net
+
+  evolution-postgres:
+    image: postgres:15-alpine
+    container_name: safecampus-evolution-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    command:
+      - postgres
+      - -c
+      - max_connections=1000
+      - -c
+      - listen_addresses=*
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERNAME} -d ${POSTGRES_DATABASE}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+    networks:
+      - evolution-net
+
+  evolution-redis:
+    image: redis:7-alpine
+    container_name: safecampus-evolution-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - evolution_redis_data:/data
+    networks:
+      - evolution-net
+
+volumes:
+  evolution_instances:
+  evolution_postgres_data:
+  evolution_redis_data:
+
+networks:
+  evolution-net:
+    driver: bridge
