@@ -1,0 +1,9 @@
+{
+  "prompts": [
+    {
+      "id": "PROMPT-IA-CLAS-v1.0",
+      "tipo": "clasificacion",
+      "estado": "activo"
+    }
+  ]
+}

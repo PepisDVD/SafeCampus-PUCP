@@ -36,8 +36,13 @@ class Settings(BaseSettings):
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"
 
     # --- Integraciones externas ---
+    LLM_PROVIDER: str = "openai"
+    LLM_TIMEOUT_SECONDS: int = 15
+    LLM_MAX_ATTEMPTS: int = 3
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
     GOOGLE_MAPS_API_KEY: str = ""
     WHATSAPP_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
@@ -93,6 +98,14 @@ class Settings(BaseSettings):
         if "ssl=require" not in value and "sslmode=require" not in value:
             raise ValueError("DATABASE_URL debe exigir SSL (agrega '?ssl=require').")
         return value
+
+    @field_validator("LLM_PROVIDER")
+    @classmethod
+    def validate_llm_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"openai", "gemini"}:
+            raise ValueError("LLM_PROVIDER debe ser 'openai' o 'gemini'.")
+        return normalized
 
     model_config = SettingsConfigDict(
         env_file=".env",

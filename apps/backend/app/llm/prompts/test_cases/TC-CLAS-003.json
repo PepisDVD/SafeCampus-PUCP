@@ -1,0 +1,6 @@
+{
+  "id": "TC-CLAS-003",
+  "descripcion": "No se entiende bien el mensaje, solo dice ayuda urgente talvez humo o algo raro.",
+  "categoria_esperada": "OTRO",
+  "severidad_esperada": "MEDIO"
+}
