@@ -1,0 +1,6 @@
+{
+  "id": "TC-CLAS-002",
+  "descripcion": "Se encontro una mochila olvidada en la biblioteca central.",
+  "categoria_esperada": "OBJETO_PERDIDO_ENCONTRADO",
+  "severidad_esperada": "BAJO"
+}

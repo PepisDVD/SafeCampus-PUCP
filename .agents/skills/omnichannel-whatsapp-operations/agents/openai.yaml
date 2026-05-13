@@ -1,0 +1,4 @@
+interface:
+  display_name: "Omnichannel WhatsApp"
+  short_description: "Maintain WhatsApp inbox and EvolutionAPI flows"
+  default_prompt: "Use the SafeCampus omnichannel WhatsApp architecture to implement or debug EvolutionAPI, webhook, realtime inbox, and conversation persistence changes."

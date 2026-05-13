@@ -1,0 +1,73 @@
+export type ConversationState =
+  | "ABIERTA"
+  | "EN_BOT"
+  | "EN_COLA"
+  | "EN_ATENCION"
+  | "CERRADA";
+
+export type AttentionMode = "BOT" | "HUMANO";
+export type ConversationPriority = "BAJO" | "MEDIO" | "ALTO" | "CRITICO";
+export type MessageDirection = "INBOUND" | "OUTBOUND";
+export type MessageAuthor = "CONTACTO" | "BOT" | "OPERADOR" | "SISTEMA";
+
+export type ConversationUser = {
+  id: string;
+  nombre_completo: string;
+  email?: string | null;
+  avatar_url?: string | null;
+};
+
+export type ConversationIncident = {
+  id: string;
+  codigo: string;
+  titulo: string;
+  estado: string;
+  severidad?: string | null;
+};
+
+export type Conversation = {
+  id: string;
+  canal_id: string;
+  external_chat_id: string;
+  telefono_contacto?: string | null;
+  nombre_contacto?: string | null;
+  estado: ConversationState;
+  modo_atencion: AttentionMode;
+  prioridad: ConversationPriority;
+  operador_asignado?: ConversationUser | null;
+  tomado_por?: ConversationUser | null;
+  incidente?: ConversationIncident | null;
+  ultimo_mensaje_preview?: string | null;
+  ultimo_mensaje_at: string;
+  unread_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ConversationListResponse = {
+  items: Conversation[];
+  total: number;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversacion_id: string;
+  external_message_id?: string | null;
+  direccion: MessageDirection;
+  autor_tipo: MessageAuthor;
+  autor_usuario?: ConversationUser | null;
+  contenido?: string | null;
+  tipo_contenido: string;
+  estado_entrega: string;
+  created_at: string;
+};
+
+export type ConversationMessagesResponse = {
+  items: ConversationMessage[];
+};
+
+export type RealtimeEvent = {
+  type: string;
+  conversacion_id?: string | null;
+  payload?: Record<string, unknown>;
+};

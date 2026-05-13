@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" agent="Claude">
+  <diagram id="estrategia-fallback-llm" name="Estrategia de Fallback LLM">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="1700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ═══════════════════════════════ ESTILOS COMUNES ═══════════════════════════════ -->
+        <!-- START/END: ellipse  |  DECISION: rhombus  |  PROCESS: rounded rect  |  TERMINAL: rounded filled -->
+
+        <!-- ═══════════════════════════════ TÍTULO ═══════════════════════════════════════ -->
+        <mxCell id="title" value="Estrategia y Reglas de Fallback para IA — SafeCampus PUCP" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1;fontColor=#1F4E79;" vertex="1" parent="1">
+          <mxGeometry x="100" y="14" width="900" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="Referencia: Especificación Técnica Módulo LLM — Sección 3   |   max_attempts=3, backoff=1s/2s, confidence_threshold=0.60" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="100" y="44" width="900" height="18" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ INICIO ══════════════════════════════════════════════════ -->
+        <mxCell id="start" value="INICIO" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1F4E79;strokeColor=#0D2E4E;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="430" y="80" width="140" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Invocar API OpenAI -->
+        <mxCell id="invoke" value="Invocar OpenAI API&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;POST /v1/chat/completions&lt;br/&gt;timeout = 15s por intento&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#000000;arcSize=8;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="380" y="178" width="240" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ DECISIÓN 1: ¿Respuesta exitosa? ═══════════════════════ -->
+        <mxCell id="d1" value="¿Respuesta&lt;br/&gt;HTTP exitosa?&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;(sin timeout ni 4xx/5xx)&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#CC9900;fontColor=#000000;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="370" y="295" width="260" height="95" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ RAMA NO → REINTENTOS ════════════════════════════════ -->
+
+        <!-- ¿Reintentos disponibles? -->
+        <mxCell id="d-retry" value="¿Intentos&lt;br/&gt;restantes?&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;(max 3 intentos total)&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#CC9900;fontColor=#000000;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="700" y="280" width="230" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Backoff exponencial -->
+        <mxCell id="backoff" value="Esperar backoff&lt;br/&gt;exponencial&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;Intento 2: 1s   Intento 3: 2s&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontColor=#000000;arcSize=8;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="705" y="155" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- FB-01/02/04: Fallback por API no disponible -->
+        <mxCell id="fb-api" value="[FB-01 / FB-02 / FB-04]&lt;br/&gt;&lt;b&gt;Aplicar DefaultClassification&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;categoria = OTRO&lt;br/&gt;severidad = MEDIO&lt;br/&gt;confidence_score = 0.0&lt;br/&gt;fallback_applied = true&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#000000;arcSize=8;fontSize=11;align=center;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="705" y="415" width="220" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ DECISIÓN 2: ¿JSON válido? ═══════════════════════════ -->
+        <mxCell id="d2" value="¿Respuesta&lt;br/&gt;JSON válida?&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;(parseable y estructura correcta)&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#CC9900;fontColor=#000000;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="370" y="445" width="260" height="95" as="geometry" />
+        </mxCell>
+
+        <!-- FB-05: JSON malformado -->
+        <mxCell id="fb-json" value="[FB-05]&lt;br/&gt;&lt;b&gt;Aplicar DefaultClassification&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;fallback_reason = JSON_PARSE_ERROR&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#000000;arcSize=8;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="60" y="460" width="210" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ DECISIÓN 3: ¿Valores válidos? ══════════════════════ -->
+        <mxCell id="d3" value="¿Valores de&lt;br/&gt;categoría y severidad&lt;br/&gt;válidos?&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;(pertenecen a taxonomía)&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#CC9900;fontColor=#000000;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="370" y="595" width="260" height="105" as="geometry" />
+        </mxCell>
+
+        <!-- FB-06/07: Normalizar valores -->
+        <mxCell id="normalize" value="[FB-06 / FB-07]&lt;br/&gt;&lt;b&gt;Normalizar valores&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;categoria → OTRO&lt;br/&gt;severidad → MEDIO&lt;br/&gt;requires_human_review = true&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontColor=#000000;arcSize=8;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="60" y="608" width="210" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ DECISIÓN 4: ¿Confidence ≥ 0.60? ════════════════════ -->
+        <mxCell id="d4" value="¿confidence_score&lt;br/&gt;≥ 0.60?&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;(umbral de zona de incertidumbre)&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#CC9900;fontColor=#000000;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="370" y="760" width="260" height="95" as="geometry" />
+        </mxCell>
+
+        <!-- FB-08: Marcar revisión humana -->
+        <mxCell id="human-review" value="[FB-08] Zona de&lt;br/&gt;&lt;b&gt;Incertidumbre&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;requires_human_review = true&lt;br/&gt;(clasificación igual se procesa)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontColor=#000000;arcSize=8;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="60" y="770" width="210" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ MOTOR DE REGLAS DE NEGOCIO ══════════════════════════ -->
+        <mxCell id="biz-rules" value="Motor de Reglas de Negocio&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;BR-SEV-01: ¿Indicador de criticidad? → CRITICO&lt;br/&gt;BR-SEV-02: ¿Indicador de alto riesgo? → ALTO&lt;br/&gt;BR-HUM-02: CRITICO + conf &lt; 0.80 → human_review&lt;br/&gt;BR-NOT-01: CRITICO/ALTO → notificación inmediata&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#000000;arcSize=8;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="330" y="920" width="340" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ REGISTRAR EN EXPEDIENTE ═════════════════════════════ -->
+        <mxCell id="persist" value="Registrar ClasificaciónFinal&lt;br/&gt;en Expediente Único&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;(Base de Datos Operacional)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#000000;arcSize=8;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="365" y="1082" width="270" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ TERMINALES ══════════════════════════════════════════ -->
+
+        <!-- Terminal: Éxito -->
+        <mxCell id="end-ok" value="FIN — Clasificación exitosa" style="ellipse;whiteSpace=wrap;html=1;fillColor=#00B050;strokeColor=#006622;fontColor=#ffffff;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="375" y="1205" width="250" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Terminal: Fallback + Human Review -->
+        <mxCell id="end-fb" value="FIN — DefaultClassification&lt;br/&gt;+ revisión humana activada" style="ellipse;whiteSpace=wrap;html=1;fillColor=#C00000;strokeColor=#880000;fontColor=#ffffff;fontStyle=1;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="705" y="585" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ CONEXIONES ══════════════════════════════════════════ -->
+
+        <!-- start → invoke -->
+        <mxCell id="c01" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#555555;" edge="1" source="start" target="invoke" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- invoke → d1 -->
+        <mxCell id="c02" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#555555;" edge="1" source="invoke" target="d1" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- d1 → No → d-retry (derecha) -->
+        <mxCell id="c03" value="No" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#B85450;fontColor=#B85450;fontStyle=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="d1" target="d-retry" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- d-retry → Sí → backoff (arriba) -->
+        <mxCell id="c04" value="Sí" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#00B050;fontColor=#00B050;fontStyle=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" source="d-retry" target="backoff" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- backoff → invoke (reintentar) -->
+        <mxCell id="c05" value="reintentar" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=1;strokeColor=#D79B00;fontColor=#D79B00;fontSize=9;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;" edge="1" source="backoff" target="invoke" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="190" />
+              <mxPoint x="620" y="210" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- d-retry → No → fb-api (abajo) -->
+        <mxCell id="c06" value="No" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#B85450;fontColor=#B85450;fontStyle=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="d-retry" target="fb-api" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- fb-api → end-fb -->
+        <mxCell id="c07" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#B85450;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="fb-api" target="end-fb" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- d1 → Sí → d2 (abajo) -->
+        <mxCell id="c08" value="Sí" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#00B050;fontColor=#00B050;fontStyle=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="d1" target="d2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- d2 → No → fb-json (izquierda) -->
+        <mxCell id="c09" value="No" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#B85450;fontColor=#B85450;fontStyle=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="d2" target="fb-json" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- fb-json → end-fb -->
+        <mxCell id="c10" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#B85450;exitX=0.5;exitY=1;exitDx=0;exitDy=0;edgeStyle=orthogonalEdgeStyle;" edge="1" source="fb-json" target="end-fb" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="165" y="615" />
+              <mxPoint x="815" y="615" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- d2 → Sí → d3 (abajo) -->
+        <mxCell id="c11" value="Sí" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#00B050;fontColor=#00B050;fontStyle=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="d2" target="d3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- d3 → No → normalize (izquierda) -->
+        <mxCell id="c12" value="No" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#D79B00;fontColor=#D79B00;fontStyle=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="d3" target="normalize" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- normalize → d4 (retoma flujo) -->
+        <mxCell id="c13" value="continúa" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=1;strokeColor=#D79B00;fontColor=#D79B00;fontSize=9;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;" edge="1" source="normalize" target="d4" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="165" y="760" />
+              <mxPoint x="370" y="808" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- d3 → Sí → d4 (abajo) -->
+        <mxCell id="c14" value="Sí" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#00B050;fontColor=#00B050;fontStyle=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="d3" target="d4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- d4 → No → human-review (izquierda) -->
+        <mxCell id="c15" value="No" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#D79B00;fontColor=#D79B00;fontStyle=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="d4" target="human-review" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- human-review → biz-rules (retoma flujo) -->
+        <mxCell id="c16" value="continúa" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=1;strokeColor=#D79B00;fontColor=#D79B00;fontSize=9;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;" edge="1" source="human-review" target="biz-rules" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="165" y="920" />
+              <mxPoint x="330" y="970" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- d4 → Sí → biz-rules (abajo) -->
+        <mxCell id="c17" value="Sí" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#00B050;fontColor=#00B050;fontStyle=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="d4" target="biz-rules" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- biz-rules → persist -->
+        <mxCell id="c18" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#555555;" edge="1" source="biz-rules" target="persist" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- persist → end-ok -->
+        <mxCell id="c19" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#00B050;" edge="1" source="persist" target="end-ok" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════ LEYENDA ══════════════════════════════════════════════ -->
+        <mxCell id="legend-title" value="Leyenda" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="830" y="900" width="80" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="Proceso" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=9;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="830" y="925" width="90" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="Decisión" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#CC9900;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="830" y="960" width="90" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="Fallback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=9;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="830" y="1005" width="90" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4" value="Normalización" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=9;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="830" y="1038" width="90" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg5" value="Reglas de negocio" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=9;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="830" y="1071" width="110" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg6" value="Éxito" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=9;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="830" y="1104" width="90" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- Nota FB escenarios -->
+        <mxCell id="fb-note" value="&lt;b&gt;Escenarios de Fallback&lt;/b&gt;&lt;br/&gt;FB-01: Timeout / Error de red&lt;br/&gt;FB-02: Error HTTP 5xx&lt;br/&gt;FB-03: Error HTTP 401/403 (no reintenta)&lt;br/&gt;FB-04: Rate limit HTTP 429&lt;br/&gt;FB-05: JSON malformado&lt;br/&gt;FB-06: Campos faltantes en contrato&lt;br/&gt;FB-07: Valores fuera de taxonomía&lt;br/&gt;FB-08: confidence_score &lt; 0.60&lt;br/&gt;FB-09: Reintentos agotados&lt;br/&gt;FB-10: Excepción no manejada" style="text;html=1;strokeColor=#AAAAAA;fillColor=#F5F5F5;rounded=1;fontSize=9;align=left;verticalAlign=top;fontColor=#333333;spacingLeft=6;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="820" y="1150" width="220" height="185" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

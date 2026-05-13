@@ -24,7 +24,13 @@ from app.models.sc_notificaciones import (
     PlantillaNotificacion,
     PreferenciaNotificacion,
 )
-from app.models.sc_omnicanal import CanalReporte, ReporteEntrante
+from app.models.sc_omnicanal import (
+    CanalReporte,
+    Conversacion,
+    EventoConversacion,
+    MensajeConversacion,
+    ReporteEntrante,
+)
 from app.models.sc_users import (
     DispositivoUsuario,
     Permiso,
@@ -44,8 +50,10 @@ __all__ = [
     "CategoriaObjeto",
     "ClasificacionIa",
     "ComentarioIncidente",
+    "Conversacion",
     "DispositivoUsuario",
     "EstadoIntegracion",
+    "EventoConversacion",
     "EventoAcompanamiento",
     "Evidencia",
     "ExpedienteCierre",
@@ -53,6 +61,7 @@ __all__ = [
     "HistorialIncidente",
     "Incidente",
     "KpiOperativo",
+    "MensajeConversacion",
     "Notificacion",
     "Permiso",
     "PlantillaNotificacion",

@@ -1665,6 +1665,50 @@ export type Database = {
           },
         ]
       }
+      expediente_cierre: {
+        Row: {
+          created_at: string
+          generado_por_id: string
+          id: string
+          incidente_id: string
+          pdf_url: string | null
+          resultado: string | null
+          resumen_cierre: string
+          snapshot: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          generado_por_id: string
+          id?: string
+          incidente_id: string
+          pdf_url?: string | null
+          resultado?: string | null
+          resumen_cierre: string
+          snapshot: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          generado_por_id?: string
+          id?: string
+          incidente_id?: string
+          pdf_url?: string | null
+          resultado?: string | null
+          resumen_cierre?: string
+          snapshot?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expediente_cierre_incidente_id_fkey"
+            columns: ["incidente_id"]
+            isOneToOne: true
+            referencedRelation: "incidente"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       historial_incidente: {
         Row: {
           accion: string
@@ -2158,6 +2202,168 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      conversacion: {
+        Row: {
+          canal_id: string
+          cerrado_at: string | null
+          cerrado_por_id: string | null
+          created_at: string
+          estado: string
+          external_chat_id: string
+          id: string
+          incidente_id: string | null
+          metadatos: Json | null
+          modo_atencion: string
+          motivo_cierre: string | null
+          nombre_contacto: string | null
+          operador_asignado_id: string | null
+          prioridad: string
+          telefono_contacto: string | null
+          tomado_at: string | null
+          tomado_por_id: string | null
+          ultimo_mensaje_at: string
+          ultimo_mensaje_preview: string | null
+          updated_at: string
+        }
+        Insert: {
+          canal_id: string
+          cerrado_at?: string | null
+          cerrado_por_id?: string | null
+          created_at?: string
+          estado?: string
+          external_chat_id: string
+          id?: string
+          incidente_id?: string | null
+          metadatos?: Json | null
+          modo_atencion?: string
+          motivo_cierre?: string | null
+          nombre_contacto?: string | null
+          operador_asignado_id?: string | null
+          prioridad?: string
+          telefono_contacto?: string | null
+          tomado_at?: string | null
+          tomado_por_id?: string | null
+          ultimo_mensaje_at?: string
+          ultimo_mensaje_preview?: string | null
+          updated_at?: string
+        }
+        Update: {
+          canal_id?: string
+          cerrado_at?: string | null
+          cerrado_por_id?: string | null
+          created_at?: string
+          estado?: string
+          external_chat_id?: string
+          id?: string
+          incidente_id?: string | null
+          metadatos?: Json | null
+          modo_atencion?: string
+          motivo_cierre?: string | null
+          nombre_contacto?: string | null
+          operador_asignado_id?: string | null
+          prioridad?: string
+          telefono_contacto?: string | null
+          tomado_at?: string | null
+          tomado_por_id?: string | null
+          ultimo_mensaje_at?: string
+          ultimo_mensaje_preview?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversacion_canal_id_fkey"
+            columns: ["canal_id"]
+            isOneToOne: false
+            referencedRelation: "canal_reporte"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evento_conversacion: {
+        Row: {
+          actor_usuario_id: string | null
+          conversacion_id: string
+          created_at: string
+          id: string
+          payload: Json | null
+          tipo_evento: string
+        }
+        Insert: {
+          actor_usuario_id?: string | null
+          conversacion_id: string
+          created_at?: string
+          id?: string
+          payload?: Json | null
+          tipo_evento: string
+        }
+        Update: {
+          actor_usuario_id?: string | null
+          conversacion_id?: string
+          created_at?: string
+          id?: string
+          payload?: Json | null
+          tipo_evento?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evento_conversacion_conversacion_id_fkey"
+            columns: ["conversacion_id"]
+            isOneToOne: false
+            referencedRelation: "conversacion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mensaje_conversacion: {
+        Row: {
+          autor_tipo: string
+          autor_usuario_id: string | null
+          contenido: string | null
+          conversacion_id: string
+          created_at: string
+          direccion: string
+          estado_entrega: string
+          external_message_id: string | null
+          id: string
+          payload_raw: Json | null
+          tipo_contenido: string
+        }
+        Insert: {
+          autor_tipo: string
+          autor_usuario_id?: string | null
+          contenido?: string | null
+          conversacion_id: string
+          created_at?: string
+          direccion: string
+          estado_entrega?: string
+          external_message_id?: string | null
+          id?: string
+          payload_raw?: Json | null
+          tipo_contenido?: string
+        }
+        Update: {
+          autor_tipo?: string
+          autor_usuario_id?: string | null
+          contenido?: string | null
+          conversacion_id?: string
+          created_at?: string
+          direccion?: string
+          estado_entrega?: string
+          external_message_id?: string | null
+          id?: string
+          payload_raw?: Json | null
+          tipo_contenido?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mensaje_conversacion_conversacion_id_fkey"
+            columns: ["conversacion_id"]
+            isOneToOne: false
+            referencedRelation: "conversacion"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reporte_entrante: {
         Row: {

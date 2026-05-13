@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" agent="Claude">
+  <diagram id="ciclo-vida-prompts" name="Ciclo de Vida de Prompts">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1650" pageHeight="520" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ═══════════════════════════════════════ TÍTULO ══════════════════════════════════════════ -->
+        <mxCell id="title" value="Ciclo de Vida del Prompt — SafeCampus PUCP" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=17;fontStyle=1;fontColor=#1F4E79;" vertex="1" parent="1">
+          <mxGeometry x="325" y="12" width="1000" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="Convención de versionado: PROMPT-IA-{TIPO}-v{MAYOR}.{MENOR}   |   Referencia: Especificación Técnica Módulo LLM — Sección 2.5" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="200" y="46" width="1250" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════ FASES ══════════════════════════════════════════ -->
+
+        <!-- Fase 1: DISEÑO -->
+        <mxCell id="p1" value="&lt;b style=&quot;font-size:13px;&quot;&gt;① DISEÑO&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;Redacción de plantilla,&lt;br/&gt;taxonomía y restricciones&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFD966;strokeColor=#CC9900;fontColor=#000000;arcSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="50" y="155" width="155" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Fase 2: PRUEBA -->
+        <mxCell id="p2" value="&lt;b style=&quot;font-size:13px;&quot;&gt;② PRUEBA&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;Validación con casos&lt;br/&gt;representativos (≥ 90%)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF914D;strokeColor=#CC5500;fontColor=#ffffff;arcSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="265" y="155" width="155" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Fase 3: VERSIONADO -->
+        <mxCell id="p3" value="&lt;b style=&quot;font-size:13px;&quot;&gt;③ VERSIONADO&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;Registro en registry.json&lt;br/&gt;PROMPT-IA-CLAS-vX.Y&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0070C0;strokeColor=#004080;fontColor=#ffffff;arcSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="480" y="155" width="155" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Fase 4: ACTIVACIÓN -->
+        <mxCell id="p4" value="&lt;b style=&quot;font-size:13px;&quot;&gt;④ ACTIVACIÓN&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;Fábrica lo establece&lt;br/&gt;como versión vigente&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00B050;strokeColor=#006622;fontColor=#ffffff;arcSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="695" y="155" width="155" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Fase 5: EJECUCIÓN -->
+        <mxCell id="p5" value="&lt;b style=&quot;font-size:13px;&quot;&gt;⑤ EJECUCIÓN&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;Orquestador compila&lt;br/&gt;e invoca al LLM&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#ffffff;arcSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="910" y="155" width="155" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Fase 6: MONITOREO -->
+        <mxCell id="p6" value="&lt;b style=&quot;font-size:13px;&quot;&gt;⑥ MONITOREO&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;Tasa de éxito, zona de&lt;br/&gt;incertidumbre, tokens&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7030A0;strokeColor=#4B0082;fontColor=#ffffff;arcSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1125" y="155" width="155" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Fase 7: EVOLUCIÓN -->
+        <mxCell id="p7" value="&lt;b style=&quot;font-size:13px;&quot;&gt;⑦ EVOLUCIÓN&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;Nueva versión si se&lt;br/&gt;detectan deficiencias&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C00000;strokeColor=#880000;fontColor=#ffffff;arcSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="155" width="155" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════ FLECHAS PRINCIPALES ════════════════════════════ -->
+
+        <!-- 1→2 -->
+        <mxCell id="a12" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#888888;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="p1" target="p2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 2→3 -->
+        <mxCell id="a23" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#888888;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="p2" target="p3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 3→4 -->
+        <mxCell id="a34" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#888888;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="p3" target="p4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 4→5 -->
+        <mxCell id="a45" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#888888;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="p4" target="p5" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 5→6 -->
+        <mxCell id="a56" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#888888;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="p5" target="p6" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- 6→7 -->
+        <mxCell id="a67" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#888888;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="p6" target="p7" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════ FLECHA DE RETORNO ══════════════════════════════ -->
+        <!-- 7→1: Ciclo de retroalimentación (nueva versión) -->
+        <mxCell id="a71" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#C00000&quot;&gt;&lt;b&gt;nueva versión&lt;/b&gt;&lt;/font&gt;" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=2;strokeColor=#C00000;dashed=1;dashPattern=6 4;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;rounded=1;" edge="1" source="p7" target="p1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1417" y="440" />
+              <mxPoint x="127" y="440" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ═══════════════════════════════════════ NOTAS / LEYENDA ══════════════════════════════ -->
+
+        <!-- Nota prueba fallida -->
+        <mxCell id="note-fail" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#CC5500&quot;&gt;Si &lt; 90% precisión:&lt;br/&gt;volver a DISEÑO&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=#FFF2CC;rounded=1;fontSize=9;align=center;verticalAlign=middle;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="285" y="290" width="115" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="note-fail-arrow" value="" style="endArrow=blockThin;endFill=1;html=1;strokeWidth=1;strokeColor=#CC5500;dashed=1;exitX=0.1;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" source="note-fail" target="p1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="300" y="315" />
+              <mxPoint x="128" y="315" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Leyenda de estado de activación -->
+        <mxCell id="legend-active" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#006622&quot;&gt;estado = &quot;activo&quot;&lt;br/&gt;en registry.json&lt;/font&gt;" style="text;html=1;strokeColor=#00B050;fillColor=#E2EFDA;rounded=1;fontSize=9;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="715" y="290" width="115" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Leyenda de borde inferior -->
+        <mxCell id="legend-box" value="&lt;b style=&quot;font-size:10px;&quot;&gt;Leyenda de fases&lt;/b&gt;&lt;br/&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;● Amarillo: Creación   ● Naranja: Validación   ● Azul: Registro   ● Verde: Activación   ● Celeste: Operación   ● Violeta: Análisis   ● Rojo: Evolución&lt;/font&gt;" style="text;html=1;strokeColor=#AAAAAA;fillColor=#F5F5F5;rounded=1;fontSize=9;align=center;verticalAlign=middle;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="250" y="465" width="1150" height="35" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
