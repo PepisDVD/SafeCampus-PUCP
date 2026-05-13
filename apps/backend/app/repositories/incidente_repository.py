@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.constants import INCIDENT_CODE_PREFIX
+from app.models.sc_clasificacion import ClasificacionIa
 from app.models.sc_incidentes import (
     ComentarioIncidente,
     Evidencia,
@@ -874,3 +875,34 @@ class IncidenteRepository:
             "estado": nuevo.estado,
             "created_at": nuevo.created_at,
         }
+
+    async def create_clasificacion_ia(
+        self,
+        *,
+        incidente_id: str,
+        categoria_sugerida: str | None,
+        severidad_sugerida: str,
+        confianza: float | None,
+        origen: str,
+        modelo_utilizado: str | None,
+        prompt_version: str | None,
+        respuesta_raw: dict[str, Any],
+        categoria_final: str | None,
+        severidad_final: str | None,
+    ) -> dict[str, Any]:
+        clasificacion = ClasificacionIa(
+            incidente_id=UUID(incidente_id),
+            categoria_sugerida=categoria_sugerida,
+            severidad_sugerida=severidad_sugerida,
+            confianza=confianza,
+            origen=origen,
+            modelo_utilizado=modelo_utilizado,
+            prompt_version=prompt_version,
+            respuesta_raw=respuesta_raw,
+            categoria_final=categoria_final,
+            severidad_final=severidad_final,
+        )
+        self.db.add(clasificacion)
+        await self.db.flush()
+        await self.db.refresh(clasificacion)
+        return {"id": str(clasificacion.id)}

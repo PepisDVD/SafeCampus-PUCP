@@ -57,7 +57,7 @@ class IncidenteMapaResponse(BaseModel):
 
 class IncidenteCreateInput(BaseModel):
     titulo: str = Field(min_length=3, max_length=200)
-    descripcion: str = Field(min_length=10)
+    descripcion: str | None = Field(default=None, max_length=4000)
     severidad: NivelSeveridad | None = None
     categoria: str | None = Field(default=None, max_length=100)
     lugar_referencia: str | None = Field(default=None, max_length=255)
@@ -77,6 +77,18 @@ class IncidenteEstadoUpdate(BaseModel):
     comentario: str | None = Field(default=None, max_length=2000)
     resumen_cierre: str | None = Field(default=None, min_length=20, max_length=6000)
     resultado_cierre: str | None = Field(default=None, max_length=2000)
+
+
+class ExpedienteCierreAiDraft(BaseModel):
+    resumen_cierre: str = Field(min_length=20, max_length=6000)
+    resultado_cierre: str | None = Field(default=None, max_length=2000)
+
+
+class IncidentePriorizacionAi(BaseModel):
+    severidad: NivelSeveridad
+    categoria_sugerida: str | None = Field(default=None, max_length=100)
+    confianza: float | None = Field(default=None, ge=0, le=1)
+    justificacion: str | None = Field(default=None, max_length=1200)
 
 
 class IncidenteAsignacionUpdate(BaseModel):
@@ -212,7 +224,7 @@ class IncidenteDetail(BaseModel):
     id: str
     codigo: str
     titulo: str
-    descripcion: str
+    descripcion: str | None = None
     estado: EstadoIncidente
     severidad: NivelSeveridad | None = None
     categoria: str | None = None

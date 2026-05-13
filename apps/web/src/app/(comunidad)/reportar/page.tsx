@@ -120,11 +120,11 @@ export default function ReportarPage() {
 
   const puedeContinuar = useMemo(() => {
     if (step === 0) return Boolean(tipo);
-    if (step === 1) return Boolean(severidad);
-    if (step === 2) return descripcion.trim().length > 12;
+    if (step === 1) return true;
+    if (step === 2) return true;
     if (step === 3) return Boolean(zona);
     return true;
-  }, [descripcion, severidad, step, tipo, zona]);
+  }, [step, tipo, zona]);
 
   const siguiente = () => {
     if (!puedeContinuar || step === 4) return;
@@ -173,7 +173,7 @@ export default function ReportarPage() {
 
     const payload: IncidenteCreateInput = {
       titulo: tipoSeleccionado?.titulo ?? "Incidente reportado",
-      descripcion: descripcion.trim(),
+      descripcion: descripcion.trim() || null,
       severidad: severidad || null,
       categoria: tipo,
       lugar_referencia: lugar,
@@ -265,8 +265,8 @@ export default function ReportarPage() {
           </CardTitle>
           <CardDescription>
             {step === 0 && "Esto permite clasificar la atencion operativa."}
-            {step === 1 && "Selecciona el nivel de severidad percibido."}
-            {step === 2 && "Incluye contexto util para responder mas rapido."}
+            {step === 1 && "Puedes indicar tu percepcion o dejar que la IA priorice."}
+            {step === 2 && "Opcional: agrega contexto util para responder mas rapido."}
             {step === 3 && "Ubicacion precisa para despacho de operadores."}
           </CardDescription>
         </CardHeader>
@@ -323,7 +323,7 @@ export default function ReportarPage() {
           {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-sm font-medium">Descripcion del incidente</p>
+                <p className="text-sm font-medium">Descripcion del incidente (opcional)</p>
                 <Textarea
                   value={descripcion}
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
@@ -332,6 +332,9 @@ export default function ReportarPage() {
                   rows={5}
                   placeholder="Ejemplo: Se observa persona sospechosa en zona de estacionamiento..."
                 />
+                <p className="text-xs text-muted-foreground">
+                  Si no agregas descripcion, el backend priorizara con el tipo y la ubicacion.
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">Canal: web</Badge>
@@ -458,7 +461,7 @@ export default function ReportarPage() {
                 </div>
                 <p>Tipo: {tipo || "-"}</p>
                 <p>
-                  Prioridad: {severidad ? SEVERIDAD_LABEL[severidad] : "-"}
+                  Prioridad: {severidad ? SEVERIDAD_LABEL[severidad] : "Sera estimada por IA"}
                 </p>
                 <p>
                   Zona:{" "}

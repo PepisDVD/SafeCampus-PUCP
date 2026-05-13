@@ -14,7 +14,7 @@ function formatBytes(bytes: number | null): string | null {
 
 export function IncidenteEvidencias({ evidencias }: Props) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6">
+    <section className="rounded-lg border border-slate-200 bg-white p-5">
       <div className="mb-4 flex items-center gap-2">
         <Paperclip className="h-5 w-5 text-[#001C55]" />
         <h2 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
@@ -36,7 +36,7 @@ export function IncidenteEvidencias({ evidencias }: Props) {
                 href={evidencia.url_archivo}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 transition hover:border-[#001C55]/40 hover:bg-slate-50"
+                className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 transition hover:border-[#001C55]/40 hover:bg-slate-50"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#001C55]/10 text-[#001C55]">
                   <Paperclip className="h-4 w-4" />

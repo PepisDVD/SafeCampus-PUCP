@@ -22,7 +22,7 @@ class Incidente(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
     codigo: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     titulo: Mapped[str] = mapped_column(String(200), nullable=False)
-    descripcion: Mapped[str] = mapped_column(Text, nullable=False)
+    descripcion: Mapped[str | None] = mapped_column(Text)
     estado: Mapped[str] = mapped_column(EstadoIncidenteEnum, nullable=False, server_default="RECIBIDO")
     severidad: Mapped[str | None] = mapped_column(NivelSeveridadEnum)
     categoria: Mapped[str | None] = mapped_column(String(100))

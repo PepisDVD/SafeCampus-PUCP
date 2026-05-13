@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # --- Integraciones externas ---
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     GOOGLE_MAPS_API_KEY: str = ""
     WHATSAPP_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""

@@ -10,6 +10,7 @@ import type {
   IncidenteAsignacionUpdate,
   ComentarioIncidenteCreateInput,
   ComentarioIncidenteItem,
+  ExpedienteCierreAiDraft,
   IncidenteDetail,
   IncidenteEstadoUpdate,
 } from "@safecampus/shared-types";
@@ -52,5 +53,14 @@ export async function crearComentarioIncidente(
   return api.post<ComentarioIncidenteItem>(
     `/incidentes/${encodeURIComponent(incidenteId)}/comentarios`,
     body,
+  );
+}
+
+export async function generarBorradorCierreIa(
+  incidenteId: string,
+): Promise<ExpedienteCierreAiDraft> {
+  return api.post<ExpedienteCierreAiDraft>(
+    `/incidentes/${encodeURIComponent(incidenteId)}/expediente-cierre/borrador-ia`,
+    {},
   );
 }

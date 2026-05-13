@@ -11,6 +11,8 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.constants import NivelSeveridad
 from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.incidente_repository import IncidenteRepository
 from app.repositories.notificacion_repository import NotificacionRepository
@@ -19,8 +21,9 @@ from app.schemas.incidente import (
     ComentarioIncidenteItem,
     DashboardStats,
     EvidenciaIncidenteItem,
-    ExpedienteCierreOut,
     EvolucionPunto,
+    ExpedienteCierreAiDraft,
+    ExpedienteCierreOut,
     HistorialEvento,
     IncidenteAsignacionUpdate,
     IncidenteCreated,
@@ -30,6 +33,7 @@ from app.schemas.incidente import (
     IncidenteListItem,
     IncidenteMapaItem,
     IncidenteMapaResponse,
+    IncidentePriorizacionAi,
     KpiCard,
     KpisResponse,
     OperadorListItem,
@@ -38,7 +42,7 @@ from app.schemas.incidente import (
     UsuarioMini,
     ZonaCount,
 )
-
+from app.services.gemini_service import GeminiService
 
 # Targets de SLA — constantes operativas.
 FRT_TARGET_MIN = 5.0
@@ -66,6 +70,7 @@ class IncidenteService:
         self._repo = IncidenteRepository(db)
         self._auditoria = AuditoriaRepository(db)
         self._notificaciones = NotificacionRepository(db)
+        self._gemini = GeminiService()
 
     async def listar_recentes(
         self,
@@ -488,6 +493,26 @@ class IncidenteService:
             )
         return await self.obtener_detalle(incidente_id)
 
+    async def generar_borrador_cierre_ia(
+        self,
+        incidente_id: str,
+        ejecutor_id: str,
+    ) -> ExpedienteCierreAiDraft:
+        detalle = await self.obtener_detalle(incidente_id)
+        contexto = self._build_contexto_cierre_ia(detalle)
+        draft = await self._gemini.generar_borrador_cierre(contexto=contexto)
+        await self._registrar_auditoria_incidente(
+            usuario_id=ejecutor_id,
+            accion="generar_borrador_cierre_ia",
+            incidente_id=incidente_id,
+            detalle={
+                "codigo": detalle.codigo,
+                "estado": detalle.estado.value,
+                "modelo": "gemini",
+            },
+        )
+        return draft
+
     async def asignar_operador(
         self,
         incidente_id: str,
@@ -647,13 +672,25 @@ class IncidenteService:
         reportante_id: str,
         data: IncidenteCreateInput,
     ) -> IncidenteCreated:
+        descripcion = data.descripcion.strip() if data.descripcion else None
+        priorizacion = await self._priorizar_incidente_ia(data, descripcion)
+        severidad_final = (
+            data.severidad.value
+            if data.severidad
+            else priorizacion.severidad.value
+        )
+        categoria_final = (
+            data.categoria.strip()
+            if data.categoria
+            else priorizacion.categoria_sugerida
+        )
         creado = await self._repo.create_incidente(
             reportante_id=reportante_id,
             data={
                 "titulo": data.titulo.strip(),
-                "descripcion": data.descripcion.strip(),
-                "severidad": data.severidad.value if data.severidad else None,
-                "categoria": data.categoria.strip() if data.categoria else None,
+                "descripcion": descripcion,
+                "severidad": severidad_final,
+                "categoria": categoria_final,
                 "latitud": data.latitud,
                 "longitud": data.longitud,
                 "lugar_referencia": (
@@ -661,6 +698,24 @@ class IncidenteService:
                 ),
                 "canal_origen": "WEB",
             },
+        )
+        await self._repo.create_clasificacion_ia(
+            incidente_id=creado["id"],
+            categoria_sugerida=priorizacion.categoria_sugerida,
+            severidad_sugerida=priorizacion.severidad.value,
+            confianza=priorizacion.confianza,
+            origen="IA" if settings.GEMINI_API_KEY else "FALLBACK",
+            modelo_utilizado=settings.GEMINI_MODEL if settings.GEMINI_API_KEY else None,
+            prompt_version="incidente_priorizacion_v1",
+            respuesta_raw={
+                "severidad": priorizacion.severidad.value,
+                "categoria_sugerida": priorizacion.categoria_sugerida,
+                "confianza": priorizacion.confianza,
+                "justificacion": priorizacion.justificacion,
+                "fuente": "gemini" if settings.GEMINI_API_KEY else "fallback",
+            },
+            categoria_final=categoria_final,
+            severidad_final=severidad_final,
         )
         await self._registrar_auditoria_incidente(
             usuario_id=reportante_id,
@@ -670,6 +725,22 @@ class IncidenteService:
                 "codigo": creado["codigo"],
                 "estado": creado["estado"],
                 "canal_origen": "WEB",
+                "severidad_final": severidad_final,
+                "severidad_sugerida_ia": priorizacion.severidad.value,
+                "categoria_sugerida_ia": priorizacion.categoria_sugerida,
+            },
+        )
+        await self._registrar_auditoria_incidente(
+            usuario_id=reportante_id,
+            accion="priorizar_incidente_ia",
+            incidente_id=creado["id"],
+            detalle={
+                "codigo": creado["codigo"],
+                "severidad_sugerida": priorizacion.severidad.value,
+                "severidad_final": severidad_final,
+                "categoria_sugerida": priorizacion.categoria_sugerida,
+                "confianza": priorizacion.confianza,
+                "justificacion": priorizacion.justificacion,
             },
         )
         supervisores = await self._repo.list_usuarios_by_roles(
@@ -684,6 +755,32 @@ class IncidenteService:
             exclude={reportante_id},
         )
         return IncidenteCreated.model_validate(creado)
+
+    async def _priorizar_incidente_ia(
+        self,
+        data: IncidenteCreateInput,
+        descripcion: str | None,
+    ) -> Any:
+        contexto = {
+            "titulo": data.titulo.strip(),
+            "descripcion": descripcion,
+            "categoria_reportada": data.categoria.strip() if data.categoria else None,
+            "severidad_reportada": data.severidad.value if data.severidad else None,
+            "lugar_referencia": (
+                data.lugar_referencia.strip() if data.lugar_referencia else None
+            ),
+            "canal_origen": "WEB",
+        }
+        try:
+            return await self._gemini.priorizar_incidente(contexto=contexto)
+        except Exception:
+            fallback = data.severidad or NivelSeveridad.MEDIO
+            return IncidentePriorizacionAi(
+                severidad=fallback,
+                categoria_sugerida=data.categoria.strip() if data.categoria else None,
+                confianza=0.0,
+                justificacion="Fallback local por indisponibilidad de priorizacion IA.",
+            )
 
     async def _registrar_auditoria_incidente(
         self,
@@ -803,6 +900,80 @@ class IncidenteService:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
+
+    @staticmethod
+    def _usuario_contexto(usuario: UsuarioMini | None) -> dict[str, Any] | None:
+        if not usuario:
+            return None
+        return {
+            "nombre": usuario.nombre_completo,
+        }
+
+    @classmethod
+    def _build_contexto_cierre_ia(cls, detalle: IncidenteDetail) -> dict[str, Any]:
+        return {
+            "incidente": {
+                "codigo": detalle.codigo,
+                "titulo": detalle.titulo,
+                "descripcion": detalle.descripcion,
+                "estado": detalle.estado.value,
+                "severidad": detalle.severidad.value if detalle.severidad else None,
+                "categoria": detalle.categoria,
+                "lugar_referencia": detalle.lugar_referencia,
+                "canal_origen": detalle.canal_origen.value,
+                "reportado_el": detalle.created_at.isoformat(),
+                "primera_respuesta": (
+                    detalle.fecha_primera_respuesta.isoformat()
+                    if detalle.fecha_primera_respuesta
+                    else None
+                ),
+                "resuelto_el": (
+                    detalle.fecha_resolucion.isoformat()
+                    if detalle.fecha_resolucion
+                    else None
+                ),
+            },
+            "participantes": {
+                "reportante": cls._usuario_contexto(detalle.reportante),
+                "operador_asignado": cls._usuario_contexto(
+                    detalle.operador_asignado
+                ),
+                "supervisor": cls._usuario_contexto(detalle.supervisor),
+            },
+            "historial": [
+                {
+                    "accion": item.accion,
+                    "estado_anterior": (
+                        item.estado_anterior.value if item.estado_anterior else None
+                    ),
+                    "estado_nuevo": item.estado_nuevo.value,
+                    "comentario": item.comentario,
+                    "ejecutado_por": cls._usuario_contexto(item.ejecutado_por),
+                    "fecha": item.created_at.isoformat(),
+                }
+                for item in detalle.historial
+            ],
+            "comentarios": [
+                {
+                    "autor": cls._usuario_contexto(item.autor),
+                    "contenido": item.contenido,
+                    "es_interno": item.es_interno,
+                    "fecha": item.created_at.isoformat(),
+                }
+                for item in detalle.comentarios
+            ],
+            "evidencias": [
+                {
+                    "tipo_archivo": item.tipo_archivo,
+                    "nombre_archivo": item.nombre_archivo,
+                    "descripcion": item.descripcion,
+                    "mime_type": item.mime_type,
+                    "fecha": item.created_at.isoformat(),
+                    "cargado_por": cls._usuario_contexto(item.cargado_por),
+                }
+                for item in detalle.evidencias
+            ],
+        }
 
     async def _notify_unique(
         self,

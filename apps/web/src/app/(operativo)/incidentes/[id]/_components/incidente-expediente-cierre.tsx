@@ -23,7 +23,7 @@ export function IncidenteExpedienteCierre({ expediente }: Props) {
   }
 
   return (
-    <section className="rounded-2xl border border-emerald-200 bg-white p-6">
+    <section className="rounded-lg border border-emerald-200 bg-white p-5">
       <div className="mb-4 flex items-center gap-2">
         <FileCheck2 className="h-5 w-5 text-emerald-700" />
         <h2 className="text-sm font-semibold tracking-wide text-slate-700 uppercase">

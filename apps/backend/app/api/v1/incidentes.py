@@ -14,6 +14,7 @@ from app.schemas.incidente import (
     ComentarioIncidenteCreateInput,
     ComentarioIncidenteItem,
     DashboardStats,
+    ExpedienteCierreAiDraft,
     IncidenteAsignacionUpdate,
     IncidenteCreated,
     IncidenteCreateInput,
@@ -162,6 +163,22 @@ async def cambiar_estado_incidente(
         incidente_id=incidente_id,
         ejecutor_id=current_user.id,
         data=body,
+    )
+
+
+@router.post(
+    "/{incidente_id}/expediente-cierre/borrador-ia",
+    response_model=ExpedienteCierreAiDraft,
+)
+async def generar_borrador_cierre_ia(
+    incidente_id: str,
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Genera con Gemini un borrador editable para el expediente de cierre."""
+    return await service.generar_borrador_cierre_ia(
+        incidente_id=incidente_id,
+        ejecutor_id=current_user.id,
     )
 
 

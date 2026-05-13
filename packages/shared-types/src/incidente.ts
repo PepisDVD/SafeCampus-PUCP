@@ -13,7 +13,7 @@ export interface Incidente {
   id: string;
   codigo: string; // INC-YYYYMMDD-XXXXX
   titulo: string;
-  descripcion: string;
+  descripcion: string | null;
   estado: EstadoIncidente;
   severidad: NivelSeveridad;
   categoria: string | null;
@@ -112,6 +112,20 @@ export interface ExpedienteCierre {
   updated_at: string;
 }
 
+/** Borrador generado por IA para completar el expediente de cierre. */
+export interface ExpedienteCierreAiDraft {
+  resumen_cierre: string;
+  resultado_cierre: string | null;
+}
+
+/** Resultado de priorizacion automatica de un incidente. */
+export interface IncidentePriorizacionAi {
+  severidad: NivelSeveridad;
+  categoria_sugerida: string | null;
+  confianza: number | null;
+  justificacion: string | null;
+}
+
 /** Conteo de incidentes por zona (lugar_referencia). */
 export interface ZonaCount {
   zona: string;
@@ -184,7 +198,7 @@ export interface IncidenteDetail {
   id: string;
   codigo: string;
   titulo: string;
-  descripcion: string;
+  descripcion: string | null;
   estado: EstadoIncidente;
   severidad: NivelSeveridad | null;
   categoria: string | null;
@@ -236,7 +250,7 @@ export interface IncidenteMapaResponse {
 /** Body de POST /api/v1/incidentes (creación desde el PWA Comunidad). */
 export interface IncidenteCreateInput {
   titulo: string;
-  descripcion: string;
+  descripcion?: string | null;
   severidad?: NivelSeveridad | null;
   categoria?: string | null;
   lugar_referencia?: string | null;
