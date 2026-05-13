@@ -391,7 +391,7 @@ export function WhatsAppConsole() {
   const selectedAi = selectedConversation ? getAiClassification(selectedConversation) : null;
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] min-h-[720px] flex-col bg-slate-50 p-6">
+    <div className="flex h-[calc(100vh-5rem)] min-h-180 flex-col bg-slate-50 p-6">
       <header className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
