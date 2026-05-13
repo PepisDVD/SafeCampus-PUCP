@@ -35,6 +35,8 @@ import {
 } from "@/features/incidentes/presentation";
 
 import { IncidenteAcciones } from "./_components/incidente-acciones";
+import { IncidenteEvidencias } from "./_components/incidente-evidencias";
+import { IncidenteExpedienteCierre } from "./_components/incidente-expediente-cierre";
 import { IncidenteHistorial } from "./_components/incidente-historial";
 import { UsuarioCard } from "./_components/usuario-card";
 
@@ -151,8 +153,10 @@ export default async function IncidenteDetallePage({
         </div>
       </div>
 
+      <IncidenteExpedienteCierre expediente={detalle.expediente_cierre ?? null} />
+
       {/* Two-column grid */}
-      <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* Left: descripción + historial */}
         <div className="space-y-5">
           <section className="rounded-2xl border border-slate-200 bg-white p-6">
@@ -175,9 +179,7 @@ export default async function IncidenteDetallePage({
         </div>
 
         {/* Right: actions + info + people */}
-        <aside className="space-y-5">
-          <IncidenteAcciones detalle={detalle} operadores={operadores} />
-
+        <aside className="space-y-5 xl:sticky xl:top-20">
           <section className="rounded-2xl border border-slate-200 bg-white p-5">
             <h2 className="mb-4 text-sm font-semibold tracking-wide text-slate-500 uppercase">
               Información
@@ -220,6 +222,8 @@ export default async function IncidenteDetallePage({
             </div>
           </section>
 
+          <IncidenteEvidencias evidencias={detalle.evidencias ?? []} />
+
           <UsuarioCard label="Reportante" usuario={detalle.reportante} />
           <UsuarioCard
             label="Operador asignado"
@@ -231,6 +235,10 @@ export default async function IncidenteDetallePage({
             usuario={detalle.supervisor}
             emptyText="Sin supervisor"
           />
+
+          {detalle.estado !== "CERRADO" && (
+            <IncidenteAcciones detalle={detalle} operadores={operadores} />
+          )}
         </aside>
       </div>
     </div>

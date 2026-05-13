@@ -60,6 +60,8 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
   // --- Estado: cambiar de estado ---
   const [nuevoEstado, setNuevoEstado] = useState<EstadoIncidente>(detalle.estado);
   const [comentarioEstado, setComentarioEstado] = useState("");
+  const [resumenCierre, setResumenCierre] = useState("");
+  const [resultadoCierre, setResultadoCierre] = useState("");
   const [savingEstado, setSavingEstado] = useState(false);
   const [feedbackEstado, setFeedbackEstado] = useState<Feedback | null>(null);
 
@@ -73,6 +75,11 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
 
   const sinCambioEstado =
     nuevoEstado === detalle.estado && !comentarioEstado.trim();
+  const cerrandoIncidente =
+    nuevoEstado === EstadoIncidente.CERRADO &&
+    detalle.estado !== EstadoIncidente.CERRADO;
+  const resumenCierreInvalido =
+    cerrandoIncidente && resumenCierre.trim().length < 20;
   const sinCambioAsignacion =
     !operadorSeleccionado ||
     operadorSeleccionado === detalle.operador_asignado?.id;
@@ -85,8 +92,14 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
       await cambiarEstadoIncidente(detalle.id, {
         estado: nuevoEstado,
         comentario: comentarioEstado.trim() || null,
+        resumen_cierre: cerrandoIncidente ? resumenCierre.trim() : null,
+        resultado_cierre: cerrandoIncidente
+          ? resultadoCierre.trim() || null
+          : null,
       });
       setComentarioEstado("");
+      setResumenCierre("");
+      setResultadoCierre("");
       setFeedbackEstado({
         type: "success",
         message: `Estado actualizado a "${ESTADO_STYLE[nuevoEstado].label}".`,
@@ -166,6 +179,44 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
             </Select>
           </div>
 
+          {cerrandoIncidente && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+              <Label
+                htmlFor="cierre-resumen"
+                className="mb-1.5 block text-xs font-medium text-amber-900"
+              >
+                Resumen de cierre *
+              </Label>
+              <Textarea
+                id="cierre-resumen"
+                rows={4}
+                value={resumenCierre}
+                onChange={(e) => setResumenCierre(e.target.value)}
+                placeholder="Describe qué ocurrió, cómo se atendió y por qué el caso queda cerrado."
+                className="bg-white"
+              />
+              <Label
+                htmlFor="cierre-resultado"
+                className="mt-3 mb-1.5 block text-xs font-medium text-amber-900"
+              >
+                Resultado (opcional)
+              </Label>
+              <Textarea
+                id="cierre-resultado"
+                rows={2}
+                value={resultadoCierre}
+                onChange={(e) => setResultadoCierre(e.target.value)}
+                placeholder="Ej. Resuelto sin escalamiento, derivado a unidad interna, informe emitido."
+                className="bg-white"
+              />
+              {resumenCierreInvalido && (
+                <p className="mt-2 text-xs text-amber-800">
+                  El resumen debe tener al menos 20 caracteres para generar el expediente.
+                </p>
+              )}
+            </div>
+          )}
+
           <div>
             <Label htmlFor="estado-comentario" className="mb-1.5 block text-xs text-slate-500">
               Comentario (opcional)
@@ -194,7 +245,7 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
 
           <Button
             type="button"
-            disabled={savingEstado || sinCambioEstado}
+            disabled={savingEstado || sinCambioEstado || resumenCierreInvalido}
             onClick={onCambiarEstado}
             className="w-full bg-[#001C55] hover:bg-[#032E84]"
           >

@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from geoalchemy2 import Geometry
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -71,6 +71,21 @@ class Evidencia(Base):
     descripcion: Mapped[str | None] = mapped_column(Text)
     cargado_por_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ExpedienteCierre(Base):
+    __tablename__ = "expediente_cierre"
+    __table_args__ = {"schema": "sc_incidentes"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    incidente_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_incidentes.incidente.id", ondelete="CASCADE"), nullable=False, unique=True)
+    resumen_cierre: Mapped[str] = mapped_column(Text, nullable=False)
+    resultado: Mapped[str | None] = mapped_column(Text)
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    generado_por_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"), nullable=False)
+    pdf_url: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
 class ComentarioIncidente(Base):

@@ -18,6 +18,8 @@ from app.schemas.incidente import (
     ComentarioIncidenteCreateInput,
     ComentarioIncidenteItem,
     DashboardStats,
+    EvidenciaIncidenteItem,
+    ExpedienteCierreOut,
     EvolucionPunto,
     HistorialEvento,
     IncidenteAsignacionUpdate,
@@ -281,6 +283,8 @@ class IncidenteService:
             incidente_id,
             include_internal=True,
         )
+        evidencias_rows = await self._repo.list_evidencias(incidente_id)
+        expediente_row = await self._repo.get_expediente_cierre(incidente_id)
 
         return IncidenteDetail(
             id=str(row["id"]),
@@ -321,6 +325,12 @@ class IncidenteService:
             ),
             historial=[self._map_historial(h) for h in historial_rows],
             comentarios=[self._map_comentario(c) for c in comentarios_rows],
+            evidencias=[self._map_evidencia(e) for e in evidencias_rows],
+            expediente_cierre=(
+                self._map_expediente_cierre(expediente_row)
+                if expediente_row
+                else None
+            ),
         )
 
     async def obtener_mi_detalle(
@@ -344,6 +354,8 @@ class IncidenteService:
             incidente_id,
             include_internal=False,
         )
+        evidencias_rows = await self._repo.list_evidencias(incidente_id)
+        expediente_row = await self._repo.get_expediente_cierre(incidente_id)
 
         return IncidenteDetail(
             id=incidente_id,
@@ -384,6 +396,12 @@ class IncidenteService:
             ),
             historial=[self._map_historial(h) for h in historial_rows],
             comentarios=[self._map_comentario(c) for c in comentarios_rows],
+            evidencias=[self._map_evidencia(e) for e in evidencias_rows],
+            expediente_cierre=(
+                self._map_expediente_cierre(expediente_row)
+                if expediente_row
+                else None
+            ),
         )
 
     async def cambiar_estado(
@@ -399,6 +417,13 @@ class IncidenteService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="ID de incidente inválido.",
             ) from exc
+        resumen_cierre = data.resumen_cierre.strip() if data.resumen_cierre else None
+        resultado_cierre = data.resultado_cierre.strip() if data.resultado_cierre else None
+        if data.estado.value == "CERRADO" and not resumen_cierre:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="El resumen de cierre es obligatorio al cerrar un incidente.",
+            )
 
         result = await self._repo.update_estado(
             incidente_id=incidente_id,
@@ -422,6 +447,35 @@ class IncidenteService:
                 "comentario": result["comentario"],
             },
         )
+        if data.estado.value == "CERRADO":
+            detalle_cerrado = await self.obtener_detalle(incidente_id)
+            snapshot = detalle_cerrado.model_dump(
+                mode="json",
+                exclude={"expediente_cierre"},
+            )
+            await self._repo.upsert_expediente_cierre(
+                incidente_id=incidente_id,
+                resumen_cierre=resumen_cierre or "",
+                resultado=resultado_cierre,
+                snapshot={
+                    **snapshot,
+                    "cierre": {
+                        "resumen_cierre": resumen_cierre,
+                        "resultado": resultado_cierre,
+                        "generado_por_id": ejecutor_id,
+                    },
+                },
+                generado_por_id=ejecutor_id,
+            )
+            await self._registrar_auditoria_incidente(
+                usuario_id=ejecutor_id,
+                accion="generar_expediente_cierre",
+                incidente_id=incidente_id,
+                detalle={
+                    "codigo": result["codigo"],
+                    "resultado": resultado_cierre,
+                },
+            )
         participantes = await self._repo.get_participantes(incidente_id)
         if participantes:
             await self._notify_unique(
@@ -700,6 +754,52 @@ class IncidenteService:
             autor=autor,
             contenido=row["contenido"],
             es_interno=bool(row["es_interno"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    @classmethod
+    def _map_evidencia(cls, row: dict[str, Any]) -> EvidenciaIncidenteItem:
+        cargado_por = cls._build_usuario_mini(
+            row.get("cargado_por_id"),
+            row.get("cargado_por_nombre"),
+            row.get("cargado_por_apellido"),
+            row.get("cargado_por_email"),
+            row.get("cargado_por_avatar_url"),
+        )
+        return EvidenciaIncidenteItem(
+            id=str(row["id"]),
+            incidente_id=str(row["incidente_id"]),
+            tipo_archivo=str(row["tipo_archivo"]),
+            nombre_archivo=str(row["nombre_archivo"]),
+            url_archivo=str(row["url_archivo"]),
+            tamano_bytes=row.get("tamano_bytes"),
+            mime_type=row.get("mime_type"),
+            descripcion=row.get("descripcion"),
+            cargado_por=cargado_por,
+            created_at=row["created_at"],
+        )
+
+    @classmethod
+    def _map_expediente_cierre(
+        cls,
+        row: dict[str, Any],
+    ) -> ExpedienteCierreOut:
+        generado_por = cls._build_usuario_mini(
+            row.get("generado_por_id"),
+            row.get("generado_por_nombre"),
+            row.get("generado_por_apellido"),
+            row.get("generado_por_email"),
+            row.get("generado_por_avatar_url"),
+        )
+        return ExpedienteCierreOut(
+            id=str(row["id"]),
+            incidente_id=str(row["incidente_id"]),
+            resumen_cierre=str(row["resumen_cierre"]),
+            resultado=row.get("resultado"),
+            snapshot=row.get("snapshot") or {},
+            generado_por=generado_por,
+            pdf_url=row.get("pdf_url"),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

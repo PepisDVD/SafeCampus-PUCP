@@ -85,6 +85,33 @@ export interface ComentarioIncidenteItem {
   updated_at: string;
 }
 
+/** Evidencia documental o multimedia asociada al expediente. */
+export interface EvidenciaIncidenteItem {
+  id: string;
+  incidente_id: string;
+  tipo_archivo: string;
+  nombre_archivo: string;
+  url_archivo: string;
+  tamano_bytes: number | null;
+  mime_type: string | null;
+  descripcion: string | null;
+  cargado_por: UsuarioMini | null;
+  created_at: string;
+}
+
+/** Snapshot formal generado cuando el incidente se cierra. */
+export interface ExpedienteCierre {
+  id: string;
+  incidente_id: string;
+  resumen_cierre: string;
+  resultado: string | null;
+  snapshot: Record<string, unknown>;
+  generado_por: UsuarioMini | null;
+  pdf_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Conteo de incidentes por zona (lugar_referencia). */
 export interface ZonaCount {
   zona: string;
@@ -174,6 +201,8 @@ export interface IncidenteDetail {
   supervisor: UsuarioMini | null;
   historial: HistorialEvento[];
   comentarios: ComentarioIncidenteItem[];
+  evidencias: EvidenciaIncidenteItem[];
+  expediente_cierre: ExpedienteCierre | null;
 }
 
 /** Wrapper de respuesta para listados. */
@@ -227,6 +256,8 @@ export interface IncidenteCreated {
 export interface IncidenteEstadoUpdate {
   estado: EstadoIncidente;
   comentario?: string | null;
+  resumen_cierre?: string | null;
+  resultado_cierre?: string | null;
 }
 
 /** Body de PATCH /api/v1/incidentes/{id}/asignar. */

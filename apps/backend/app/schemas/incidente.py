@@ -75,6 +75,8 @@ class IncidenteCreated(BaseModel):
 class IncidenteEstadoUpdate(BaseModel):
     estado: EstadoIncidente
     comentario: str | None = Field(default=None, max_length=2000)
+    resumen_cierre: str | None = Field(default=None, min_length=20, max_length=6000)
+    resultado_cierre: str | None = Field(default=None, max_length=2000)
 
 
 class IncidenteAsignacionUpdate(BaseModel):
@@ -115,6 +117,31 @@ class ComentarioIncidenteItem(BaseModel):
     autor: UsuarioMini | None = None
     contenido: str
     es_interno: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class EvidenciaIncidenteItem(BaseModel):
+    id: str
+    incidente_id: str
+    tipo_archivo: str
+    nombre_archivo: str
+    url_archivo: str
+    tamano_bytes: int | None = None
+    mime_type: str | None = None
+    descripcion: str | None = None
+    cargado_por: UsuarioMini | None = None
+    created_at: datetime
+
+
+class ExpedienteCierreOut(BaseModel):
+    id: str
+    incidente_id: str
+    resumen_cierre: str
+    resultado: str | None = None
+    snapshot: dict
+    generado_por: UsuarioMini | None = None
+    pdf_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -202,3 +229,5 @@ class IncidenteDetail(BaseModel):
     supervisor: UsuarioMini | None = None
     historial: list[HistorialEvento] = []
     comentarios: list[ComentarioIncidenteItem] = []
+    evidencias: list[EvidenciaIncidenteItem] = []
+    expediente_cierre: ExpedienteCierreOut | None = None
