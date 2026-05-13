@@ -22,6 +22,8 @@ class IncidenteListItem(BaseModel):
     severidad: NivelSeveridad | None = None
     categoria: str | None = None
     lugar_referencia: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
     canal_origen: TipoCanal
     operador_nombre: str | None = None
     operador_avatar_url: str | None = None
@@ -33,9 +35,29 @@ class IncidenteListResponse(BaseModel):
     total: int
 
 
+class IncidenteMapaItem(BaseModel):
+    id: str
+    codigo: str
+    titulo: str
+    estado: EstadoIncidente
+    severidad: NivelSeveridad | None = None
+    categoria: str | None = None
+    lugar_referencia: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
+    created_at: datetime | None = None
+
+
+class IncidenteMapaResponse(BaseModel):
+    items: list[IncidenteMapaItem]
+    total: int
+    georreferenciados: int
+    sin_coordenadas: int
+
+
 class IncidenteCreateInput(BaseModel):
     titulo: str = Field(min_length=3, max_length=200)
-    descripcion: str = Field(min_length=10)
+    descripcion: str | None = Field(default=None, max_length=4000)
     severidad: NivelSeveridad | None = None
     categoria: str | None = Field(default=None, max_length=100)
     lugar_referencia: str | None = Field(default=None, max_length=255)
@@ -53,6 +75,20 @@ class IncidenteCreated(BaseModel):
 class IncidenteEstadoUpdate(BaseModel):
     estado: EstadoIncidente
     comentario: str | None = Field(default=None, max_length=2000)
+    resumen_cierre: str | None = Field(default=None, min_length=20, max_length=6000)
+    resultado_cierre: str | None = Field(default=None, max_length=2000)
+
+
+class ExpedienteCierreAiDraft(BaseModel):
+    resumen_cierre: str = Field(min_length=20, max_length=6000)
+    resultado_cierre: str | None = Field(default=None, max_length=2000)
+
+
+class IncidentePriorizacionAi(BaseModel):
+    severidad: NivelSeveridad
+    categoria_sugerida: str | None = Field(default=None, max_length=100)
+    confianza: float | None = Field(default=None, ge=0, le=1)
+    justificacion: str | None = Field(default=None, max_length=1200)
 
 
 class IncidenteAsignacionUpdate(BaseModel):
@@ -93,6 +129,31 @@ class ComentarioIncidenteItem(BaseModel):
     autor: UsuarioMini | None = None
     contenido: str
     es_interno: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class EvidenciaIncidenteItem(BaseModel):
+    id: str
+    incidente_id: str
+    tipo_archivo: str
+    nombre_archivo: str
+    url_archivo: str
+    tamano_bytes: int | None = None
+    mime_type: str | None = None
+    descripcion: str | None = None
+    cargado_por: UsuarioMini | None = None
+    created_at: datetime
+
+
+class ExpedienteCierreOut(BaseModel):
+    id: str
+    incidente_id: str
+    resumen_cierre: str
+    resultado: str | None = None
+    snapshot: dict
+    generado_por: UsuarioMini | None = None
+    pdf_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -163,11 +224,13 @@ class IncidenteDetail(BaseModel):
     id: str
     codigo: str
     titulo: str
-    descripcion: str
+    descripcion: str | None = None
     estado: EstadoIncidente
     severidad: NivelSeveridad | None = None
     categoria: str | None = None
     lugar_referencia: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
     canal_origen: TipoCanal
     fecha_primera_respuesta: datetime | None = None
     fecha_resolucion: datetime | None = None
@@ -178,3 +241,5 @@ class IncidenteDetail(BaseModel):
     supervisor: UsuarioMini | None = None
     historial: list[HistorialEvento] = []
     comentarios: list[ComentarioIncidenteItem] = []
+    evidencias: list[EvidenciaIncidenteItem] = []
+    expediente_cierre: ExpedienteCierreOut | None = None

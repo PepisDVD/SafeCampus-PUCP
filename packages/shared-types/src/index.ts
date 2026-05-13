@@ -5,6 +5,8 @@
  */
 
 export * from "./enums";
+export * from "./campus";
+export * from "./auditoria";
 export * from "./incidente";
 export * from "./notificacion";
 export * from "./usuario";

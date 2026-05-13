@@ -10,7 +10,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRightCircle, Loader2, UserPlus } from "lucide-react";
+import { ArrowRightCircle, Loader2, Sparkles, UserPlus } from "lucide-react";
 import {
   Button,
   Label,
@@ -31,6 +31,7 @@ import {
 import {
   asignarOperadorIncidente,
   cambiarEstadoIncidente,
+  generarBorradorCierreIa,
 } from "@/features/incidentes/client";
 import {
   ESTADO_STYLE,
@@ -40,6 +41,8 @@ import {
 type Props = {
   detalle: IncidenteDetail;
   operadores: OperadorListItem[];
+  mode?: "both" | "estado" | "asignacion";
+  onCompleted?: () => void;
 };
 
 const ESTADOS_OPCIONES: EstadoIncidente[] = [
@@ -54,13 +57,21 @@ const ESTADOS_OPCIONES: EstadoIncidente[] = [
 
 type Feedback = { type: "success" | "error"; message: string };
 
-export function IncidenteAcciones({ detalle, operadores }: Props) {
+export function IncidenteAcciones({
+  detalle,
+  operadores,
+  mode = "both",
+  onCompleted,
+}: Props) {
   const router = useRouter();
 
   // --- Estado: cambiar de estado ---
   const [nuevoEstado, setNuevoEstado] = useState<EstadoIncidente>(detalle.estado);
   const [comentarioEstado, setComentarioEstado] = useState("");
+  const [resumenCierre, setResumenCierre] = useState("");
+  const [resultadoCierre, setResultadoCierre] = useState("");
   const [savingEstado, setSavingEstado] = useState(false);
+  const [generatingCierreAi, setGeneratingCierreAi] = useState(false);
   const [feedbackEstado, setFeedbackEstado] = useState<Feedback | null>(null);
 
   // --- Estado: asignar operador ---
@@ -73,6 +84,11 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
 
   const sinCambioEstado =
     nuevoEstado === detalle.estado && !comentarioEstado.trim();
+  const cerrandoIncidente =
+    nuevoEstado === EstadoIncidente.CERRADO &&
+    detalle.estado !== EstadoIncidente.CERRADO;
+  const resumenCierreInvalido =
+    cerrandoIncidente && resumenCierre.trim().length < 20;
   const sinCambioAsignacion =
     !operadorSeleccionado ||
     operadorSeleccionado === detalle.operador_asignado?.id;
@@ -85,12 +101,19 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
       await cambiarEstadoIncidente(detalle.id, {
         estado: nuevoEstado,
         comentario: comentarioEstado.trim() || null,
+        resumen_cierre: cerrandoIncidente ? resumenCierre.trim() : null,
+        resultado_cierre: cerrandoIncidente
+          ? resultadoCierre.trim() || null
+          : null,
       });
       setComentarioEstado("");
+      setResumenCierre("");
+      setResultadoCierre("");
       setFeedbackEstado({
         type: "success",
         message: `Estado actualizado a "${ESTADO_STYLE[nuevoEstado].label}".`,
       });
+      onCompleted?.();
       router.refresh();
     } catch (error) {
       setFeedbackEstado({
@@ -102,6 +125,31 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
       });
     } finally {
       setSavingEstado(false);
+    }
+  };
+
+  const onGenerarBorradorCierreIa = async () => {
+    if (generatingCierreAi || !cerrandoIncidente) return;
+    setGeneratingCierreAi(true);
+    setFeedbackEstado(null);
+    try {
+      const draft = await generarBorradorCierreIa(detalle.id);
+      setResumenCierre(draft.resumen_cierre);
+      setResultadoCierre(draft.resultado_cierre ?? "");
+      setFeedbackEstado({
+        type: "success",
+        message: "Borrador generado con IA. Revisalo antes de cerrar el caso.",
+      });
+    } catch (error) {
+      setFeedbackEstado({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "No se pudo generar el borrador con IA.",
+      });
+    } finally {
+      setGeneratingCierreAi(false);
     }
   };
 
@@ -119,6 +167,7 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
         type: "success",
         message: "Operador asignado correctamente.",
       });
+      onCompleted?.();
       router.refresh();
     } catch (error) {
       setFeedbackAsignacion({
@@ -134,9 +183,9 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Cambiar estado */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div id="acciones-incidente" className="space-y-4 scroll-mt-24">
+      {mode !== "asignacion" && (
+        <section className="rounded-lg border border-slate-200 bg-white p-5">
         <div className="mb-3 flex items-center gap-2">
           <ArrowRightCircle className="h-4 w-4 text-[#001C55]" />
           <h3 className="text-sm font-semibold text-slate-900">
@@ -166,6 +215,64 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
             </Select>
           </div>
 
+          {cerrandoIncidente && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={generatingCierreAi || savingEstado}
+                onClick={onGenerarBorradorCierreIa}
+                className="mb-3 w-full border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+              >
+                {generatingCierreAi ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generando borrador...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Generar resumen con IA
+                  </>
+                )}
+              </Button>
+
+              <Label
+                htmlFor="cierre-resumen"
+                className="mb-1.5 block text-xs font-medium text-amber-900"
+              >
+                Resumen de cierre *
+              </Label>
+              <Textarea
+                id="cierre-resumen"
+                rows={4}
+                value={resumenCierre}
+                onChange={(e) => setResumenCierre(e.target.value)}
+                placeholder="Describe qué ocurrió, cómo se atendió y por qué el caso queda cerrado."
+                className="bg-white"
+              />
+              <Label
+                htmlFor="cierre-resultado"
+                className="mt-3 mb-1.5 block text-xs font-medium text-amber-900"
+              >
+                Resultado (opcional)
+              </Label>
+              <Textarea
+                id="cierre-resultado"
+                rows={2}
+                value={resultadoCierre}
+                onChange={(e) => setResultadoCierre(e.target.value)}
+                placeholder="Ej. Resuelto sin escalamiento, derivado a unidad interna, informe emitido."
+                className="bg-white"
+              />
+              {resumenCierreInvalido && (
+                <p className="mt-2 text-xs text-amber-800">
+                  El resumen debe tener al menos 20 caracteres para generar el expediente.
+                </p>
+              )}
+            </div>
+          )}
+
           <div>
             <Label htmlFor="estado-comentario" className="mb-1.5 block text-xs text-slate-500">
               Comentario (opcional)
@@ -194,7 +301,7 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
 
           <Button
             type="button"
-            disabled={savingEstado || sinCambioEstado}
+            disabled={savingEstado || sinCambioEstado || resumenCierreInvalido}
             onClick={onCambiarEstado}
             className="w-full bg-[#001C55] hover:bg-[#032E84]"
           >
@@ -208,10 +315,12 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
             )}
           </Button>
         </div>
-      </section>
+        </section>
+      )}
 
       {/* Asignar operador */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+      {mode !== "estado" && (
+        <section className="rounded-lg border border-slate-200 bg-white p-5">
         <div className="mb-3 flex items-center gap-2">
           <UserPlus className="h-4 w-4 text-[#001C55]" />
           <h3 className="text-sm font-semibold text-slate-900">
@@ -305,7 +414,8 @@ export function IncidenteAcciones({ detalle, operadores }: Props) {
             </Button>
           </div>
         )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }

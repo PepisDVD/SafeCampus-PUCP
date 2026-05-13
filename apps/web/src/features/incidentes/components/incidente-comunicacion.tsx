@@ -36,7 +36,7 @@ function MessageItem({ item }: { item: ComentarioIncidenteItem }) {
   return (
     <div
       className={cn(
-        "rounded-xl border p-3",
+        "rounded-lg border p-3",
         item.es_interno
           ? "border-amber-200 bg-amber-50"
           : "border-slate-200 bg-white",
@@ -97,7 +97,10 @@ export function IncidenteComunicacion({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5">
+    <section
+      id="nota-interna"
+      className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-5"
+    >
       <div className="mb-4 flex items-center gap-2">
         <MessageSquare className="h-4 w-4 text-[#001C55]" />
         <h2 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
@@ -107,7 +110,7 @@ export function IncidenteComunicacion({
 
       <div className="space-y-3">
         {incidente.comentarios.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+          <p className="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
             Aun no hay mensajes asociados a este incidente.
           </p>
         ) : (

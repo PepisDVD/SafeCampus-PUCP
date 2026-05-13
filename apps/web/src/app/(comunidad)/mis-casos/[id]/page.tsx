@@ -81,7 +81,7 @@ export default async function ComunidadCasoDetallePage({
 
         <div className="space-y-4 p-5">
           <p className="text-sm leading-relaxed whitespace-pre-line text-slate-700">
-            {detalle.descripcion}
+            {detalle.descripcion ?? "No se agrego descripcion al reporte."}
           </p>
           <div className="grid gap-3 text-sm">
             <div className="flex gap-2 text-slate-600">

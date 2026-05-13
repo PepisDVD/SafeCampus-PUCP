@@ -1,15 +1,10 @@
-import { serverApi } from "@/lib/api/server";
+import type {
+  AuditoriaListResponse,
+  AuditoriaModulosResponse,
+  RegistroAuditoria,
+} from "@safecampus/shared-types";
 
-export type RegistroAuditoria = {
-  id: string;
-  fecha_registro: string;
-  usuario_id: string | null;
-  modulo: string;
-  accion: string;
-  entidad: string | null;
-  entidad_id: string | null;
-  detalle: Record<string, unknown> | null;
-};
+import { serverApi } from "@/lib/api/server";
 
 export type AuditoriaFilters = {
   search?: string;
@@ -18,6 +13,8 @@ export type AuditoriaFilters = {
   desde?: string;
   hasta?: string;
 };
+
+export type { RegistroAuditoria };
 
 export async function listarAuditoria(
   filters: AuditoriaFilters = {},
@@ -30,7 +27,7 @@ export async function listarAuditoria(
   if (filters.desde) params.desde = filters.desde;
   if (filters.hasta) params.hasta = filters.hasta;
 
-  const res = await serverApi.get<{ items: RegistroAuditoria[]; total: number }>(
+  const res = await serverApi.get<AuditoriaListResponse>(
     "/admin/auditoria",
     params,
   );
@@ -38,7 +35,7 @@ export async function listarAuditoria(
 }
 
 export async function obtenerModulosDistintos(): Promise<string[]> {
-  const res = await serverApi.get<{ modulos: string[] }>(
+  const res = await serverApi.get<AuditoriaModulosResponse>(
     "/admin/auditoria/modulos",
     undefined,
     {

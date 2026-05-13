@@ -32,9 +32,12 @@ import {
   HeartPulse,
   Loader2,
   MapPin,
+  Navigation,
   ShieldAlert,
+  X,
 } from "lucide-react";
 import {
+  CAMPUS_ZONE_LOCATIONS,
   NivelSeveridad,
   type IncidenteCreated,
   type IncidenteCreateInput,
@@ -44,6 +47,7 @@ import {
   SEVERIDAD_COLOR,
   SEVERIDAD_LABEL,
 } from "@/features/incidentes/presentation";
+import { useGeolocation } from "@/hooks/use-geolocation";
 import { api } from "@/lib/api/client";
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -89,21 +93,26 @@ const severidades = [
 ] as const;
 
 const zonasCampus = [
-  "Biblioteca Central",
-  "Pabellon A",
-  "Pabellon H",
-  "Cafeteria Central",
-  "Patio de Letras",
-  "Estacionamiento Principal",
+  ...CAMPUS_ZONE_LOCATIONS,
 ];
+
+type LocationSource = "zona" | "gps";
 
 export default function ReportarPage() {
   const router = useRouter();
+  const {
+    location,
+    loading: ubicando,
+    error: ubicacionError,
+    requestLocation,
+    clearLocation,
+  } = useGeolocation();
   const [step, setStep] = useState<Step>(0);
   const [tipo, setTipo] = useState<string>("");
   const [severidad, setSeveridad] = useState<NivelSeveridad | "">("");
   const [descripcion, setDescripcion] = useState("");
   const [zona, setZona] = useState("");
+  const [locationSource, setLocationSource] = useState<LocationSource>("zona");
   const [referencia, setReferencia] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,11 +120,11 @@ export default function ReportarPage() {
 
   const puedeContinuar = useMemo(() => {
     if (step === 0) return Boolean(tipo);
-    if (step === 1) return Boolean(severidad);
-    if (step === 2) return descripcion.trim().length > 12;
+    if (step === 1) return true;
+    if (step === 2) return true;
     if (step === 3) return Boolean(zona);
     return true;
-  }, [descripcion, severidad, step, tipo, zona]);
+  }, [step, tipo, zona]);
 
   const siguiente = () => {
     if (!puedeContinuar || step === 4) return;
@@ -133,6 +142,7 @@ export default function ReportarPage() {
     setSeveridad("");
     setDescripcion("");
     setZona("");
+    setLocationSource("zona");
     setReferencia("");
     setError(null);
     setCreado(null);
@@ -144,16 +154,31 @@ export default function ReportarPage() {
     setError(null);
 
     const tipoSeleccionado = tiposIncidente.find((t) => t.id === tipo);
+    const zonaSeleccionada = zonasCampus.find((item) => item.id === zona);
+    const activeLocation =
+      locationSource === "gps" && location
+        ? {
+            latitud: location.latitud,
+            longitud: location.longitud,
+          }
+        : zonaSeleccionada
+          ? {
+              latitud: zonaSeleccionada.latitud,
+              longitud: zonaSeleccionada.longitud,
+            }
+          : null;
     const lugar = referencia.trim()
-      ? `${zona} - ${referencia.trim()}`
-      : zona;
+      ? `${zonaSeleccionada?.label ?? zona} - ${referencia.trim()}`
+      : (zonaSeleccionada?.label ?? zona);
 
     const payload: IncidenteCreateInput = {
       titulo: tipoSeleccionado?.titulo ?? "Incidente reportado",
-      descripcion: descripcion.trim(),
+      descripcion: descripcion.trim() || null,
       severidad: severidad || null,
       categoria: tipo,
       lugar_referencia: lugar,
+      latitud: activeLocation?.latitud ?? null,
+      longitud: activeLocation?.longitud ?? null,
     };
 
     try {
@@ -240,8 +265,8 @@ export default function ReportarPage() {
           </CardTitle>
           <CardDescription>
             {step === 0 && "Esto permite clasificar la atencion operativa."}
-            {step === 1 && "Selecciona el nivel de severidad percibido."}
-            {step === 2 && "Incluye contexto util para responder mas rapido."}
+            {step === 1 && "Puedes indicar tu percepcion o dejar que la IA priorice."}
+            {step === 2 && "Opcional: agrega contexto util para responder mas rapido."}
             {step === 3 && "Ubicacion precisa para despacho de operadores."}
           </CardDescription>
         </CardHeader>
@@ -298,7 +323,7 @@ export default function ReportarPage() {
           {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-sm font-medium">Descripcion del incidente</p>
+                <p className="text-sm font-medium">Descripcion del incidente (opcional)</p>
                 <Textarea
                   value={descripcion}
                   onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
@@ -307,6 +332,9 @@ export default function ReportarPage() {
                   rows={5}
                   placeholder="Ejemplo: Se observa persona sospechosa en zona de estacionamiento..."
                 />
+                <p className="text-xs text-muted-foreground">
+                  Si no agregas descripcion, el backend priorizara con el tipo y la ubicacion.
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">Canal: web</Badge>
@@ -319,14 +347,20 @@ export default function ReportarPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <p className="text-sm font-medium">Zona del campus</p>
-                <Select value={zona} onValueChange={setZona}>
+                <Select
+                  value={zona}
+                  onValueChange={(value) => {
+                    setZona(value);
+                    setLocationSource("zona");
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona una zona" />
                   </SelectTrigger>
                   <SelectContent>
                     {zonasCampus.map((item) => (
-                      <SelectItem value={item} key={item}>
-                        {item}
+                      <SelectItem value={item.id} key={item.id}>
+                        {item.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -342,6 +376,84 @@ export default function ReportarPage() {
                   placeholder="Ejemplo: Cerca de la puerta lateral"
                 />
               </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">
+                      Ubicacion del incidente
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      La zona seleccionada se usara como ubicacion aproximada.
+                      Puedes reemplazarla con tu GPS actual.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const result = await requestLocation();
+                      if (result) setLocationSource("gps");
+                    }}
+                    disabled={ubicando}
+                    className="gap-1.5"
+                  >
+                    {ubicando ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Navigation className="h-4 w-4" />
+                    )}
+                    Usar mi ubicacion
+                  </Button>
+                </div>
+                {zona && (
+                  <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                    Ubicacion aproximada por zona:{" "}
+                    {zonasCampus.find((item) => item.id === zona)?.label}
+                  </p>
+                )}
+                {location && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                    <span>
+                      GPS capturado: {location.latitud.toFixed(6)},{" "}
+                      {location.longitud.toFixed(6)}
+                      {location.precision_metros
+                        ? ` (${Math.round(location.precision_metros)} m aprox.)`
+                        : ""}
+                    </span>
+                    {locationSource === "gps" ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          clearLocation();
+                          setLocationSource("zona");
+                        }}
+                        className="h-7 gap-1 px-2 text-emerald-800"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Usar zona
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setLocationSource("gps")}
+                        className="h-7 px-2 text-emerald-800"
+                      >
+                        Usar GPS
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {ubicacionError && (
+                  <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    {ubicacionError}
+                  </p>
+                )}
+              </div>
               <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
                 <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
                   <MapPin className="h-4 w-4 text-[#001C55]" />
@@ -349,9 +461,27 @@ export default function ReportarPage() {
                 </div>
                 <p>Tipo: {tipo || "-"}</p>
                 <p>
-                  Prioridad: {severidad ? SEVERIDAD_LABEL[severidad] : "-"}
+                  Prioridad: {severidad ? SEVERIDAD_LABEL[severidad] : "Sera estimada por IA"}
                 </p>
-                <p>Zona: {zona || "-"}</p>
+                <p>
+                  Zona:{" "}
+                  {zonasCampus.find((item) => item.id === zona)?.label ?? "-"}
+                </p>
+                <p>
+                  Coordenadas:{" "}
+                  {(() => {
+                    const zonaSeleccionada = zonasCampus.find(
+                      (item) => item.id === zona,
+                    );
+                    const activeLocation =
+                      locationSource === "gps" && location
+                        ? location
+                        : zonaSeleccionada;
+                    return activeLocation
+                      ? `${activeLocation.latitud.toFixed(5)}, ${activeLocation.longitud.toFixed(5)} (${locationSource === "gps" ? "GPS" : "zona"})`
+                      : "Sin coordenadas";
+                  })()}
+                </p>
               </div>
             </div>
           )}
