@@ -31,7 +31,7 @@ function formatFecha(iso: string): string {
 export function IncidenteHistorial({ historial }: Props) {
   if (historial.length === 0) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+      <div className="py-8 text-center">
         <History className="mx-auto mb-2 h-6 w-6 text-slate-300" />
         <p className="text-sm text-slate-500">
           Aún no hay eventos en el historial de este incidente.
@@ -54,7 +54,7 @@ export function IncidenteHistorial({ historial }: Props) {
               aria-hidden
               className="absolute top-1.5 -left-[31px] flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-[#001C55] ring-2 ring-slate-200"
             />
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center gap-2">
                 {styleAnterior ? (
                   <>

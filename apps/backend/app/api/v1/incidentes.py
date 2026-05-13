@@ -14,12 +14,14 @@ from app.schemas.incidente import (
     ComentarioIncidenteCreateInput,
     ComentarioIncidenteItem,
     DashboardStats,
+    ExpedienteCierreAiDraft,
     IncidenteAsignacionUpdate,
     IncidenteCreated,
     IncidenteCreateInput,
     IncidenteDetail,
     IncidenteEstadoUpdate,
     IncidenteListResponse,
+    IncidenteMapaResponse,
     KpisResponse,
     OperadorListItem,
 )
@@ -97,6 +99,24 @@ async def obtener_kpis(
     return await service.obtener_kpis(period=period)
 
 
+@router.get("/mapa", response_model=IncidenteMapaResponse)
+async def listar_incidentes_mapa(
+    severidad: NivelSeveridad | None = Query(default=None),
+    estado: EstadoIncidente | None = Query(default=None),
+    activos_only: bool = Query(default=True),
+    limit: int = Query(default=300, ge=1, le=500),
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Incidentes para mapa tactico operativo con coordenadas cuando existan."""
+    return await service.listar_mapa(
+        severidad=severidad.value if severidad else None,
+        estado=estado.value if estado else None,
+        activos_only=activos_only,
+        limit=limit,
+    )
+
+
 @router.get("/stats", response_model=DashboardStats)
 async def obtener_stats(
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
@@ -143,6 +163,22 @@ async def cambiar_estado_incidente(
         incidente_id=incidente_id,
         ejecutor_id=current_user.id,
         data=body,
+    )
+
+
+@router.post(
+    "/{incidente_id}/expediente-cierre/borrador-ia",
+    response_model=ExpedienteCierreAiDraft,
+)
+async def generar_borrador_cierre_ia(
+    incidente_id: str,
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: IncidenteService = Depends(get_service),
+):
+    """Genera con Gemini un borrador editable para el expediente de cierre."""
+    return await service.generar_borrador_cierre_ia(
+        incidente_id=incidente_id,
+        ejecutor_id=current_user.id,
     )
 
 

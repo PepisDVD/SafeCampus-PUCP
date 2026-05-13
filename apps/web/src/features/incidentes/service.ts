@@ -12,6 +12,7 @@ import type {
   IncidenteDetail,
   IncidenteListFilters,
   IncidenteListResponse,
+  IncidenteMapaResponse,
   KpisPeriod,
   KpisResponse,
   OperadorListItem,
@@ -54,6 +55,19 @@ export async function listarIncidentes(
   if (filters.estado) params.estado = filters.estado;
 
   return serverApi.get<IncidenteListResponse>("/incidentes/", params);
+}
+
+export async function listarIncidentesMapa(
+  filters: IncidenteListFilters & { activos_only?: boolean } = {},
+): Promise<IncidenteMapaResponse> {
+  const params: Record<string, string> = {
+    limit: String(filters.limit ?? 300),
+    activos_only: String(filters.activos_only ?? true),
+  };
+  if (filters.severidad) params.severidad = filters.severidad;
+  if (filters.estado) params.estado = filters.estado;
+
+  return serverApi.get<IncidenteMapaResponse>("/incidentes/mapa", params);
 }
 
 /**

@@ -13,7 +13,7 @@ export interface Incidente {
   id: string;
   codigo: string; // INC-YYYYMMDD-XXXXX
   titulo: string;
-  descripcion: string;
+  descripcion: string | null;
   estado: EstadoIncidente;
   severidad: NivelSeveridad;
   categoria: string | null;
@@ -39,6 +39,8 @@ export interface IncidenteListItem {
   severidad: NivelSeveridad | null;
   categoria: string | null;
   lugar_referencia: string | null;
+  latitud: number | null;
+  longitud: number | null;
   canal_origen: TipoCanal;
   operador_nombre: string | null;
   operador_avatar_url: string | null;
@@ -81,6 +83,47 @@ export interface ComentarioIncidenteItem {
   es_interno: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/** Evidencia documental o multimedia asociada al expediente. */
+export interface EvidenciaIncidenteItem {
+  id: string;
+  incidente_id: string;
+  tipo_archivo: string;
+  nombre_archivo: string;
+  url_archivo: string;
+  tamano_bytes: number | null;
+  mime_type: string | null;
+  descripcion: string | null;
+  cargado_por: UsuarioMini | null;
+  created_at: string;
+}
+
+/** Snapshot formal generado cuando el incidente se cierra. */
+export interface ExpedienteCierre {
+  id: string;
+  incidente_id: string;
+  resumen_cierre: string;
+  resultado: string | null;
+  snapshot: Record<string, unknown>;
+  generado_por: UsuarioMini | null;
+  pdf_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Borrador generado por IA para completar el expediente de cierre. */
+export interface ExpedienteCierreAiDraft {
+  resumen_cierre: string;
+  resultado_cierre: string | null;
+}
+
+/** Resultado de priorizacion automatica de un incidente. */
+export interface IncidentePriorizacionAi {
+  severidad: NivelSeveridad;
+  categoria_sugerida: string | null;
+  confianza: number | null;
+  justificacion: string | null;
 }
 
 /** Conteo de incidentes por zona (lugar_referencia). */
@@ -155,11 +198,13 @@ export interface IncidenteDetail {
   id: string;
   codigo: string;
   titulo: string;
-  descripcion: string;
+  descripcion: string | null;
   estado: EstadoIncidente;
   severidad: NivelSeveridad | null;
   categoria: string | null;
   lugar_referencia: string | null;
+  latitud: number | null;
+  longitud: number | null;
   canal_origen: TipoCanal;
   fecha_primera_respuesta: string | null;
   fecha_resolucion: string | null;
@@ -170,6 +215,8 @@ export interface IncidenteDetail {
   supervisor: UsuarioMini | null;
   historial: HistorialEvento[];
   comentarios: ComentarioIncidenteItem[];
+  evidencias: EvidenciaIncidenteItem[];
+  expediente_cierre: ExpedienteCierre | null;
 }
 
 /** Wrapper de respuesta para listados. */
@@ -178,10 +225,32 @@ export interface IncidenteListResponse {
   total: number;
 }
 
+/** Item para mapa tactico operativo. */
+export interface IncidenteMapaItem {
+  id: string;
+  codigo: string;
+  titulo: string;
+  estado: EstadoIncidente;
+  severidad: NivelSeveridad | null;
+  categoria: string | null;
+  lugar_referencia: string | null;
+  latitud: number | null;
+  longitud: number | null;
+  created_at: string | null;
+}
+
+/** Respuesta de GET /api/v1/incidentes/mapa. */
+export interface IncidenteMapaResponse {
+  items: IncidenteMapaItem[];
+  total: number;
+  georreferenciados: number;
+  sin_coordenadas: number;
+}
+
 /** Body de POST /api/v1/incidentes (creación desde el PWA Comunidad). */
 export interface IncidenteCreateInput {
   titulo: string;
-  descripcion: string;
+  descripcion?: string | null;
   severidad?: NivelSeveridad | null;
   categoria?: string | null;
   lugar_referencia?: string | null;
@@ -201,6 +270,8 @@ export interface IncidenteCreated {
 export interface IncidenteEstadoUpdate {
   estado: EstadoIncidente;
   comentario?: string | null;
+  resumen_cierre?: string | null;
+  resultado_cierre?: string | null;
 }
 
 /** Body de PATCH /api/v1/incidentes/{id}/asignar. */

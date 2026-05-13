@@ -16,7 +16,7 @@ type Props = {
 
 export function UsuarioCard({ label, usuario, emptyText = "Sin asignar" }: Props) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
       <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
         {label}
       </p>

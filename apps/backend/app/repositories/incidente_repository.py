@@ -9,11 +9,19 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, desc, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.constants import INCIDENT_CODE_PREFIX
-from app.models.sc_incidentes import ComentarioIncidente, HistorialIncidente, Incidente
+from app.models.sc_clasificacion import ClasificacionIa
+from app.models.sc_incidentes import (
+    ComentarioIncidente,
+    Evidencia,
+    ExpedienteCierre,
+    HistorialIncidente,
+    Incidente,
+)
 from app.models.sc_users import Rol, Usuario, UsuarioRol
 
 
@@ -49,6 +57,8 @@ class IncidenteRepository:
                 Incidente.severidad,
                 Incidente.categoria,
                 Incidente.lugar_referencia,
+                func.ST_Y(Incidente.geom).label("latitud"),
+                func.ST_X(Incidente.geom).label("longitud"),
                 Incidente.canal_origen,
                 Incidente.created_at,
                 operador_nombre,
@@ -104,6 +114,8 @@ class IncidenteRepository:
                 Incidente.severidad,
                 Incidente.categoria,
                 Incidente.lugar_referencia,
+                func.ST_Y(Incidente.geom).label("latitud"),
+                func.ST_X(Incidente.geom).label("longitud"),
                 Incidente.canal_origen,
                 Incidente.fecha_primera_respuesta,
                 Incidente.fecha_resolucion,
@@ -167,6 +179,8 @@ class IncidenteRepository:
                 Incidente.severidad,
                 Incidente.categoria,
                 Incidente.lugar_referencia,
+                func.ST_Y(Incidente.geom).label("latitud"),
+                func.ST_X(Incidente.geom).label("longitud"),
                 Incidente.canal_origen,
                 Incidente.fecha_primera_respuesta,
                 Incidente.fecha_resolucion,
@@ -224,6 +238,43 @@ class IncidenteRepository:
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
+    async def list_mapa(
+        self,
+        *,
+        severidad: str | None = None,
+        estado: str | None = None,
+        activos_only: bool = True,
+        limit: int = 300,
+    ) -> list[dict[str, Any]]:
+        statement = (
+            select(
+                Incidente.id,
+                Incidente.codigo,
+                Incidente.titulo,
+                Incidente.estado,
+                Incidente.severidad,
+                Incidente.categoria,
+                Incidente.lugar_referencia,
+                func.ST_Y(Incidente.geom).label("latitud"),
+                func.ST_X(Incidente.geom).label("longitud"),
+                Incidente.created_at,
+            )
+            .where(Incidente.deleted_at.is_(None))
+            .order_by(Incidente.created_at.desc())
+            .limit(limit)
+        )
+        if severidad:
+            statement = statement.where(Incidente.severidad == severidad)
+        if estado:
+            statement = statement.where(Incidente.estado == estado)
+        if activos_only:
+            statement = statement.where(
+                Incidente.estado.notin_(("RESUELTO", "CERRADO"))
+            )
+
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
     async def list_comentarios(
         self,
         incidente_id: str,
@@ -254,6 +305,59 @@ class IncidenteRepository:
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
+    async def list_evidencias(self, incidente_id: str) -> list[dict[str, Any]]:
+        statement = (
+            select(
+                Evidencia.id,
+                Evidencia.incidente_id,
+                Evidencia.tipo_archivo,
+                Evidencia.nombre_archivo,
+                Evidencia.url_archivo,
+                Evidencia.tamano_bytes,
+                Evidencia.mime_type,
+                Evidencia.descripcion,
+                Evidencia.cargado_por_id,
+                Evidencia.created_at,
+                Usuario.nombre.label("cargado_por_nombre"),
+                Usuario.apellido.label("cargado_por_apellido"),
+                Usuario.email.label("cargado_por_email"),
+                Usuario.avatar_url.label("cargado_por_avatar_url"),
+            )
+            .outerjoin(Usuario, Usuario.id == Evidencia.cargado_por_id)
+            .where(Evidencia.incidente_id == UUID(incidente_id))
+            .order_by(Evidencia.created_at.asc())
+        )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def get_expediente_cierre(
+        self,
+        incidente_id: str,
+    ) -> dict[str, Any] | None:
+        statement = (
+            select(
+                ExpedienteCierre.id,
+                ExpedienteCierre.incidente_id,
+                ExpedienteCierre.resumen_cierre,
+                ExpedienteCierre.resultado,
+                ExpedienteCierre.snapshot,
+                ExpedienteCierre.generado_por_id,
+                ExpedienteCierre.pdf_url,
+                ExpedienteCierre.created_at,
+                ExpedienteCierre.updated_at,
+                Usuario.nombre.label("generado_por_nombre"),
+                Usuario.apellido.label("generado_por_apellido"),
+                Usuario.email.label("generado_por_email"),
+                Usuario.avatar_url.label("generado_por_avatar_url"),
+            )
+            .outerjoin(Usuario, Usuario.id == ExpedienteCierre.generado_por_id)
+            .where(ExpedienteCierre.incidente_id == UUID(incidente_id))
+            .limit(1)
+        )
+        result = await self.db.execute(statement)
+        row = result.mappings().one_or_none()
+        return dict(row) if row else None
+
     async def create_comentario(
         self,
         incidente_id: str,
@@ -280,6 +384,39 @@ class IncidenteRepository:
             "created_at": comentario.created_at,
             "updated_at": comentario.updated_at,
         }
+
+    async def upsert_expediente_cierre(
+        self,
+        *,
+        incidente_id: str,
+        resumen_cierre: str,
+        resultado: str | None,
+        snapshot: dict[str, Any],
+        generado_por_id: str,
+    ) -> dict[str, Any]:
+        statement = (
+            insert(ExpedienteCierre)
+            .values(
+                incidente_id=UUID(incidente_id),
+                resumen_cierre=resumen_cierre,
+                resultado=resultado,
+                snapshot=snapshot,
+                generado_por_id=UUID(generado_por_id),
+            )
+            .on_conflict_do_update(
+                index_elements=[ExpedienteCierre.incidente_id],
+                set_={
+                    "resumen_cierre": resumen_cierre,
+                    "resultado": resultado,
+                    "snapshot": snapshot,
+                    "generado_por_id": UUID(generado_por_id),
+                    "updated_at": func.now(),
+                },
+            )
+            .returning(ExpedienteCierre.id)
+        )
+        result = await self.db.execute(statement)
+        return {"id": result.scalar_one()}
 
     async def get_participantes(self, incidente_id: str) -> dict[str, Any] | None:
         statement = (
@@ -550,8 +687,10 @@ class IncidenteRepository:
         statement = (
             select(
                 Incidente.id,
+                Incidente.codigo,
                 Incidente.estado,
                 Incidente.fecha_primera_respuesta,
+                Incidente.fecha_resolucion,
                 Incidente.supervisor_id,
                 Incidente.operador_asignado_id,
             )
@@ -587,8 +726,8 @@ class IncidenteRepository:
             and new_estado != "RECIBIDO"
         ):
             values["fecha_primera_respuesta"] = ahora
-        # TMR: setear cuando se resuelve.
-        if new_estado == "RESUELTO":
+        # TMR: setear cuando se resuelve o se cierra directamente.
+        if new_estado in {"RESUELTO", "CERRADO"} and actual["fecha_resolucion"] is None:
             values["fecha_resolucion"] = ahora
 
         statement = (
@@ -611,7 +750,13 @@ class IncidenteRepository:
                 ejecutado_por_id=UUID(ejecutor_id),
             )
         )
-        return {"id": incidente_id, "estado_nuevo": new_estado}
+        return {
+            "id": incidente_id,
+            "codigo": actual["codigo"],
+            "estado_anterior": estado_anterior,
+            "estado_nuevo": new_estado,
+            "comentario": comentario,
+        }
 
     async def assign_operador(
         self,
@@ -659,7 +804,21 @@ class IncidenteRepository:
                 ejecutado_por_id=UUID(ejecutor_id),
             )
         )
-        return {"id": incidente_id}
+        return {
+            "id": incidente_id,
+            "codigo": actual["codigo"],
+            "estado": estado_actual,
+            "operador_anterior_id": (
+                str(actual["operador_asignado_id"])
+                if actual["operador_asignado_id"]
+                else None
+            ),
+            "operador_nuevo_id": operador_id,
+            "supervisor_id": str(values.get("supervisor_id") or actual["supervisor_id"])
+            if values.get("supervisor_id") or actual["supervisor_id"]
+            else None,
+            "comentario": comentario,
+        }
 
     async def list_operadores(self) -> list[dict[str, Any]]:
         """Lista de usuarios con rol operador o supervisor (para asignación)."""
@@ -703,6 +862,10 @@ class IncidenteRepository:
             reportante_id=UUID(reportante_id),
             estado="RECIBIDO",
         )
+        latitud = data.get("latitud")
+        longitud = data.get("longitud")
+        if latitud is not None and longitud is not None:
+            nuevo.geom = func.ST_SetSRID(func.ST_MakePoint(longitud, latitud), 4326)
         self.db.add(nuevo)
         await self.db.flush()
         await self.db.refresh(nuevo)
@@ -712,3 +875,34 @@ class IncidenteRepository:
             "estado": nuevo.estado,
             "created_at": nuevo.created_at,
         }
+
+    async def create_clasificacion_ia(
+        self,
+        *,
+        incidente_id: str,
+        categoria_sugerida: str | None,
+        severidad_sugerida: str,
+        confianza: float | None,
+        origen: str,
+        modelo_utilizado: str | None,
+        prompt_version: str | None,
+        respuesta_raw: dict[str, Any],
+        categoria_final: str | None,
+        severidad_final: str | None,
+    ) -> dict[str, Any]:
+        clasificacion = ClasificacionIa(
+            incidente_id=UUID(incidente_id),
+            categoria_sugerida=categoria_sugerida,
+            severidad_sugerida=severidad_sugerida,
+            confianza=confianza,
+            origen=origen,
+            modelo_utilizado=modelo_utilizado,
+            prompt_version=prompt_version,
+            respuesta_raw=respuesta_raw,
+            categoria_final=categoria_final,
+            severidad_final=severidad_final,
+        )
+        self.db.add(clasificacion)
+        await self.db.flush()
+        await self.db.refresh(clasificacion)
+        return {"id": str(clasificacion.id)}
