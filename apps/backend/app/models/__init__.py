@@ -26,6 +26,8 @@ from app.models.sc_notificaciones import (
 )
 from app.models.sc_omnicanal import (
     CanalReporte,
+    ChatbotEstadoConversacion,
+    ChatbotLlmUsage,
     Conversacion,
     EventoConversacion,
     MensajeConversacion,
@@ -48,6 +50,8 @@ __all__ = [
     "CanalReporte",
     "CasoLostFound",
     "CategoriaObjeto",
+    "ChatbotEstadoConversacion",
+    "ChatbotLlmUsage",
     "ClasificacionIa",
     "ComentarioIncidente",
     "Conversacion",

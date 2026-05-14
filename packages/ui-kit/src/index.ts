@@ -94,6 +94,18 @@ export {
   DialogDescription,
 } from "./components/ui/dialog";
 export {
+  Drawer,
+  DrawerPortal,
+  DrawerOverlay,
+  DrawerTrigger,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerFooter,
+  DrawerTitle,
+  DrawerDescription,
+} from "./components/ui/drawer";
+export {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -133,6 +145,16 @@ export {
   SelectScrollDownButton,
 } from "./components/ui/select";
 export { Separator } from "./components/ui/separator";
+export {
+  Sheet,
+  SheetTrigger,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+} from "./components/ui/sheet";
 export { Skeleton } from "./components/ui/skeleton";
 export { Switch } from "./components/ui/switch";
 export {

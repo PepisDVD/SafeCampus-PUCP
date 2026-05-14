@@ -71,6 +71,21 @@ Optional integration values are also declared in `.env.example`:
 `OPENAI_API_KEY`, `OPENAI_MODEL`, `GOOGLE_MAPS_API_KEY`, `WHATSAPP_TOKEN`,
 `WHATSAPP_PHONE_ID`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET`.
 
+Para el chatbot omnicanal tambien debes configurar:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+CHATBOT_ENABLED=true
+CHATBOT_AUTO_CREATE_INCIDENTS=true
+CHATBOT_SYSTEM_USER_ID=
+```
+
+`GEMINI_API_KEY` se conecta en `apps/backend/.env`. Si quieres que el backend use Gemini como proveedor principal del modulo LLM, cambia `LLM_PROVIDER=gemini`.
+
+`CHATBOT_SYSTEM_USER_ID` debe ser el UUID de un usuario tecnico ya existente en `sc_users.usuario`. Ese usuario se usa como `reportante_id` cuando el chatbot crea incidentes automaticamente desde WhatsApp.
+
 `DATABASE_URL` must use the async SQLAlchemy driver prefix:
 
 ```text

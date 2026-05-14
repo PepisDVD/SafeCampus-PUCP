@@ -9,6 +9,13 @@ export type AttentionMode = "BOT" | "HUMANO";
 export type ConversationPriority = "BAJO" | "MEDIO" | "ALTO" | "CRITICO";
 export type MessageDirection = "INBOUND" | "OUTBOUND";
 export type MessageAuthor = "CONTACTO" | "BOT" | "OPERADOR" | "SISTEMA";
+export type ChatbotStatus =
+  | "BOT_NEW"
+  | "BOT_COLLECTING"
+  | "BOT_INCIDENT_DRAFTED"
+  | "BOT_ESCALATED"
+  | "HUMAN_ACTIVE"
+  | "BOT_PAUSED";
 
 export type ConversationUser = {
   id: string;
@@ -25,6 +32,25 @@ export type ConversationIncident = {
   severidad?: string | null;
 };
 
+export type ConversationChatbotState = {
+  bot_status: ChatbotStatus;
+  last_intent?: string | null;
+  last_action?: string | null;
+  requires_human_review: boolean;
+  handoff_reason?: string | null;
+  ai_summary?: string | null;
+  classification_category?: string | null;
+  classification_severity?: string | null;
+  classification_confidence?: number | null;
+  missing_fields: string[];
+  incident_draft: Record<string, unknown>;
+  suggested_reply?: string | null;
+  last_bot_reply?: string | null;
+  last_user_message_at?: string | null;
+  last_bot_message_at?: string | null;
+  last_processed_at?: string | null;
+};
+
 export type Conversation = {
   id: string;
   canal_id: string;
@@ -37,6 +63,7 @@ export type Conversation = {
   operador_asignado?: ConversationUser | null;
   tomado_por?: ConversationUser | null;
   incidente?: ConversationIncident | null;
+  chatbot?: ConversationChatbotState | null;
   ultimo_mensaje_preview?: string | null;
   ultimo_mensaje_at: string;
   unread_count: number;

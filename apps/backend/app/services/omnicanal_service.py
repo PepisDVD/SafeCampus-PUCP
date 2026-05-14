@@ -13,6 +13,7 @@ from app.repositories.omnicanal_repository import OmnicanalRepository
 from app.schemas.incidente import IncidenteCreateInput
 from app.schemas.omnicanal import (
     AsignarConversacionInput,
+    ChatbotBorradorUpdateInput,
     CerrarConversacionInput,
     ConversacionDetail,
     ConversacionListItem,
@@ -28,6 +29,7 @@ from app.schemas.omnicanal import (
     VincularIncidenteInput,
     WhatsAppWebhookResponse,
 )
+from app.services.chatbot_service import ChatbotService
 from app.services.incidente_service import IncidenteService
 from app.services.omnicanal_realtime import omnicanal_realtime_hub
 
@@ -38,6 +40,7 @@ class OmnicanalService:
         self._messaging = MessagingService()
         self._evolution = EvolutionApiClient()
         self._incidentes = IncidenteService(db)
+        self._chatbot = ChatbotService(db)
 
     async def registrar_whatsapp_webhook(
         self,
@@ -103,6 +106,9 @@ class OmnicanalService:
                     "chat_id": incoming.chat_id,
                 },
             )
+            auto_reactivate_new_cycle = (
+                conversacion.estado == "CERRADA" and not incoming.metadata.get("from_me")
+            )
             mensaje = await self._repo.create_mensaje_if_missing(
                 conversacion_id=conversacion.id,
                 external_message_id=incoming.external_message_id,
@@ -113,11 +119,21 @@ class OmnicanalService:
                 estado_entrega="sent" if incoming.metadata.get("from_me") else "received",
                 payload_raw=incoming.raw_payload,
             )
-            conversacion = await self._repo.update_conversacion_after_message(
-                conversacion_id=conversacion.id,
-                preview=incoming.content_for_storage,
-                estado="EN_BOT" if conversacion.estado == "ABIERTA" else None,
-            )
+            if auto_reactivate_new_cycle:
+                conversacion = await self._repo.reactivar_conversacion_nuevo_ciclo(
+                    conversacion_id=str(conversacion.id),
+                    preview=incoming.content_for_storage,
+                )
+                await self._chatbot.reset_for_new_cycle(
+                    str(conversacion.id),
+                    reason="AUTO_REOPEN_AFTER_CLOSE",
+                )
+            else:
+                conversacion = await self._repo.update_conversacion_after_message(
+                    conversacion_id=conversacion.id,
+                    preview=incoming.content_for_storage,
+                    estado="EN_BOT" if conversacion.estado == "ABIERTA" else None,
+                )
             if mensaje:
                 await self._repo.create_evento(
                     conversacion_id=conversacion.id,
@@ -136,6 +152,15 @@ class OmnicanalService:
                         payload={"message_id": str(mensaje.id)},
                     )
                 )
+                if not incoming.metadata.get("from_me"):
+                    await self._chatbot.process_incoming_contact_message(
+                        conversacion,
+                        incoming.content_for_storage,
+                    )
+                    await self._broadcast_conversacion(
+                        "conversacion_actualizada",
+                        str(conversacion.id),
+                    )
         return WhatsAppWebhookResponse(
             reporte=ReporteEntranteCreated(
                 id=str(reporte.id),
@@ -193,6 +218,10 @@ class OmnicanalService:
             tipo_evento="CHAT_TOMADO",
             actor_usuario_id=usuario_id,
         )
+        await self._chatbot.mark_human_takeover(
+            str(conversacion.id),
+            reason="Conversacion tomada manualmente por operador.",
+        )
         await self._broadcast_conversacion("conversacion_actualizada", str(conversacion.id))
         return self._map_conversacion_model(conversacion)
 
@@ -210,6 +239,10 @@ class OmnicanalService:
             tipo_evento="CHAT_ASIGNADO",
             actor_usuario_id=actor_id,
             payload={"operador_id": data.operador_id},
+        )
+        await self._chatbot.mark_human_takeover(
+            str(conversacion.id),
+            reason="Conversacion asignada a operador humano.",
         )
         await self._broadcast_conversacion("conversacion_actualizada", str(conversacion.id))
         return self._map_conversacion_model(conversacion)
@@ -249,6 +282,10 @@ class OmnicanalService:
             tipo_evento="CHAT_REABIERTO",
             actor_usuario_id=usuario_id,
         )
+        await self._chatbot.mark_human_takeover(
+            str(conversacion.id),
+            reason="Conversacion reabierta y enviada a cola humana.",
+        )
         await self._broadcast_conversacion("conversacion_actualizada", str(conversacion.id))
         return self._map_conversacion_model(conversacion)
 
@@ -266,6 +303,13 @@ class OmnicanalService:
             tipo_evento="MODO_BOT_ACTIVADO" if modo == "BOT" else "MODO_HUMANO_ACTIVADO",
             actor_usuario_id=usuario_id,
         )
+        if modo == "BOT":
+            await self._chatbot.mark_bot_enabled(str(conversacion.id))
+        else:
+            await self._chatbot.mark_human_takeover(
+                str(conversacion.id),
+                reason="Modo humano activado manualmente.",
+            )
         await self._broadcast_conversacion("conversacion_actualizada", str(conversacion.id))
         return self._map_conversacion_model(conversacion)
 
@@ -310,6 +354,7 @@ class OmnicanalService:
                 severidad=NivelSeveridad(data.severidad) if data.severidad else None,
                 categoria=data.categoria or "WhatsApp",
                 lugar_referencia=data.lugar_referencia,
+                canal_origen="MENSAJERIA",
             ),
         )
         await self._repo.vincular_incidente(conversacion_id, incidente.id)
@@ -321,7 +366,49 @@ class OmnicanalService:
         )
         await self._broadcast_conversacion("conversacion_actualizada", str(conversacion.id))
         updated = await self._repo.get_conversacion_detail(conversacion_id)
-        return self._map_conversacion_model(updated["Conversacion"])
+        return self._map_conversacion_model(updated)
+
+    async def actualizar_borrador_chatbot(
+        self,
+        conversacion_id: str,
+        data: ChatbotBorradorUpdateInput,
+        usuario_id: str,
+    ) -> ConversacionDetail:
+        detail = await self._repo.get_conversacion_detail(conversacion_id)
+        if not detail:
+            raise self._not_found()
+
+        chatbot_state = await self._repo.get_or_create_chatbot_state(conversacion_id)
+        current_draft = dict(chatbot_state.incident_draft or {})
+        payload = data.model_dump(exclude_unset=True)
+
+        for field_name in ("titulo", "descripcion", "severidad", "categoria", "lugar_referencia"):
+            if field_name not in payload:
+                continue
+            raw = payload[field_name]
+            if raw is None:
+                current_draft.pop(field_name, None)
+                continue
+            value = str(raw).strip()
+            if value:
+                current_draft[field_name] = value
+            else:
+                current_draft.pop(field_name, None)
+
+        state_updates: dict[str, Any] = {"incident_draft": current_draft}
+        if "ai_summary" in payload:
+            summary_raw = payload["ai_summary"]
+            state_updates["ai_summary"] = str(summary_raw).strip() if summary_raw else None
+
+        await self._repo.update_chatbot_state(conversacion_id, state_updates)
+        await self._repo.create_evento(
+            conversacion_id=detail["Conversacion"].id,
+            tipo_evento="CHATBOT_BORRADOR_EDITADO",
+            actor_usuario_id=usuario_id,
+        )
+        await self._broadcast_conversacion("conversacion_actualizada", conversacion_id)
+        updated = await self._repo.get_conversacion_detail(conversacion_id)
+        return self._map_conversacion_model(updated)
 
     async def enviar_mensaje(
         self,
@@ -365,6 +452,10 @@ class OmnicanalService:
             tipo_evento="MENSAJE_ENVIADO",
             actor_usuario_id=usuario_id,
             payload={"message_id": str(mensaje.id) if mensaje else None},
+        )
+        await self._chatbot.mark_human_takeover(
+            str(conversacion.id),
+            reason="Operador respondio manualmente en la conversacion.",
         )
         await self._broadcast_conversacion("mensaje_enviado", str(conversacion.id))
         row = {"MensajeConversacion": mensaje}
@@ -420,6 +511,7 @@ class OmnicanalService:
     @classmethod
     def _map_conversacion_row(cls, row: dict[str, Any]) -> ConversacionListItem:
         conversacion = row["Conversacion"]
+        chatbot = cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
         incidente = None
         if row.get("incidente_id"):
             incidente = {
@@ -445,8 +537,15 @@ class OmnicanalService:
                 row.get("operador_email"),
                 row.get("operador_avatar_url"),
             ),
-            tomado_por=None,
+            tomado_por=cls._user_from_parts(
+                row.get("tomado_por_id"),
+                row.get("tomado_por_nombre"),
+                row.get("tomado_por_apellido"),
+                row.get("tomado_por_email"),
+                row.get("tomado_por_avatar_url"),
+            ),
             incidente=incidente,
+            chatbot=chatbot,
             ultimo_mensaje_preview=conversacion.ultimo_mensaje_preview,
             ultimo_mensaje_at=conversacion.ultimo_mensaje_at,
             unread_count=0,
@@ -454,8 +553,38 @@ class OmnicanalService:
             updated_at=conversacion.updated_at,
         )
 
-    @staticmethod
-    def _map_conversacion_model(conversacion: Any) -> ConversacionDetail:
+    @classmethod
+    def _map_conversacion_model(cls, conversacion: Any) -> ConversacionDetail:
+        chatbot = None
+        incidente = None
+        operador_asignado = None
+        tomado_por = None
+        if isinstance(conversacion, dict):
+            row = conversacion
+            conversacion = row["Conversacion"]
+            chatbot = cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
+            if row.get("incidente_id"):
+                incidente = {
+                    "id": str(row["incidente_id"]),
+                    "codigo": row["incidente_codigo"],
+                    "titulo": row["incidente_titulo"],
+                    "estado": row["incidente_estado"],
+                    "severidad": row["incidente_severidad"],
+                }
+            operador_asignado = cls._user_from_parts(
+                row.get("operador_id"),
+                row.get("operador_nombre"),
+                row.get("operador_apellido"),
+                row.get("operador_email"),
+                row.get("operador_avatar_url"),
+            )
+            tomado_por = cls._user_from_parts(
+                row.get("tomado_por_id"),
+                row.get("tomado_por_nombre"),
+                row.get("tomado_por_apellido"),
+                row.get("tomado_por_email"),
+                row.get("tomado_por_avatar_url"),
+            )
         return ConversacionDetail(
             id=str(conversacion.id),
             canal_id=str(conversacion.canal_id),
@@ -465,9 +594,10 @@ class OmnicanalService:
             estado=conversacion.estado,
             modo_atencion=conversacion.modo_atencion,
             prioridad=conversacion.prioridad,
-            operador_asignado=None,
-            tomado_por=None,
-            incidente=None,
+            operador_asignado=operador_asignado,
+            tomado_por=tomado_por,
+            incidente=incidente,
+            chatbot=chatbot,
             ultimo_mensaje_preview=conversacion.ultimo_mensaje_preview,
             ultimo_mensaje_at=conversacion.ultimo_mensaje_at,
             unread_count=0,
@@ -475,6 +605,29 @@ class OmnicanalService:
             created_at=conversacion.created_at,
             updated_at=conversacion.updated_at,
         )
+
+    @staticmethod
+    def _map_chatbot_state(chatbot_state: Any) -> dict[str, Any] | None:
+        if chatbot_state is None:
+            return None
+        return {
+            "bot_status": chatbot_state.bot_status,
+            "last_intent": chatbot_state.last_intent,
+            "last_action": chatbot_state.last_action,
+            "requires_human_review": chatbot_state.requires_human_review,
+            "handoff_reason": chatbot_state.handoff_reason,
+            "ai_summary": chatbot_state.ai_summary,
+            "classification_category": chatbot_state.classification_category,
+            "classification_severity": chatbot_state.classification_severity,
+            "classification_confidence": chatbot_state.classification_confidence,
+            "missing_fields": chatbot_state.missing_fields or [],
+            "incident_draft": chatbot_state.incident_draft or {},
+            "suggested_reply": chatbot_state.suggested_reply,
+            "last_bot_reply": chatbot_state.last_bot_reply,
+            "last_user_message_at": chatbot_state.last_user_message_at,
+            "last_bot_message_at": chatbot_state.last_bot_message_at,
+            "last_processed_at": chatbot_state.last_processed_at,
+        }
 
     @classmethod
     def _map_mensaje_row(cls, row: dict[str, Any]) -> MensajeConversacionOut:

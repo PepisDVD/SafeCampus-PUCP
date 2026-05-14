@@ -10,6 +10,33 @@ ModoAtencion = Literal["BOT", "HUMANO"]
 PrioridadConversacion = Literal["BAJO", "MEDIO", "ALTO", "CRITICO"]
 DireccionMensaje = Literal["INBOUND", "OUTBOUND"]
 AutorMensaje = Literal["CONTACTO", "BOT", "OPERADOR", "SISTEMA"]
+ChatbotStatus = Literal[
+    "BOT_NEW",
+    "BOT_COLLECTING",
+    "BOT_INCIDENT_DRAFTED",
+    "BOT_ESCALATED",
+    "HUMAN_ACTIVE",
+    "BOT_PAUSED",
+]
+
+
+class ChatbotConversationStateOut(BaseModel):
+    bot_status: ChatbotStatus
+    last_intent: str | None = None
+    last_action: str | None = None
+    requires_human_review: bool = False
+    handoff_reason: str | None = None
+    ai_summary: str | None = None
+    classification_category: str | None = None
+    classification_severity: str | None = None
+    classification_confidence: float | None = None
+    missing_fields: list[str] = Field(default_factory=list)
+    incident_draft: dict = Field(default_factory=dict)
+    suggested_reply: str | None = None
+    last_bot_reply: str | None = None
+    last_user_message_at: datetime | None = None
+    last_bot_message_at: datetime | None = None
+    last_processed_at: datetime | None = None
 
 
 class ReporteEntranteCreated(BaseModel):
@@ -70,6 +97,7 @@ class ConversacionListItem(BaseModel):
     operador_asignado: UsuarioConversacionOut | None = None
     tomado_por: UsuarioConversacionOut | None = None
     incidente: IncidenteConversacionOut | None = None
+    chatbot: ChatbotConversationStateOut | None = None
     ultimo_mensaje_preview: str | None = None
     ultimo_mensaje_at: datetime
     unread_count: int = 0
@@ -120,6 +148,15 @@ class VincularIncidenteInput(BaseModel):
 
 
 class CrearIncidenteConversacionInput(BaseModel):
+    titulo: str | None = Field(default=None, max_length=200)
+    descripcion: str | None = Field(default=None, max_length=4000)
+    severidad: str | None = Field(default=None, pattern="^(BAJO|MEDIO|ALTO|CRITICO)$")
+    categoria: str | None = Field(default=None, max_length=100)
+    lugar_referencia: str | None = Field(default=None, max_length=255)
+
+
+class ChatbotBorradorUpdateInput(BaseModel):
+    ai_summary: str | None = Field(default=None, max_length=4000)
     titulo: str | None = Field(default=None, max_length=200)
     descripcion: str | None = Field(default=None, max_length=4000)
     severidad: str | None = Field(default=None, pattern="^(BAJO|MEDIO|ALTO|CRITICO)$")

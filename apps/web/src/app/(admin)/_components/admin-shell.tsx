@@ -12,6 +12,7 @@ import {
 } from "@safecampus/ui-kit";
 import {
   BarChart3,
+  BotMessageSquare,
   ClipboardList,
   House,
   LayoutDashboard,
@@ -85,6 +86,16 @@ const ADMIN_NAV: NavItem[] = [
     label: "Auditoria",
     icon: ClipboardList,
     section: "Administracion",
+  },
+  {
+    href: "/llm",
+    label: "Uso de LLM",
+    icon: BotMessageSquare,
+    section: "Administracion",
+    children: [
+      { href: "/llm-dashboard", label: "Dashboard", icon: BarChart3 },
+      { href: "/llm-audit", label: "Historial", icon: ClipboardList },
+    ],
   },
 ];
 

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import type { LucideIcon } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils";
 import {
   Sidebar,
@@ -11,6 +12,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
   SidebarSeparator,
   useSidebar,
@@ -22,6 +26,7 @@ export type NavItem = {
   label: string;
   icon: LucideIcon;
   section?: string;
+  children?: Omit<NavItem, "section" | "children">[];
 };
 
 type AppLogoComponent = React.ComponentType<{ className?: string }>;
@@ -48,6 +53,67 @@ function DefaultSidebarLink({ href, children, className }: SidebarLinkProps) {
     <a href={href} className={className}>
       {children}
     </a>
+  );
+}
+
+type CollapsibleNavGroupProps = {
+  item: NavItem;
+  isActive: boolean;
+  pathname: string;
+  SidebarLink: React.ComponentType<SidebarLinkProps>;
+};
+
+function CollapsibleNavGroup({ item, isActive, pathname, SidebarLink }: CollapsibleNavGroupProps) {
+  const [open, setOpen] = React.useState(isActive);
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        tooltip={item.label}
+        isActive={isActive}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "h-10 rounded-xl text-blue-100 hover:bg-white/10 hover:text-white cursor-pointer",
+          "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center",
+          isActive &&
+            "bg-white/15 text-white shadow-sm ring-1 ring-white/10 hover:bg-white/20 hover:text-white",
+        )}
+      >
+        <item.icon className="size-4" />
+        <span>{item.label}</span>
+        <ChevronRight
+          className={cn(
+            "ml-auto size-3.5 shrink-0 text-blue-200/60 transition-transform duration-200",
+            open && "rotate-90",
+          )}
+        />
+      </SidebarMenuButton>
+      {open && (
+        <SidebarMenuSub className="group-data-[collapsible=icon]:hidden">
+          {item.children!.map((child) => {
+            const childActive =
+              pathname === child.href || pathname.startsWith(child.href + "/");
+            return (
+              <SidebarMenuSubItem key={child.href}>
+                <SidebarMenuSubButton
+                  asChild
+                  isActive={childActive}
+                  className={cn(
+                    "rounded-lg text-blue-100/80 hover:bg-white/10 hover:text-white",
+                    childActive && "bg-white/10 text-white",
+                  )}
+                >
+                  <SidebarLink href={child.href}>
+                    <child.icon className="size-3.5" />
+                    <span>{child.label}</span>
+                  </SidebarLink>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            );
+          })}
+        </SidebarMenuSub>
+      )}
+    </SidebarMenuItem>
   );
 }
 
@@ -99,9 +165,12 @@ export function AppSidebar({
       <SidebarContent className="px-2 py-3">
         <SidebarMenu className="gap-1.5">
           {navItems.map((item, index) => {
+            const isChildActive = item.children?.some(
+              (c) => pathname === c.href || pathname.startsWith(c.href + "/"),
+            );
             const isActive =
-              pathname === item.href ||
-              pathname.startsWith(item.href + "/");
+              (!item.children && (pathname === item.href || pathname.startsWith(item.href + "/"))) ||
+              !!isChildActive;
             const previousSection = index > 0 ? navItems[index - 1]?.section : undefined;
             const showSectionHeader = !!item.section && item.section !== previousSection;
 
@@ -117,24 +186,33 @@ export function AppSidebar({
                     </div>
                   </>
                 )}
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
+                {item.children ? (
+                  <CollapsibleNavGroup
+                    item={item}
                     isActive={isActive}
-                    tooltip={item.label}
-                    className={cn(
-                      "h-10 rounded-xl text-blue-100 hover:bg-white/10 hover:text-white",
-                      "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center",
-                      isActive &&
-                        "bg-white/15 text-white shadow-sm ring-1 ring-white/10 hover:bg-white/20 hover:text-white data-[active=true]:bg-white/15 data-[active=true]:text-white",
-                    )}
-                  >
-                    <SidebarLink href={item.href}>
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </SidebarLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                    pathname={pathname}
+                    SidebarLink={SidebarLink}
+                  />
+                ) : (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.label}
+                      className={cn(
+                        "h-10 rounded-xl text-blue-100 hover:bg-white/10 hover:text-white",
+                        "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center",
+                        isActive &&
+                          "bg-white/15 text-white shadow-sm ring-1 ring-white/10 hover:bg-white/20 hover:text-white data-[active=true]:bg-white/15 data-[active=true]:text-white",
+                      )}
+                    >
+                      <SidebarLink href={item.href}>
+                        <item.icon className="size-4" />
+                        <span>{item.label}</span>
+                      </SidebarLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </React.Fragment>
             );
           })}

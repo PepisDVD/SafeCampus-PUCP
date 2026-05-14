@@ -671,9 +671,10 @@ class IncidenteService:
         self,
         reportante_id: str,
         data: IncidenteCreateInput,
+        priorizacion_override: IncidentePriorizacionAi | None = None,
     ) -> IncidenteCreated:
         descripcion = data.descripcion.strip() if data.descripcion else None
-        priorizacion = await self._priorizar_incidente_ia(data, descripcion)
+        priorizacion = priorizacion_override or await self._priorizar_incidente_ia(data, descripcion)
         severidad_final = (
             data.severidad.value
             if data.severidad
@@ -696,7 +697,7 @@ class IncidenteService:
                 "lugar_referencia": (
                     data.lugar_referencia.strip() if data.lugar_referencia else None
                 ),
-                "canal_origen": "WEB",
+                "canal_origen": data.canal_origen.value,
             },
         )
         await self._repo.create_clasificacion_ia(
@@ -724,7 +725,7 @@ class IncidenteService:
             detalle={
                 "codigo": creado["codigo"],
                 "estado": creado["estado"],
-                "canal_origen": "WEB",
+                "canal_origen": data.canal_origen.value,
                 "severidad_final": severidad_final,
                 "severidad_sugerida_ia": priorizacion.severidad.value,
                 "categoria_sugerida_ia": priorizacion.categoria_sugerida,

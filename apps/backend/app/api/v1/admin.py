@@ -13,6 +13,8 @@ from app.schemas.admin import (
     AuditoriaListResponse,
     CambiarEstadoInput,
     IntegracionesListResponse,
+    LlmUsageListResponse,
+    LlmUsageStatsResponse,
     ModulosResponse,
     PermisosListResponse,
     RolesListResponse,
@@ -23,6 +25,7 @@ from app.schemas.admin import (
 )
 from app.schemas.common import MessageResponse
 from app.services.admin_service import AdminService
+from app.services.llm_audit_service import LlmAuditService
 
 router = APIRouter(dependencies=[Depends(require_roles({"administrador"}))])
 
@@ -160,3 +163,59 @@ async def verificar_integracion(
 ):
     result = await service.verificar_integracion(integracion_id)
     return MessageResponse(message=result["message"])
+
+
+# ---------------------------------------------------------------------------
+# LLM Audit
+# ---------------------------------------------------------------------------
+
+def get_llm_audit_service(db: AsyncSession = Depends(get_session)) -> LlmAuditService:
+    return LlmAuditService(db)
+
+
+@router.get(
+    "/llm-audit",
+    response_model=LlmUsageListResponse,
+    tags=["Admin - LLM Audit"],
+)
+async def listar_llm_usage(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=5, le=100),
+    conversacion_id: str | None = Query(default=None),
+    provider: str | None = Query(default=None),
+    desde: str | None = Query(default=None),
+    hasta: str | None = Query(default=None),
+    service: LlmAuditService = Depends(get_llm_audit_service),
+):
+    return await service.listar_uso(
+        page=page,
+        page_size=page_size,
+        conversacion_id=conversacion_id,
+        provider=provider,
+        desde=desde,
+        hasta=hasta,
+    )
+
+
+@router.get(
+    "/llm-audit/stats",
+    response_model=LlmUsageStatsResponse,
+    tags=["Admin - LLM Audit"],
+)
+async def obtener_llm_stats(
+    desde: str | None = Query(default=None),
+    hasta: str | None = Query(default=None),
+    service: LlmAuditService = Depends(get_llm_audit_service),
+):
+    return await service.obtener_stats(desde=desde, hasta=hasta)
+
+
+@router.get(
+    "/llm-audit/providers",
+    response_model=list[str],
+    tags=["Admin - LLM Audit"],
+)
+async def listar_providers(
+    service: LlmAuditService = Depends(get_llm_audit_service),
+):
+    return await service.listar_providers()

@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MAX_TOKENS: int = 3000
+    CHATBOT_ENABLED: bool = True
+    CHATBOT_AUTO_CREATE_INCIDENTS: bool = True
+    CHATBOT_SYSTEM_USER_ID: str = ""
     GOOGLE_MAPS_API_KEY: str = ""
     WHATSAPP_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""

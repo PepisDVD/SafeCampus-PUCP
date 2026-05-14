@@ -140,3 +140,54 @@ class IntegracionOut(BaseModel):
 
 class IntegracionesListResponse(BaseModel):
     items: list[IntegracionOut]
+
+
+# ---------------------------------------------------------------------------
+# LLM Audit
+# ---------------------------------------------------------------------------
+
+class LlmUsageItemOut(BaseModel):
+    id: str
+    conversacion_id: str
+    incidente_id: str | None
+    correlation_id: str
+    provider: str
+    model: str
+    prompt_version: str | None
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    latency_ms: int | None
+    fallback_applied: bool
+    fallback_reason: str | None
+    created_at: str
+
+
+class LlmUsageListResponse(BaseModel):
+    items: list[LlmUsageItemOut]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class LlmUsageProviderStat(BaseModel):
+    provider: str
+    total_calls: int
+    total_tokens: int
+    prompt_tokens: int
+    completion_tokens: int
+    avg_latency_ms: float | None
+    fallback_count: int
+
+
+class LlmUsageStatsResponse(BaseModel):
+    total_calls: int
+    total_tokens: int
+    prompt_tokens: int
+    completion_tokens: int
+    avg_latency_ms: float | None
+    fallback_rate: float
+    unique_conversations: int
+    by_provider: list[LlmUsageProviderStat]
+    tokens_per_day: list[dict[str, Any]]

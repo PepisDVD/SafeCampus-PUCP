@@ -20,6 +20,7 @@ from app.core.database import AsyncSessionLocal
 from app.schemas.auth import AuthUserResponse
 from app.schemas.omnicanal import (
     AsignarConversacionInput,
+    ChatbotBorradorUpdateInput,
     CerrarConversacionInput,
     ConversacionDetail,
     ConversacionListResponse,
@@ -212,6 +213,23 @@ async def crear_incidente(
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
 ):
     return await service.crear_incidente_desde_conversacion(
+        conversacion_id,
+        body,
+        current_user.id,
+    )
+
+
+@router.patch(
+    "/conversaciones/{conversacion_id}/chatbot-borrador",
+    response_model=ConversacionDetail,
+)
+async def actualizar_borrador_chatbot(
+    conversacion_id: str,
+    body: ChatbotBorradorUpdateInput,
+    service: Annotated[OmnicanalService, Depends(get_service)],
+    current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
+):
+    return await service.actualizar_borrador_chatbot(
         conversacion_id,
         body,
         current_user.id,
