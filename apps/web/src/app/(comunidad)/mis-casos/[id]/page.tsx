@@ -8,9 +8,8 @@ import { ArrowLeft, CalendarClock, Clock, MapPin } from "lucide-react";
 import { Badge, Card, cn } from "@safecampus/ui-kit";
 
 import { IncidenteComunicacion } from "@/features/incidentes/components/incidente-comunicacion";
-import {
-  obtenerMiDetalleIncidente,
-} from "@/features/incidentes/service";
+import { obtenerMiDetalleIncidente } from "@/features/incidentes/service";
+import { EvidenciasSection } from "./_components/evidencias-section";
 import {
   ESTADO_STYLE,
   formatCategoria,
@@ -133,6 +132,11 @@ export default async function ComunidadCasoDetallePage({
           )}
         </ol>
       </section>
+
+      <EvidenciasSection
+        incidenteId={detalle.id}
+        evidencias={detalle.evidencias}
+      />
 
       <IncidenteComunicacion incidente={detalle} />
     </div>

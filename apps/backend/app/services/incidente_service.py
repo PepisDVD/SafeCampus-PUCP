@@ -6,9 +6,9 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -42,7 +42,9 @@ from app.schemas.incidente import (
     UsuarioMini,
     ZonaCount,
 )
+from app.schemas.auth import AuthUserResponse
 from app.services.gemini_service import GeminiService
+from app.services.storage_service import StorageService
 
 # Targets de SLA — constantes operativas.
 FRT_TARGET_MIN = 5.0
@@ -781,6 +783,116 @@ class IncidenteService:
                 confianza=0.0,
                 justificacion="Fallback local por indisponibilidad de priorizacion IA.",
             )
+
+    _MIME_PERMITIDOS = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/heic",
+        "image/gif",
+    }
+    _MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+
+    async def subir_evidencia(
+        self,
+        *,
+        incidente_id: str,
+        archivo: UploadFile,
+        descripcion: str | None,
+        usuario_actual: AuthUserResponse,
+    ) -> EvidenciaIncidenteItem:
+        """Valida, sube a Supabase Storage y registra la evidencia en BD."""
+        try:
+            UUID(incidente_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ID de incidente inválido.",
+            ) from exc
+
+        participantes = await self._repo.get_participantes(incidente_id)
+        if not participantes:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Incidente no encontrado.",
+            )
+
+        es_reportante = str(participantes["reportante_id"]) == usuario_actual.id
+        es_staff = bool({"supervisor", "operador", "administrador"}.intersection(usuario_actual.roles))
+        if not es_reportante and not es_staff:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para adjuntar evidencias a este incidente.",
+            )
+
+        mime = archivo.content_type or ""
+        if mime not in self._MIME_PERMITIDOS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Tipo de archivo no permitido. Solo se aceptan imágenes (jpg, png, webp, heic, gif).",
+            )
+
+        contenido = await archivo.read()
+        if len(contenido) > self._MAX_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="El archivo supera el límite de 10 MB.",
+            )
+
+        storage = StorageService()
+        nombre_seguro = archivo.filename or "evidencia"
+        ruta = f"{incidente_id}/{uuid4().hex}_{nombre_seguro}"
+        from app.core.config import settings as _settings
+
+        url = await storage.upload(
+            bucket=_settings.SUPABASE_STORAGE_BUCKET,
+            path=ruta,
+            content=contenido,
+            content_type=mime,
+        )
+
+        tipo_archivo = mime.split("/")[0]
+        row = await self._repo.create_evidencia(
+            incidente_id=incidente_id,
+            tipo_archivo=tipo_archivo,
+            nombre_archivo=nombre_seguro,
+            url_archivo=url,
+            tamano_bytes=len(contenido),
+            mime_type=mime,
+            descripcion=descripcion,
+            cargado_por_id=usuario_actual.id,
+        )
+
+        await self._registrar_auditoria_incidente(
+            usuario_id=usuario_actual.id,
+            accion="subir_evidencia",
+            incidente_id=incidente_id,
+            detalle={
+                "codigo": participantes["codigo"],
+                "nombre_archivo": nombre_seguro,
+                "mime_type": mime,
+                "tamano_bytes": len(contenido),
+            },
+        )
+
+        cargado_por = UsuarioMini(
+            id=usuario_actual.id,
+            nombre_completo=f"{usuario_actual.nombre} {usuario_actual.apellido}".strip(),
+            email=usuario_actual.email,
+            avatar_url=usuario_actual.avatar_url,
+        )
+        return EvidenciaIncidenteItem(
+            id=str(row["id"]),
+            incidente_id=str(row["incidente_id"]),
+            tipo_archivo=str(row["tipo_archivo"]),
+            nombre_archivo=str(row["nombre_archivo"]),
+            url_archivo=str(row["url_archivo"]),
+            tamano_bytes=row.get("tamano_bytes"),
+            mime_type=row.get("mime_type"),
+            descripcion=row.get("descripcion"),
+            cargado_por=cargado_por,
+            created_at=row["created_at"],
+        )
 
     async def _registrar_auditoria_incidente(
         self,

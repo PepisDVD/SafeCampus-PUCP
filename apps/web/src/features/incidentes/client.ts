@@ -10,6 +10,7 @@ import type {
   IncidenteAsignacionUpdate,
   ComentarioIncidenteCreateInput,
   ComentarioIncidenteItem,
+  EvidenciaIncidenteItem,
   ExpedienteCierreAiDraft,
   IncidenteDetail,
   IncidenteEstadoUpdate,
@@ -62,5 +63,23 @@ export async function generarBorradorCierreIa(
   return api.post<ExpedienteCierreAiDraft>(
     `/incidentes/${encodeURIComponent(incidenteId)}/expediente-cierre/borrador-ia`,
     {},
+  );
+}
+
+/**
+ * POST /incidentes/{id}/evidencias — adjunta una imagen de evidencia.
+ * Usa multipart/form-data; el backend sube el archivo a Supabase Storage.
+ */
+export async function subirEvidencia(
+  incidenteId: string,
+  archivo: File,
+  descripcion?: string,
+): Promise<EvidenciaIncidenteItem> {
+  const form = new FormData();
+  form.append("archivo", archivo);
+  if (descripcion) form.append("descripcion", descripcion);
+  return api.postMultipart<EvidenciaIncidenteItem>(
+    `/incidentes/${encodeURIComponent(incidenteId)}/evidencias`,
+    form,
   );
 }

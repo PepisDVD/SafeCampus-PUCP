@@ -80,6 +80,29 @@ class ApiClient {
   delete<T>(endpoint: string, options?: RequestOptions) {
     return this.request<T>(endpoint, { ...options, method: "DELETE" });
   }
+
+  /**
+   * POST multipart/form-data — para subir archivos.
+   * No establece Content-Type manualmente: el navegador lo hace
+   * automáticamente con el boundary correcto al recibir un FormData.
+   */
+  async postMultipart<T>(endpoint: string, formData: FormData): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`;
+    const response = await fetch(url, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ detail: "Error desconocido" }));
+      throw new Error(error.detail || `Error ${response.status}`);
+    }
+
+    return response.json();
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);
