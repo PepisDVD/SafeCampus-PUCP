@@ -45,9 +45,39 @@ export enum EstadoNotificacion {
 export enum EstadoCasoLF {
   ABIERTO = "ABIERTO",
   EN_REVISION = "EN_REVISION",
+  CONFIRMADO = "CONFIRMADO",
+  EN_CUSTODIA = "EN_CUSTODIA",
   DEVUELTO = "DEVUELTO",
   DESCARTADO = "DESCARTADO",
   CERRADO = "CERRADO",
+}
+
+export enum TipoCasoLF {
+  PERDIDO = "PERDIDO",
+  ENCONTRADO = "ENCONTRADO",
+}
+
+export enum EstadoMatchLF {
+  SUGERIDO = "SUGERIDO",
+  CONFIRMADO = "CONFIRMADO",
+  DESCARTADO = "DESCARTADO",
+  EXPIRADO = "EXPIRADO",
+}
+
+export enum MotivoCierreLF {
+  CANCELADO_USUARIO = "CANCELADO_USUARIO",
+  DEVUELTO = "DEVUELTO",
+  DESCARTADO = "DESCARTADO",
+  DONADO = "DONADO",
+  ADMINISTRATIVO = "ADMINISTRATIVO",
+}
+
+export enum EstadoCustodia {
+  ACTIVA = "ACTIVA",
+  PROXIMA_VENCER = "PROXIMA_VENCER",
+  VENCIDA = "VENCIDA",
+  DEVUELTA = "DEVUELTA",
+  DESCARTADA = "DESCARTADA",
 }
 
 export enum EstadoAcompanamiento {

@@ -1,7 +1,15 @@
-/**
- * 📁 apps/web/src/features/lost-found/types.ts
- * 🎯 Tipos TypeScript específicos del módulo de objetos perdidos y encontrados.
- * 📦 Feature: Lost & Found
- */
+export type {
+  CasoLfDetail,
+  CasoLfListItem,
+  CategoriaLf,
+  ComentarioLf,
+  CustodiaLf,
+  KpisLf,
+  MatchLf,
+} from "@safecampus/shared-types";
 
-export {};
+export type ListResponse<T> = {
+  items: T[];
+  total: number;
+};
+

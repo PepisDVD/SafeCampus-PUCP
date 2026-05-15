@@ -1004,6 +1004,14 @@ export type Database = {
         | "DEVUELTO"
         | "DESCARTADO"
         | "CERRADO"
+        | "CONFIRMADO"
+        | "EN_CUSTODIA"
+      estado_custodia:
+        | "ACTIVA"
+        | "PROXIMA_VENCER"
+        | "VENCIDA"
+        | "DEVUELTA"
+        | "DESCARTADA"
       estado_incidente:
         | "RECIBIDO"
         | "EN_EVALUACION"
@@ -1012,11 +1020,18 @@ export type Database = {
         | "PENDIENTE_INFO"
         | "RESUELTO"
         | "CERRADO"
+      estado_match_lf: "SUGERIDO" | "CONFIRMADO" | "DESCARTADO" | "EXPIRADO"
       estado_notificacion: "PENDIENTE" | "ENVIADA" | "FALLIDA" | "DESCARTADA"
       estado_reporte: "RECIBIDO" | "NORMALIZADO" | "ENRUTADO" | "ERROR"
       estado_servicio: "OK" | "DEGRADADO" | "CAIDO" | "DESCONOCIDO"
       estado_sesion: "ACTIVA" | "EXPIRADA" | "REVOCADA"
       estado_usuario: "ACTIVO" | "INACTIVO" | "SUSPENDIDO"
+      motivo_cierre_lf:
+        | "CANCELADO_USUARIO"
+        | "DEVUELTO"
+        | "DESCARTADO"
+        | "DONADO"
+        | "ADMINISTRATIVO"
       nivel_severidad: "BAJO" | "MEDIO" | "ALTO" | "CRITICO"
       origen_clasificacion: "IA" | "REGLA" | "FALLBACK" | "HUMANO"
       tipo_alerta_as: "MANUAL" | "VENCIMIENTO" | "DESCONEXION"
@@ -1763,7 +1778,7 @@ export type Database = {
           codigo: string
           created_at: string
           deleted_at: string | null
-          descripcion: string
+          descripcion: string | null
           es_anonimo: boolean
           estado: Database["public"]["Enums"]["estado_incidente"]
           fecha_primera_respuesta: string | null
@@ -1787,7 +1802,7 @@ export type Database = {
           codigo: string
           created_at?: string
           deleted_at?: string | null
-          descripcion: string
+          descripcion?: string | null
           es_anonimo?: boolean
           estado?: Database["public"]["Enums"]["estado_incidente"]
           fecha_primera_respuesta?: string | null
@@ -1811,7 +1826,7 @@ export type Database = {
           codigo?: string
           created_at?: string
           deleted_at?: string | null
-          descripcion?: string
+          descripcion?: string | null
           es_anonimo?: boolean
           estado?: Database["public"]["Enums"]["estado_incidente"]
           fecha_primera_respuesta?: string | null
@@ -1893,57 +1908,87 @@ export type Database = {
           categoria_id: string | null
           cerrado_por_id: string | null
           codigo: string
+          color_principal: string | null
           contacto_info: string | null
+          conteo_comentarios: number
           created_at: string
           descripcion: string
           estado: Database["public"]["Enums"]["estado_caso_lf"]
+          etiquetas: Json | null
           fecha_evento: string | null
+          foto_adicional_urls: Json | null
           foto_url: string | null
           geom: unknown
+          hora_aproximada: string | null
           id: string
           lugar_referencia: string | null
+          marca: string | null
+          motivo_cierre: Database["public"]["Enums"]["motivo_cierre_lf"] | null
           notas: string | null
+          observaciones_cierre: string | null
           reportante_id: string
+          subcategoria: string | null
           tipo: Database["public"]["Enums"]["tipo_caso_lf"]
           titulo: string
+          ts_busqueda: string | null
           updated_at: string
         }
         Insert: {
           categoria_id?: string | null
           cerrado_por_id?: string | null
           codigo: string
+          color_principal?: string | null
           contacto_info?: string | null
+          conteo_comentarios?: number
           created_at?: string
           descripcion: string
           estado?: Database["public"]["Enums"]["estado_caso_lf"]
+          etiquetas?: Json | null
           fecha_evento?: string | null
+          foto_adicional_urls?: Json | null
           foto_url?: string | null
           geom?: unknown
+          hora_aproximada?: string | null
           id?: string
           lugar_referencia?: string | null
+          marca?: string | null
+          motivo_cierre?: Database["public"]["Enums"]["motivo_cierre_lf"] | null
           notas?: string | null
+          observaciones_cierre?: string | null
           reportante_id: string
+          subcategoria?: string | null
           tipo: Database["public"]["Enums"]["tipo_caso_lf"]
           titulo: string
+          ts_busqueda?: string | null
           updated_at?: string
         }
         Update: {
           categoria_id?: string | null
           cerrado_por_id?: string | null
           codigo?: string
+          color_principal?: string | null
           contacto_info?: string | null
+          conteo_comentarios?: number
           created_at?: string
           descripcion?: string
           estado?: Database["public"]["Enums"]["estado_caso_lf"]
+          etiquetas?: Json | null
           fecha_evento?: string | null
+          foto_adicional_urls?: Json | null
           foto_url?: string | null
           geom?: unknown
+          hora_aproximada?: string | null
           id?: string
           lugar_referencia?: string | null
+          marca?: string | null
+          motivo_cierre?: Database["public"]["Enums"]["motivo_cierre_lf"] | null
           notas?: string | null
+          observaciones_cierre?: string | null
           reportante_id?: string
+          subcategoria?: string | null
           tipo?: Database["public"]["Enums"]["tipo_caso_lf"]
           titulo?: string
+          ts_busqueda?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1961,27 +2006,175 @@ export type Database = {
           activa: boolean
           created_at: string
           descripcion: string | null
+          es_perecible: boolean
           icono: string | null
           id: string
+          metadatos_schema: Json | null
           nombre: string
         }
         Insert: {
           activa?: boolean
           created_at?: string
           descripcion?: string | null
+          es_perecible?: boolean
           icono?: string | null
           id?: string
+          metadatos_schema?: Json | null
           nombre: string
         }
         Update: {
           activa?: boolean
           created_at?: string
           descripcion?: string | null
+          es_perecible?: boolean
           icono?: string | null
           id?: string
+          metadatos_schema?: Json | null
           nombre?: string
         }
         Relationships: []
+      }
+      comentario_caso_lf: {
+        Row: {
+          autor_id: string
+          caso_id: string
+          contenido: string
+          created_at: string
+          id: string
+          motivo_ocultamiento: string | null
+          ocultado_por_id: string | null
+          updated_at: string
+          visible: boolean
+        }
+        Insert: {
+          autor_id: string
+          caso_id: string
+          contenido: string
+          created_at?: string
+          id?: string
+          motivo_ocultamiento?: string | null
+          ocultado_por_id?: string | null
+          updated_at?: string
+          visible?: boolean
+        }
+        Update: {
+          autor_id?: string
+          caso_id?: string
+          contenido?: string
+          created_at?: string
+          id?: string
+          motivo_ocultamiento?: string | null
+          ocultado_por_id?: string | null
+          updated_at?: string
+          visible?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comentario_caso_lf_caso_id_fkey"
+            columns: ["caso_id"]
+            isOneToOne: false
+            referencedRelation: "caso_lost_found"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      configuracion_lf: {
+        Row: {
+          created_at: string
+          descripcion: string | null
+          key: string
+          updated_at: string
+          updated_by_id: string | null
+          value: Json
+        }
+        Insert: {
+          created_at?: string
+          descripcion?: string | null
+          key: string
+          updated_at?: string
+          updated_by_id?: string | null
+          value?: Json
+        }
+        Update: {
+          created_at?: string
+          descripcion?: string | null
+          key?: string
+          updated_at?: string
+          updated_by_id?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
+      custodia_objeto: {
+        Row: {
+          caso_id: string
+          created_at: string
+          destino_descarte: string | null
+          entregado_por_id: string | null
+          es_perecible: boolean
+          estado: Database["public"]["Enums"]["estado_custodia"]
+          fecha_descarte: string | null
+          fecha_devolucion: string | null
+          fecha_recepcion: string
+          fecha_vencimiento: string
+          id: string
+          metodo_verificacion: string | null
+          motivo_descarte: string | null
+          observaciones: string | null
+          recibido_por_id: string
+          reclamante_id: string | null
+          ubicacion_custodia: string
+          updated_at: string
+        }
+        Insert: {
+          caso_id: string
+          created_at?: string
+          destino_descarte?: string | null
+          entregado_por_id?: string | null
+          es_perecible?: boolean
+          estado?: Database["public"]["Enums"]["estado_custodia"]
+          fecha_descarte?: string | null
+          fecha_devolucion?: string | null
+          fecha_recepcion?: string
+          fecha_vencimiento: string
+          id?: string
+          metodo_verificacion?: string | null
+          motivo_descarte?: string | null
+          observaciones?: string | null
+          recibido_por_id: string
+          reclamante_id?: string | null
+          ubicacion_custodia: string
+          updated_at?: string
+        }
+        Update: {
+          caso_id?: string
+          created_at?: string
+          destino_descarte?: string | null
+          entregado_por_id?: string | null
+          es_perecible?: boolean
+          estado?: Database["public"]["Enums"]["estado_custodia"]
+          fecha_descarte?: string | null
+          fecha_devolucion?: string | null
+          fecha_recepcion?: string
+          fecha_vencimiento?: string
+          id?: string
+          metodo_verificacion?: string | null
+          motivo_descarte?: string | null
+          observaciones?: string | null
+          recibido_por_id?: string
+          reclamante_id?: string | null
+          ubicacion_custodia?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custodia_objeto_caso_id_fkey"
+            columns: ["caso_id"]
+            isOneToOne: true
+            referencedRelation: "caso_lost_found"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       historial_caso_lf: {
         Row: {
@@ -2017,6 +2210,95 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "historial_caso_lf_caso_id_fkey"
+            columns: ["caso_id"]
+            isOneToOne: false
+            referencedRelation: "caso_lost_found"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      match_sugerido: {
+        Row: {
+          caso_encontrado_id: string
+          caso_perdido_id: string
+          created_at: string
+          estado: Database["public"]["Enums"]["estado_match_lf"]
+          id: string
+          respondido_por_id: string | null
+          respuesta_comentario: string | null
+          score_detalle: Json
+          score_total: number
+          updated_at: string
+        }
+        Insert: {
+          caso_encontrado_id: string
+          caso_perdido_id: string
+          created_at?: string
+          estado?: Database["public"]["Enums"]["estado_match_lf"]
+          id?: string
+          respondido_por_id?: string | null
+          respuesta_comentario?: string | null
+          score_detalle?: Json
+          score_total: number
+          updated_at?: string
+        }
+        Update: {
+          caso_encontrado_id?: string
+          caso_perdido_id?: string
+          created_at?: string
+          estado?: Database["public"]["Enums"]["estado_match_lf"]
+          id?: string
+          respondido_por_id?: string | null
+          respuesta_comentario?: string | null
+          score_detalle?: Json
+          score_total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_sugerido_caso_encontrado_id_fkey"
+            columns: ["caso_encontrado_id"]
+            isOneToOne: false
+            referencedRelation: "caso_lost_found"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_sugerido_caso_perdido_id_fkey"
+            columns: ["caso_perdido_id"]
+            isOneToOne: false
+            referencedRelation: "caso_lost_found"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      participante_hilo_lf: {
+        Row: {
+          caso_id: string
+          created_at: string
+          id: string
+          suscrito: boolean
+          updated_at: string
+          usuario_id: string
+        }
+        Insert: {
+          caso_id: string
+          created_at?: string
+          id?: string
+          suscrito?: boolean
+          updated_at?: string
+          usuario_id: string
+        }
+        Update: {
+          caso_id?: string
+          created_at?: string
+          id?: string
+          suscrito?: boolean
+          updated_at?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "participante_hilo_lf_caso_id_fkey"
             columns: ["caso_id"]
             isOneToOne: false
             referencedRelation: "caso_lost_found"
@@ -2202,6 +2484,148 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      chatbot_estado_conversacion: {
+        Row: {
+          ai_summary: string | null
+          bot_status: string
+          classification_category: string | null
+          classification_confidence: number | null
+          classification_severity: string | null
+          conversacion_id: string
+          created_at: string
+          handoff_reason: string | null
+          id: string
+          incident_draft: Json | null
+          last_action: string | null
+          last_bot_message_at: string | null
+          last_bot_reply: string | null
+          last_intent: string | null
+          last_processed_at: string | null
+          last_user_message_at: string | null
+          memory_snapshot: Json | null
+          missing_fields: Json | null
+          requires_human_review: boolean
+          suggested_reply: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_summary?: string | null
+          bot_status?: string
+          classification_category?: string | null
+          classification_confidence?: number | null
+          classification_severity?: string | null
+          conversacion_id: string
+          created_at?: string
+          handoff_reason?: string | null
+          id?: string
+          incident_draft?: Json | null
+          last_action?: string | null
+          last_bot_message_at?: string | null
+          last_bot_reply?: string | null
+          last_intent?: string | null
+          last_processed_at?: string | null
+          last_user_message_at?: string | null
+          memory_snapshot?: Json | null
+          missing_fields?: Json | null
+          requires_human_review?: boolean
+          suggested_reply?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_summary?: string | null
+          bot_status?: string
+          classification_category?: string | null
+          classification_confidence?: number | null
+          classification_severity?: string | null
+          conversacion_id?: string
+          created_at?: string
+          handoff_reason?: string | null
+          id?: string
+          incident_draft?: Json | null
+          last_action?: string | null
+          last_bot_message_at?: string | null
+          last_bot_reply?: string | null
+          last_intent?: string | null
+          last_processed_at?: string | null
+          last_user_message_at?: string | null
+          memory_snapshot?: Json | null
+          missing_fields?: Json | null
+          requires_human_review?: boolean
+          suggested_reply?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_estado_conversacion_conversacion_id_fkey"
+            columns: ["conversacion_id"]
+            isOneToOne: true
+            referencedRelation: "conversacion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chatbot_llm_usage: {
+        Row: {
+          completion_tokens: number
+          conversacion_id: string
+          correlation_id: string
+          created_at: string
+          fallback_applied: boolean
+          fallback_reason: string | null
+          id: string
+          incidente_id: string | null
+          latency_ms: number | null
+          model: string
+          prompt_tokens: number
+          prompt_version: string | null
+          provider: string
+          raw_response: Json | null
+          total_tokens: number
+        }
+        Insert: {
+          completion_tokens?: number
+          conversacion_id: string
+          correlation_id: string
+          created_at?: string
+          fallback_applied?: boolean
+          fallback_reason?: string | null
+          id?: string
+          incidente_id?: string | null
+          latency_ms?: number | null
+          model: string
+          prompt_tokens?: number
+          prompt_version?: string | null
+          provider: string
+          raw_response?: Json | null
+          total_tokens?: number
+        }
+        Update: {
+          completion_tokens?: number
+          conversacion_id?: string
+          correlation_id?: string
+          created_at?: string
+          fallback_applied?: boolean
+          fallback_reason?: string | null
+          id?: string
+          incidente_id?: string | null
+          latency_ms?: number | null
+          model?: string
+          prompt_tokens?: number
+          prompt_version?: string | null
+          provider?: string
+          raw_response?: Json | null
+          total_tokens?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chatbot_llm_usage_conversacion_id_fkey"
+            columns: ["conversacion_id"]
+            isOneToOne: false
+            referencedRelation: "conversacion"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversacion: {
         Row: {
@@ -2869,6 +3293,15 @@ export const Constants = {
         "DEVUELTO",
         "DESCARTADO",
         "CERRADO",
+        "CONFIRMADO",
+        "EN_CUSTODIA",
+      ],
+      estado_custodia: [
+        "ACTIVA",
+        "PROXIMA_VENCER",
+        "VENCIDA",
+        "DEVUELTA",
+        "DESCARTADA",
       ],
       estado_incidente: [
         "RECIBIDO",
@@ -2879,11 +3312,19 @@ export const Constants = {
         "RESUELTO",
         "CERRADO",
       ],
+      estado_match_lf: ["SUGERIDO", "CONFIRMADO", "DESCARTADO", "EXPIRADO"],
       estado_notificacion: ["PENDIENTE", "ENVIADA", "FALLIDA", "DESCARTADA"],
       estado_reporte: ["RECIBIDO", "NORMALIZADO", "ENRUTADO", "ERROR"],
       estado_servicio: ["OK", "DEGRADADO", "CAIDO", "DESCONOCIDO"],
       estado_sesion: ["ACTIVA", "EXPIRADA", "REVOCADA"],
       estado_usuario: ["ACTIVO", "INACTIVO", "SUSPENDIDO"],
+      motivo_cierre_lf: [
+        "CANCELADO_USUARIO",
+        "DEVUELTO",
+        "DESCARTADO",
+        "DONADO",
+        "ADMINISTRATIVO",
+      ],
       nivel_severidad: ["BAJO", "MEDIO", "ALTO", "CRITICO"],
       origen_clasificacion: ["IA", "REGLA", "FALLBACK", "HUMANO"],
       tipo_alerta_as: ["MANUAL", "VENCIMIENTO", "DESCONEXION"],

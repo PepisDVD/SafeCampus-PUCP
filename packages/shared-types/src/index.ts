@@ -8,6 +8,7 @@ export * from "./enums";
 export * from "./campus";
 export * from "./auditoria";
 export * from "./incidente";
+export * from "./lost-found";
 export * from "./notificacion";
 export * from "./usuario";
 export * from "./database.types";

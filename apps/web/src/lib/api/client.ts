@@ -39,7 +39,11 @@ class ApiClient {
       const error = await response
         .json()
         .catch(() => ({ detail: "Error desconocido" }));
-      throw new Error(error.detail || `Error ${response.status}`);
+      const detail =
+        typeof error.detail === "string"
+          ? error.detail
+          : JSON.stringify(error.detail ?? error);
+      throw new Error(detail || `Error ${response.status}`);
     }
 
     if (response.status === 204) {

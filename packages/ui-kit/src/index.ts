@@ -130,6 +130,15 @@ export {
   PopoverContent,
   PopoverAnchor,
 } from "./components/ui/popover";
+export {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "./components/ui/pagination";
 export { Progress } from "./components/ui/progress";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area";
 export {

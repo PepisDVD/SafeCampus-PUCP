@@ -18,6 +18,8 @@ import {
   LayoutDashboard,
   MapPinned,
   MessageSquare,
+  PackageCheck,
+  PackageSearch,
   Plug,
   Shield,
   ShieldCheck,
@@ -44,6 +46,34 @@ const ADMIN_NAV: NavItem[] = [
     label: "Incidentes",
     icon: ShieldCheck,
     section: "Operacion",
+  },
+  {
+    href: "/lost-found-operaciones",
+    label: "Lost & Found",
+    icon: PackageSearch,
+    section: "Operacion",
+    children: [
+      {
+        href: "/lost-found-operaciones",
+        label: "Dashboard",
+        icon: BarChart3,
+      },
+      {
+        href: "/lost-found-hilos",
+        label: "Hilos",
+        icon: MessageSquare,
+      },
+      {
+        href: "/lost-found-logistica",
+        label: "Logistica",
+        icon: PackageCheck,
+      },
+      {
+        href: "/lost-found-admin",
+        label: "Configuracion",
+        icon: ClipboardList,
+      },
+    ],
   },
   {
     href: "/mapa",
