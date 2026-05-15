@@ -92,8 +92,6 @@ export function LlmAuditTableClient({
   const [desde, setDesde] = useState(searchParams.get("desde") ?? "");
   const [hasta, setHasta] = useState(searchParams.get("hasta") ?? "");
 
-  const currentPage = Number(searchParams.get("page") ?? "1");
-
   function applyFilters(page = 1) {
     const params = new URLSearchParams();
     params.set("page", String(page));

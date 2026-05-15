@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useTransition } from "react";
 import {
   Badge,
@@ -83,11 +84,17 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
         <Card>
           <CardHeader><CardTitle>Publicacion</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            {caso.foto_url && <img src={caso.foto_url} alt="" className="aspect-video w-full rounded-lg object-cover" />}
+            {caso.foto_url && (
+              <div className="relative aspect-video w-full overflow-hidden rounded-lg">
+                <Image src={caso.foto_url} alt="" fill unoptimized className="object-cover" />
+              </div>
+            )}
             {caso.foto_adicional_urls.length > 0 && (
               <div className="grid grid-cols-2 gap-2">
                 {caso.foto_adicional_urls.map((url) => (
-                  <img key={url} src={url} alt="" className="aspect-video w-full rounded-lg object-cover" />
+                  <div key={url} className="relative aspect-video w-full overflow-hidden rounded-lg">
+                    <Image src={url} alt="" fill unoptimized className="object-cover" />
+                  </div>
                 ))}
               </div>
             )}

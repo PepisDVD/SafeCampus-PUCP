@@ -36,7 +36,7 @@ import {
 import { CheckCircle2, Edit3, Eye, PackageCheck, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { lostFoundClient } from "../client";
-import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
+import { estadoLabel, estadoLfTone } from "../presentation";
 import type { CasoLfDetail, CasoLfListItem, CustodiaLf, ListResponse } from "../types";
 
 type CustodiaPage = ListResponse<CustodiaLf> & { page: number; per_page: number };
@@ -255,27 +255,20 @@ function CustodiaDrawer({
 }) {
   const [isPending, startTransition] = useTransition();
   const [casoId, setCasoId] = useState(candidatos[0]?.id ?? "");
-  const [trace, setTrace] = useState<CasoLfDetail | null>(null);
-  const [isCaseLoading, setIsCaseLoading] = useState(false);
-  const [observacionesDraft, setObservacionesDraft] = useState("");
+  const [trace, setTrace] = useState<{ casoId: string; data: CasoLfDetail } | null>(null);
+  const [observacionesDraft, setObservacionesDraft] = useState(() => selectedCaseSummary(candidatos[0]));
   const selectedCase = candidatos.find((caso) => caso.id === casoId);
+  const traceCase = custodia && trace?.casoId === custodia.caso_id ? trace.data : null;
+  const isCaseLoading = false;
   const title = mode === "crear" ? "Registrar objeto en custodia" : mode === "editar" ? "Editar custodia" : mode === "devolver" ? "Registrar devolucion" : mode === "trazabilidad" ? "Trazabilidad del objeto" : "Registrar descarte";
 
   useEffect(() => {
-    setTrace(null);
     if (mode !== "trazabilidad" || !custodia) return;
-    startTransition(async () => setTrace(await lostFoundClient.detalle(custodia.caso_id)));
+    startTransition(async () => {
+      const data = await lostFoundClient.detalle(custodia.caso_id);
+      setTrace({ casoId: custodia.caso_id, data });
+    });
   }, [custodia, mode]);
-
-  useEffect(() => {
-    if (mode !== "crear") return;
-    setIsCaseLoading(true);
-    const timeoutId = setTimeout(() => {
-      setObservacionesDraft(selectedCaseSummary(selectedCase));
-      setIsCaseLoading(false);
-    }, 250);
-    return () => clearTimeout(timeoutId);
-  }, [mode, selectedCase]);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -327,7 +320,14 @@ function CustodiaDrawer({
             {mode === "crear" && (
               <>
                 <Field label="Caso encontrado">
-                  <Select value={casoId} onValueChange={setCasoId} required>
+                  <Select
+                    value={casoId}
+                    onValueChange={(value) => {
+                      setCasoId(value);
+                      setObservacionesDraft(selectedCaseSummary(candidatos.find((caso) => caso.id === value)));
+                    }}
+                    required
+                  >
                     <SelectTrigger><SelectValue placeholder="Selecciona un caso" /></SelectTrigger>
                     <SelectContent>
                       {candidatos.map((caso) => (
@@ -401,7 +401,7 @@ function CustodiaDrawer({
             )}
 
             {mode === "trazabilidad" && custodia && (
-              <TraceTimeline custodia={custodia} caso={trace} />
+              <TraceTimeline custodia={custodia} caso={traceCase} loading={isPending && !traceCase} />
             )}
 
             {mode === "devolver" && (
@@ -448,7 +448,7 @@ function CustodiaDrawer({
   );
 }
 
-function TraceTimeline({ custodia, caso }: { custodia: CustodiaLf; caso: CasoLfDetail | null }) {
+function TraceTimeline({ custodia, caso, loading }: { custodia: CustodiaLf; caso: CasoLfDetail | null; loading?: boolean }) {
   const events = [
     { title: "Caso publicado", detail: caso ? `${caso.codigo} · ${caso.titulo}` : custodia.codigo ?? custodia.caso_id, at: caso?.created_at ?? custodia.created_at },
     { title: "Ingreso a custodia", detail: custodia.ubicacion_custodia, at: custodia.fecha_recepcion },
@@ -467,6 +467,13 @@ function TraceTimeline({ custodia, caso }: { custodia: CustodiaLf; caso: CasoLfD
         <p className="text-slate-600">{custodia.titulo ?? "Objeto encontrado"}</p>
         <p className="mt-2 text-xs text-slate-500">Vence: {formatDate(custodia.fecha_vencimiento)}</p>
       </div>
+      {loading && (
+        <div className="space-y-2">
+          <Skeleton className="h-5 w-2/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+        </div>
+      )}
       <div className="space-y-0">
         {events.map((event, index) => (
           <div key={`${event.title}-${event.at}-${index}`} className="grid grid-cols-[18px_1fr] gap-3">

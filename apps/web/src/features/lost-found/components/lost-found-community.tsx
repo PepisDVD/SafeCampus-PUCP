@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState, useTransition } from "react";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsContent, TabsList, TabsTrigger, Textarea } from "@safecampus/ui-kit";
 import { CalendarDays, Check, MessageSquare, PackageSearch, Search, X } from "lucide-react";
@@ -214,7 +215,11 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {selected.foto_url && <img src={selected.foto_url} alt="" className="aspect-video w-full rounded-lg object-cover" />}
+            {selected.foto_url && (
+              <div className="relative aspect-video w-full overflow-hidden rounded-lg">
+                <Image src={selected.foto_url} alt="" fill unoptimized className="object-cover" />
+              </div>
+            )}
             <p className="text-sm text-slate-700">{selected.descripcion}</p>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className={estadoLfTone[selected.estado]}>{estadoLabel(selected.estado)}</Badge>
@@ -264,7 +269,11 @@ function CaseList({ items, onOpen }: { items: CasoLfListItem[]; onOpen: (item: C
       {items.map((item) => (
         <button key={item.id} onClick={() => onOpen(item)} className="w-full text-left">
           <Card className="overflow-hidden">
-            {item.foto_url && <img src={item.foto_url} alt="" className="aspect-video w-full object-cover" />}
+            {item.foto_url && (
+              <div className="relative aspect-video w-full overflow-hidden">
+                <Image src={item.foto_url} alt="" fill unoptimized className="object-cover" />
+              </div>
+            )}
             <CardContent className="space-y-2 p-4">
               <div className="flex items-start justify-between gap-2">
                 <div>

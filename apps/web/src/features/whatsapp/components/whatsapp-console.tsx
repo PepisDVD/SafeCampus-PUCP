@@ -1085,17 +1085,17 @@ function ChatbotPanel({
   onUpdated: () => void;
 }) {
   const chatbot = conversation.chatbot;
-  if (!chatbot) return null;
-
-  const [aiSummary, setAiSummary] = useState(chatbot.ai_summary || "");
+  const [aiSummary, setAiSummary] = useState(chatbot?.ai_summary || "");
   const [draftForm, setDraftForm] = useState<IncidentDraftForm>(() => buildDraftForm(conversation));
   const [saving, setSaving] = useState(false);
   const [creatingIncident, setCreatingIncident] = useState(false);
 
   useEffect(() => {
-    setAiSummary(chatbot.ai_summary || "");
+    setAiSummary(conversation.chatbot?.ai_summary || "");
     setDraftForm(buildDraftForm(conversation));
-  }, [conversation.id, chatbot.ai_summary, chatbot.incident_draft]);
+  }, [conversation]);
+
+  if (!chatbot) return null;
 
   async function saveDraft() {
     setSaving(true);
