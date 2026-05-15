@@ -84,6 +84,13 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
           <CardHeader><CardTitle>Publicacion</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             {caso.foto_url && <img src={caso.foto_url} alt="" className="aspect-video w-full rounded-lg object-cover" />}
+            {caso.foto_adicional_urls.length > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                {caso.foto_adicional_urls.map((url) => (
+                  <img key={url} src={url} alt="" className="aspect-video w-full rounded-lg object-cover" />
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>
               <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
@@ -96,7 +103,7 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
 
         <Card>
           <CardHeader><CardTitle>Gestion operativa</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             <Textarea value={operativo} onChange={(e) => setOperativo(e.target.value)} placeholder="Nota operativa" />
             <Select onValueChange={changeState}>
               <SelectTrigger><SelectValue placeholder="Cambiar estado" /></SelectTrigger>
@@ -111,14 +118,29 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
               <Archive className="mr-2 h-4 w-4" />
               Registrar custodia
             </Button>
+
+            <aside className="rounded-lg border bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-950">Resumen del hilo</p>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex justify-between gap-3"><dt className="text-slate-500">Comentarios</dt><dd className="font-medium">{caso.comentarios.length}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-slate-500">Estado</dt><dd className="font-medium">{estadoLabel(caso.estado)}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-slate-500">Tipo</dt><dd className="font-medium">{tipoLabel(caso.tipo)}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-slate-500">Lugar</dt><dd className="text-right font-medium">{caso.lugar_referencia}</dd></div>
+              </dl>
+            </aside>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Hilo de conversacion</CardTitle></CardHeader>
-        <CardContent className="grid gap-4 xl:grid-cols-[1fr_320px]">
-          <div className="space-y-3">
+        <CardContent>
+          <div className="mx-auto max-w-3xl space-y-3">
+            <div className="flex gap-2">
+              <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Responder en el hilo" />
+              <Button onClick={sendComment} disabled={isPending}>Enviar</Button>
+            </div>
+
             {caso.comentarios.map((item) => (
               <div key={item.id} className="flex gap-3 rounded-lg border bg-white p-3">
                 <Avatar className="h-9 w-9">
@@ -143,20 +165,7 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
             {caso.comentarios.length === 0 && (
               <p className="rounded-lg border border-dashed p-4 text-sm text-slate-500">Este hilo aun no tiene comentarios.</p>
             )}
-            <div className="flex gap-2">
-              <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Responder en el hilo" />
-              <Button onClick={sendComment} disabled={isPending}>Enviar</Button>
-            </div>
           </div>
-          <aside className="rounded-lg border bg-slate-50 p-4">
-            <p className="text-sm font-semibold text-slate-950">Resumen del hilo</p>
-            <dl className="mt-3 space-y-2 text-sm">
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">Comentarios</dt><dd className="font-medium">{caso.comentarios.length}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">Estado</dt><dd className="font-medium">{estadoLabel(caso.estado)}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">Tipo</dt><dd className="font-medium">{tipoLabel(caso.tipo)}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-slate-500">Lugar</dt><dd className="text-right font-medium">{caso.lugar_referencia}</dd></div>
-            </dl>
-          </aside>
         </CardContent>
       </Card>
     </div>

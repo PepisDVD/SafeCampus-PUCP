@@ -1,11 +1,13 @@
 from difflib import SequenceMatcher
 from typing import Any
 from uuid import UUID
+from uuid import uuid4
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import EstadoCasoLF, MotivoCierreLF
+from app.core.config import settings
 from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.lost_found_repository import LostFoundRepository
 from app.repositories.notificacion_repository import NotificacionRepository
@@ -35,6 +37,7 @@ from app.schemas.lost_found import (
     ParticipacionLfInput,
 )
 from app.schemas.incidente import UsuarioMini
+from app.services.storage_service import StorageService
 
 OPERATIVO_ROLES = {"supervisor", "administrador"}
 ACTIVE_STATES = {"ABIERTO", "EN_REVISION", "CONFIRMADO", "EN_CUSTODIA"}
@@ -50,6 +53,16 @@ TRANSITIONS = {
 
 
 class LostFoundService:
+    _MIME_PERMITIDOS = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/heic",
+        "image/gif",
+    }
+    _MAX_BYTES = 10 * 1024 * 1024
+    _MAX_FOTOS_POR_CASO = 3
+
     def __init__(self, db: AsyncSession) -> None:
         self._repo = LostFoundRepository(db)
         self._audit = AuditoriaRepository(db)
@@ -166,6 +179,70 @@ class LostFoundService:
         ):
             raise HTTPException(status_code=404, detail="Caso no encontrado.")
         await self._audit_lf(usuario_id, "LF_FOTOS_ACTUALIZADAS", "caso_lost_found", caso_id, {"total_adicionales": len(data.foto_adicional_urls)})
+        return await self.obtener_detalle(caso_id, usuario_id, roles)
+
+    async def subir_fotos_archivos(
+        self,
+        caso_id: str,
+        usuario_id: str,
+        roles: list[str],
+        archivos: list[UploadFile],
+    ) -> CasoLfDetail:
+        actual = await self._repo.get_estado(caso_id)
+        is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
+        if not actual or not is_operativo:
+            raise HTTPException(status_code=404, detail="Caso no encontrado.")
+        if actual["estado"] == "CERRADO":
+            raise HTTPException(status_code=422, detail="No se pueden actualizar fotos de un caso cerrado.")
+        if not archivos:
+            raise HTTPException(status_code=422, detail="Debes adjuntar al menos 1 imagen.")
+        if len(archivos) > self._MAX_FOTOS_POR_CASO:
+            raise HTTPException(status_code=422, detail="Solo puedes adjuntar hasta 3 imagenes por caso.")
+
+        storage = StorageService()
+        urls: list[str] = []
+        for archivo in archivos:
+            mime = archivo.content_type or ""
+            if mime not in self._MIME_PERMITIDOS:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Tipo de archivo no permitido. Solo se aceptan imagenes (jpg, png, webp, heic, gif).",
+                )
+            contenido = await archivo.read()
+            if len(contenido) > self._MAX_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Cada archivo debe pesar como maximo 10 MB.",
+                )
+            nombre_seguro = (archivo.filename or "foto").replace("/", "_").replace("\\", "_")
+            ruta = f"lost-found/{caso_id}/{uuid4().hex}_{nombre_seguro}"
+            url = await storage.upload(
+                bucket=settings.SUPABASE_STORAGE_BUCKET,
+                path=ruta,
+                content=contenido,
+                content_type=mime,
+            )
+            urls.append(url)
+
+        foto_principal = urls[0]
+        foto_adicionales = urls[1:self._MAX_FOTOS_POR_CASO]
+        if not await self._repo.update_fotos(
+            caso_id,
+            foto_url=foto_principal,
+            foto_adicional_urls=foto_adicionales,
+        ):
+            raise HTTPException(status_code=404, detail="Caso no encontrado.")
+
+        await self._audit_lf(
+            usuario_id,
+            "LF_FOTOS_SUBIDAS",
+            "caso_lost_found",
+            caso_id,
+            {
+                "total": len(urls),
+                "principal": bool(foto_principal),
+            },
+        )
         return await self.obtener_detalle(caso_id, usuario_id, roles)
 
     async def listar_matches(self, usuario_id: str) -> list[MatchLfItem]:

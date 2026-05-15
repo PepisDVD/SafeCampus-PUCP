@@ -24,6 +24,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Skeleton,
   Table,
   TableBody,
   TableCell,
@@ -154,7 +155,7 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <div className="max-w-[260px]">
+                  <div className="max-w-65">
                     <p className="truncate font-medium">{custodia.titulo ?? "Objeto encontrado"}</p>
                     <p className="text-xs text-slate-500">{custodia.es_perecible ? "Perecible" : "Regular"}</p>
                   </div>
@@ -255,6 +256,8 @@ function CustodiaDrawer({
   const [isPending, startTransition] = useTransition();
   const [casoId, setCasoId] = useState(candidatos[0]?.id ?? "");
   const [trace, setTrace] = useState<CasoLfDetail | null>(null);
+  const [isCaseLoading, setIsCaseLoading] = useState(false);
+  const [observacionesDraft, setObservacionesDraft] = useState("");
   const selectedCase = candidatos.find((caso) => caso.id === casoId);
   const title = mode === "crear" ? "Registrar objeto en custodia" : mode === "editar" ? "Editar custodia" : mode === "devolver" ? "Registrar devolucion" : mode === "trazabilidad" ? "Trazabilidad del objeto" : "Registrar descarte";
 
@@ -264,6 +267,16 @@ function CustodiaDrawer({
     startTransition(async () => setTrace(await lostFoundClient.detalle(custodia.caso_id)));
   }, [custodia, mode]);
 
+  useEffect(() => {
+    if (mode !== "crear") return;
+    setIsCaseLoading(true);
+    const timeoutId = setTimeout(() => {
+      setObservacionesDraft(selectedCaseSummary(selectedCase));
+      setIsCaseLoading(false);
+    }, 250);
+    return () => clearTimeout(timeoutId);
+  }, [mode, selectedCase]);
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -272,7 +285,7 @@ function CustodiaDrawer({
         if (mode === "crear") {
           await lostFoundClient.registrarCustodia(casoId, {
             ubicacion_custodia: String(form.get("ubicacion_custodia")),
-            observaciones: optional(form.get("observaciones")),
+            observaciones: optional(observacionesDraft),
             es_perecible: form.get("es_perecible") === "true",
           });
         } else if (mode === "editar" && custodia) {
@@ -325,14 +338,28 @@ function CustodiaDrawer({
                 </Field>
                 {selectedCase && (
                   <div className="rounded-lg border bg-slate-50 p-3 text-sm">
-                    <p className="font-medium text-slate-950">{selectedCase.titulo}</p>
-                    <p className="mt-1 line-clamp-3 text-slate-600">{selectedCase.descripcion}</p>
-                    <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <div><dt className="text-xs text-slate-500">Codigo</dt><dd>{selectedCase.codigo}</dd></div>
-                      <div><dt className="text-xs text-slate-500">Categoria</dt><dd>{selectedCase.categoria_nombre ?? "Sin categoria"}</dd></div>
-                      <div><dt className="text-xs text-slate-500">Lugar reportado</dt><dd>{selectedCase.lugar_referencia}</dd></div>
-                      <div><dt className="text-xs text-slate-500">Marca/color</dt><dd>{[selectedCase.marca, selectedCase.color_principal].filter(Boolean).join(" · ") || "No indicado"}</dd></div>
-                    </dl>
+                    {isCaseLoading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-5 w-2/3" />
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-5/6" />
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Skeleton className="h-10 w-full" />
+                          <Skeleton className="h-10 w-full" />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="font-medium text-slate-950">{selectedCase.titulo}</p>
+                        <p className="mt-1 line-clamp-3 text-slate-600">{selectedCase.descripcion}</p>
+                        <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <div><dt className="text-xs text-slate-500">Codigo</dt><dd>{selectedCase.codigo}</dd></div>
+                          <div><dt className="text-xs text-slate-500">Categoria</dt><dd>{selectedCase.categoria_nombre ?? "Sin categoria"}</dd></div>
+                          <div><dt className="text-xs text-slate-500">Lugar reportado</dt><dd>{selectedCase.lugar_referencia}</dd></div>
+                          <div><dt className="text-xs text-slate-500">Marca/color</dt><dd>{[selectedCase.marca, selectedCase.color_principal].filter(Boolean).join(" · ") || "No indicado"}</dd></div>
+                        </dl>
+                      </>
+                    )}
                   </div>
                 )}
                 <Field label="Tipo de objeto">
@@ -353,7 +380,22 @@ function CustodiaDrawer({
                   <Input name="ubicacion_custodia" defaultValue={custodia?.ubicacion_custodia ?? ""} required placeholder="Ej. Estante B, casillero 04" />
                 </Field>
                 <Field label="Observaciones">
-                  <Textarea name="observaciones" defaultValue={custodia?.observaciones ?? selectedCaseSummary(selectedCase)} placeholder="Estado del objeto, embalaje, evidencia de recepcion" />
+                  {isCaseLoading ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-20 w-full" />
+                    </div>
+                  ) : (
+                    <Textarea
+                      name="observaciones"
+                      value={mode === "crear" ? observacionesDraft : (custodia?.observaciones ?? "")}
+                      onChange={(event) => {
+                        if (mode === "crear") {
+                          setObservacionesDraft(event.target.value);
+                        }
+                      }}
+                      placeholder="Estado del objeto, embalaje, evidencia de recepcion"
+                    />
+                  )}
                 </Field>
               </>
             )}

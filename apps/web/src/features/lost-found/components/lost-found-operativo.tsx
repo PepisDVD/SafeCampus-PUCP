@@ -100,6 +100,7 @@ export function LostFoundOperativo({ initialCasos, initialCustodias, kpis }: Pro
                   <TableHead>Tipo</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Mensajes</TableHead>
+                  <TableHead className="text-right">Accion</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -122,6 +123,11 @@ export function LostFoundOperativo({ initialCasos, initialCustodias, kpis }: Pro
                       </Badge>
                     </TableCell>
                     <TableCell>{caso.conteo_comentarios}</TableCell>
+                    <TableCell className="text-right">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/lost-found-hilos/${caso.id}`}>Ver detalle</Link>
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -146,6 +152,9 @@ export function LostFoundOperativo({ initialCasos, initialCustodias, kpis }: Pro
                 </div>
                 <p className="mt-2 text-xs text-slate-500">Vence: {new Date(c.fecha_vencimiento).toLocaleString()}</p>
                 <div className="mt-3 flex gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/lost-found-hilos/${c.caso_id}`}>Ver caso</Link>
+                  </Button>
                   <Button size="sm" onClick={() => closeCustody(c, "devolver")}>
                     <PackageCheck className="mr-1 h-4 w-4" />
                     Devolver

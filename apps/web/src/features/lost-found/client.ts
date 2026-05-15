@@ -10,7 +10,6 @@ export type CasoLfCreatePayload = {
   lugar_referencia: string;
   fecha_evento: string;
   hora_aproximada?: string;
-  foto_url?: string;
   color_principal?: string;
   marca?: string;
   etiquetas?: string[];
@@ -25,6 +24,11 @@ export const lostFoundClient = {
   crearCaso: (body: CasoLfCreatePayload) =>
     api.post<{ id: string; codigo: string; matches_generados: number }>("/lost-found/casos", normalizeCasePayload(body)),
   detalle: (ref: string) => api.get<CasoLfDetail>(`/lost-found/casos/${ref}`),
+  subirFotosArchivos: (id: string, archivos: File[]) => {
+    const form = new FormData();
+    archivos.forEach((archivo) => form.append("archivos", archivo));
+    return api.postMultipart<CasoLfDetail>(`/lost-found/casos/${id}/fotos/upload`, form);
+  },
   actualizarFotos: (id: string, body: { foto_url?: string; foto_adicional_urls?: string[] }) =>
     api.post<CasoLfDetail>(`/lost-found/casos/${id}/fotos`, body),
   cancelar: (id: string, observaciones?: string) =>
@@ -66,7 +70,6 @@ function normalizeCasePayload(body: CasoLfCreatePayload): CasoLfCreatePayload {
     categoria_id: body.categoria_id.trim(),
     subcategoria: clean(body.subcategoria),
     lugar_referencia: body.lugar_referencia.trim(),
-    foto_url: clean(body.foto_url),
     color_principal: clean(body.color_principal),
     marca: clean(body.marca),
     contacto_info: clean(body.contacto_info),

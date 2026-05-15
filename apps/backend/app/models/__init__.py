@@ -19,6 +19,7 @@ from app.models.sc_incidentes import (
     UbicacionIncidente,
 )
 from app.models.sc_lost_found import CategoriaObjeto, CasoLostFound, HistorialCasoLf
+from app.models.sc_maestros import UbicacionMaestra
 from app.models.sc_notificaciones import (
     Notificacion,
     PlantillaNotificacion,
@@ -80,6 +81,7 @@ __all__ = [
     "SoftDeleteMixin",
     "TimestampMixin",
     "UbicacionIncidente",
+    "UbicacionMaestra",
     "UbicacionTrayecto",
     "Usuario",
     "UsuarioRol",

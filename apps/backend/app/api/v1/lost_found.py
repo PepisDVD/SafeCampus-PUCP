@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session, require_roles
@@ -163,6 +163,16 @@ async def actualizar_fotos(
     service: LostFoundService = Depends(get_service),
 ):
     return await service.actualizar_fotos(caso_id, current_user.id, current_user.roles, body)
+
+
+@router.post("/casos/{caso_id}/fotos/upload", response_model=CasoLfDetail)
+async def subir_fotos_archivo(
+    caso_id: str,
+    archivos: list[UploadFile] = File(..., description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo."),
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    return await service.subir_fotos_archivos(caso_id, current_user.id, current_user.roles, archivos)
 
 
 @router.get("/casos/{caso_id}/matches", response_model=list[MatchLfItem])

@@ -64,14 +64,23 @@ type CollapsibleNavGroupProps = {
 };
 
 function CollapsibleNavGroup({ item, isActive, pathname, SidebarLink }: CollapsibleNavGroupProps) {
+  const { state } = useSidebar();
+  const collapsed = state === "collapsed";
   const [open, setOpen] = React.useState(isActive);
+  const firstChildHref = item.children?.[0]?.href ?? item.href;
+  const handleParentClick = (event: React.MouseEvent<HTMLElement>) => {
+    if (collapsed) return;
+    event.preventDefault();
+    setOpen((v) => !v);
+  };
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
+        asChild
         tooltip={item.label}
         isActive={isActive}
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleParentClick}
         className={cn(
           "h-10 rounded-xl text-blue-100 hover:bg-white/10 hover:text-white cursor-pointer",
           "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center",
@@ -79,14 +88,17 @@ function CollapsibleNavGroup({ item, isActive, pathname, SidebarLink }: Collapsi
             "bg-white/15 text-white shadow-sm ring-1 ring-white/10 hover:bg-white/20 hover:text-white",
         )}
       >
-        <item.icon className="size-4" />
-        <span>{item.label}</span>
-        <ChevronRight
-          className={cn(
-            "ml-auto size-3.5 shrink-0 text-blue-200/60 transition-transform duration-200",
-            open && "rotate-90",
-          )}
-        />
+        <SidebarLink href={firstChildHref}>
+          <item.icon className="size-4" />
+          <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
+          <ChevronRight
+            className={cn(
+              "ml-auto size-3.5 shrink-0 text-blue-200/60 transition-transform duration-200",
+              "group-data-[collapsible=icon]:hidden",
+              open && "rotate-90",
+            )}
+          />
+        </SidebarLink>
       </SidebarMenuButton>
       {open && (
         <SidebarMenuSub className="group-data-[collapsible=icon]:hidden">

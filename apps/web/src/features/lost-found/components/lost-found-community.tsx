@@ -6,12 +6,13 @@ import { CalendarDays, Check, MessageSquare, PackageSearch, Search, X } from "lu
 import { toast } from "sonner";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
-import type { CasoLfDetail, CasoLfListItem, CategoriaLf, MatchLf } from "../types";
+import type { CasoLfDetail, CasoLfListItem, CategoriaLf, MatchLf, UbicacionMaestra } from "../types";
 
 type Props = {
   categorias: CategoriaLf[];
   initialFeed: CasoLfListItem[];
   initialMine: CasoLfListItem[];
+  ubicaciones: UbicacionMaestra[];
 };
 
 const emptyForm: CasoLfCreatePayload = {
@@ -21,13 +22,12 @@ const emptyForm: CasoLfCreatePayload = {
   categoria_id: "",
   lugar_referencia: "",
   fecha_evento: new Date().toISOString(),
-  foto_url: "",
   color_principal: "",
   marca: "",
   etiquetas: [],
 };
 
-export function LostFoundCommunity({ categorias, initialFeed, initialMine }: Props) {
+export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubicaciones }: Props) {
   const [feed, setFeed] = useState(initialFeed);
   const [mine, setMine] = useState(initialMine);
   const [selected, setSelected] = useState<CasoLfDetail | null>(null);
@@ -35,6 +35,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine }: Pro
   const [query, setQuery] = useState("");
   const [tipo, setTipo] = useState<"PERDIDO" | "ENCONTRADO" | "">("");
   const [form, setForm] = useState<CasoLfCreatePayload>(emptyForm);
+  const [ubicacionSeleccionada, setUbicacionSeleccionada] = useState("OTRO");
   const [comment, setComment] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -79,11 +80,26 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine }: Pro
         setFeed(nextFeed.items);
         setMine(nextMine.items);
         setForm(emptyForm);
+        setUbicacionSeleccionada("OTRO");
         toast.success("Caso registrado");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "No se pudo registrar");
       }
     });
+  };
+
+  const handleUbicacionChange = (value: string) => {
+    setUbicacionSeleccionada(value);
+    if (value === "OTRO") {
+      setForm((current) => ({ ...current, lugar_referencia: "" }));
+      return;
+    }
+    const ubicacion = ubicaciones.find((item) => item.id === value);
+    if (!ubicacion) return;
+    setForm((current) => ({
+      ...current,
+      lugar_referencia: ubicacion.nombre,
+    }));
   };
 
   const sendComment = () => {
@@ -156,12 +172,26 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine }: Pro
                 <SelectTrigger><SelectValue placeholder="Categoria" /></SelectTrigger>
                 <SelectContent>{categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
               </Select>
-              <Input placeholder="Lugar de referencia" value={form.lugar_referencia} onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))} />
+              <Select value={ubicacionSeleccionada} onValueChange={handleUbicacionChange}>
+                <SelectTrigger><SelectValue placeholder="Ubicacion" /></SelectTrigger>
+                <SelectContent>
+                  {ubicaciones.map((ubicacion) => (
+                    <SelectItem key={ubicacion.id} value={ubicacion.id}>{ubicacion.nombre}</SelectItem>
+                  ))}
+                  <SelectItem value="OTRO">Otro (ingresar manualmente)</SelectItem>
+                </SelectContent>
+              </Select>
+              {ubicacionSeleccionada === "OTRO" && (
+                <Input
+                  placeholder="Lugar de referencia"
+                  value={form.lugar_referencia}
+                  onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))}
+                />
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <Input placeholder="Color" value={form.color_principal ?? ""} onChange={(e) => setForm((f) => ({ ...f, color_principal: e.target.value }))} />
                 <Input placeholder="Marca" value={form.marca ?? ""} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} />
               </div>
-              <Input placeholder="URL de foto" value={form.foto_url ?? ""} onChange={(e) => setForm((f) => ({ ...f, foto_url: e.target.value }))} />
               <Button className="w-full" onClick={createCase} disabled={isPending || Boolean(validateCase(form))}>Publicar</Button>
             </CardContent>
           </Card>

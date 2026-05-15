@@ -6,6 +6,7 @@ export type {
   CustodiaLf,
   KpisLf,
   MatchLf,
+  UbicacionMaestra,
 } from "@safecampus/shared-types";
 
 export type ListResponse<T> = {

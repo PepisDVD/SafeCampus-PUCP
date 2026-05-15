@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   MapPinned,
   MessageSquare,
+  Map,
   PackageCheck,
   PackageSearch,
   Plug,
@@ -110,6 +111,19 @@ const ADMIN_NAV: NavItem[] = [
     label: "Integraciones",
     icon: Plug,
     section: "Administracion",
+  },
+  {
+    href: "/maestros/ubicaciones",
+    label: "Maestros",
+    icon: Map,
+    section: "Administracion",
+    children: [
+      {
+        href: "/maestros/ubicaciones",
+        label: "Ubicaciones",
+        icon: MapPinned,
+      },
+    ],
   },
   {
     href: "/auditoria",

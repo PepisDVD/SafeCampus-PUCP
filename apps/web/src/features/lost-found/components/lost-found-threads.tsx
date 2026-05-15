@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { type ChangeEvent, useEffect, useRef, useState, useTransition } from "react";
 import {
   Badge,
   Avatar,
@@ -19,6 +19,10 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   Input,
   Label,
   Select,
@@ -28,15 +32,21 @@ import {
   SelectValue,
   Textarea,
 } from "@safecampus/ui-kit";
-import { MessageSquare, Plus, Search } from "lucide-react";
+import { Eye, MessageSquare, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
-import type { CasoLfListItem, CategoriaLf } from "../types";
+import type { CasoLfListItem, CategoriaLf, UbicacionMaestra } from "../types";
 
 type Props = {
   initialCasos: CasoLfListItem[];
   categorias: CategoriaLf[];
+  ubicaciones: UbicacionMaestra[];
+};
+
+type FotoAdjunta = {
+  file: File;
+  previewUrl: string;
 };
 
 const emptyForm: CasoLfCreatePayload = {
@@ -46,13 +56,12 @@ const emptyForm: CasoLfCreatePayload = {
   categoria_id: "",
   lugar_referencia: "",
   fecha_evento: new Date().toISOString(),
-  foto_url: "",
   color_principal: "",
   marca: "",
   etiquetas: [],
 };
 
-export function LostFoundThreads({ initialCasos, categorias }: Props) {
+export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Props) {
   const router = useRouter();
   const [casos, setCasos] = useState(initialCasos);
   const [query, setQuery] = useState("");
@@ -62,19 +71,88 @@ export function LostFoundThreads({ initialCasos, categorias }: Props) {
   const [columns, setColumns] = useState("4");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<CasoLfCreatePayload>(emptyForm);
+  const [ubicacionSeleccionada, setUbicacionSeleccionada] = useState("OTRO");
+  const [fotos, setFotos] = useState<FotoAdjunta[]>([]);
+  const [previewSeleccionado, setPreviewSeleccionado] = useState<FotoAdjunta | null>(null);
   const [isPending, startTransition] = useTransition();
+  const fotosRef = useRef<FotoAdjunta[]>([]);
 
-  const search = () => {
-    startTransition(async () => {
-      const params = query.trim() ? { search: query.trim() } : undefined;
-      setCasos((await lostFoundClient.casosOperativo({
-        ...(params ?? {}),
-        ...(tipo !== "TODOS" ? { tipo } : {}),
-        ...(estado !== "TODOS" ? { estado } : {}),
-        ...(categoria !== "TODAS" ? { categoria_id: categoria } : {}),
-      })).items);
+  useEffect(() => {
+    fotosRef.current = fotos;
+  }, [fotos]);
+
+  useEffect(() => {
+    return () => {
+      fotosRef.current.forEach((foto) => URL.revokeObjectURL(foto.previewUrl));
+    };
+  }, []);
+
+  const handleUbicacionChange = (value: string) => {
+    setUbicacionSeleccionada(value);
+    if (value === "OTRO") {
+      setForm((current) => ({ ...current, lugar_referencia: "" }));
+      return;
+    }
+    const ubicacion = ubicaciones.find((item) => item.id === value);
+    if (!ubicacion) return;
+    setForm((current) => ({
+      ...current,
+      lugar_referencia: ubicacion.nombre,
+    }));
+  };
+
+  const handleFotosChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    const imageFiles = selectedFiles.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length !== selectedFiles.length) {
+      toast.error("Solo se permiten archivos de imagen.");
+    }
+    if (imageFiles.length === 0) {
+      event.target.value = "";
+      return;
+    }
+
+    const nextFiles = imageFiles.map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+    setFotos((current) => {
+      const combined = [...current, ...nextFiles].slice(0, 3);
+      if (current.length + nextFiles.length > 3) {
+        toast.error("Solo puedes adjuntar hasta 3 fotos.");
+      }
+      const dropped = [...current, ...nextFiles].slice(3);
+      dropped.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return combined;
+    });
+    event.target.value = "";
+  };
+
+  const removeFoto = (index: number) => {
+    setFotos((current) => {
+      const target = current[index];
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return current.filter((_, idx) => idx !== index);
     });
   };
+
+  const resetAdjuntos = () => {
+    setFotos((current) => {
+      current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return [];
+    });
+    setPreviewSeleccionado(null);
+  };
+
+  const previewFoto = (foto: FotoAdjunta) => {
+    setPreviewSeleccionado(foto);
+  };
+
+  const closePreview = () => {
+    setPreviewSeleccionado(null);
+  };
+
+  const canAddFotos = fotos.length < 3;
 
   const createThread = () => {
     const validation = validateCase(form);
@@ -88,14 +166,31 @@ export function LostFoundThreads({ initialCasos, categorias }: Props) {
           ...form,
           fecha_evento: new Date(form.fecha_evento).toISOString(),
         });
+        if (fotos.length > 0) {
+          await lostFoundClient.subirFotosArchivos(created.id, fotos.map((item) => item.file));
+        }
         setCasos((await lostFoundClient.casosOperativo()).items);
         setForm(emptyForm);
+        setUbicacionSeleccionada("OTRO");
+        resetAdjuntos();
         setOpen(false);
         toast.success("Hilo creado");
         router.push(`/lost-found-hilos/${created.id}`);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "No se pudo crear el hilo");
       }
+    });
+  };
+
+  const search = () => {
+    startTransition(async () => {
+      const params = query.trim() ? { search: query.trim() } : undefined;
+      setCasos((await lostFoundClient.casosOperativo({
+        ...(params ?? {}),
+        ...(tipo !== "TODOS" ? { tipo } : {}),
+        ...(estado !== "TODOS" ? { estado } : {}),
+        ...(categoria !== "TODAS" ? { categoria_id: categoria } : {}),
+      })).items);
     });
   };
 
@@ -106,16 +201,27 @@ export function LostFoundThreads({ initialCasos, categorias }: Props) {
           <h1 className="text-2xl font-semibold text-slate-950">Hilos Lost & Found</h1>
           <p className="text-sm text-slate-500">Publicaciones, conversaciones y seguimiento comunitario.</p>
         </div>
-        <Drawer open={open} onOpenChange={setOpen} direction="right">
+        <Drawer
+          open={open}
+          onOpenChange={(nextOpen) => {
+            setOpen(nextOpen);
+            if (!nextOpen) {
+              setForm(emptyForm);
+              setUbicacionSeleccionada("OTRO");
+              resetAdjuntos();
+            }
+          }}
+          direction="right"
+        >
           <DrawerTrigger asChild>
             <Button><Plus className="mr-2 h-4 w-4" />Crear hilo</Button>
           </DrawerTrigger>
-          <DrawerContent className="sm:max-w-xl">
-            <DrawerHeader>
+          <DrawerContent className="flex h-dvh max-h-dvh flex-col overflow-hidden p-0 sm:max-w-xl">
+            <DrawerHeader className="shrink-0 border-b px-4 py-4">
               <DrawerTitle>Nuevo hilo Lost & Found</DrawerTitle>
               <DrawerDescription>Registra una publicacion operativa o comunitaria.</DrawerDescription>
             </DrawerHeader>
-            <div className="mx-auto grid w-full max-w-2xl gap-3 px-4 pb-4">
+            <div className="mx-auto grid w-full max-w-2xl flex-1 gap-3 overflow-y-auto px-4 py-4">
               <Select value={form.tipo} onValueChange={(value) => setForm((f) => ({ ...f, tipo: value as "PERDIDO" | "ENCONTRADO" }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -131,14 +237,55 @@ export function LostFoundThreads({ initialCasos, categorias }: Props) {
                   {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input placeholder="Lugar de referencia" value={form.lugar_referencia} onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))} />
+              <Select value={ubicacionSeleccionada} onValueChange={handleUbicacionChange}>
+                <SelectTrigger><SelectValue placeholder="Ubicacion" /></SelectTrigger>
+                <SelectContent>
+                  {ubicaciones.map((ubicacion) => (
+                    <SelectItem key={ubicacion.id} value={ubicacion.id}>{ubicacion.nombre}</SelectItem>
+                  ))}
+                  <SelectItem value="OTRO">Otro (ingresar manualmente)</SelectItem>
+                </SelectContent>
+              </Select>
+              {ubicacionSeleccionada === "OTRO" && (
+                <Input
+                  placeholder="Lugar de referencia"
+                  value={form.lugar_referencia}
+                  onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))}
+                />
+              )}
               <div className="grid gap-3 sm:grid-cols-2">
                 <Input placeholder="Color" value={form.color_principal ?? ""} onChange={(e) => setForm((f) => ({ ...f, color_principal: e.target.value }))} />
                 <Input placeholder="Marca" value={form.marca ?? ""} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} />
               </div>
-              <Input placeholder="URL de foto" value={form.foto_url ?? ""} onChange={(e) => setForm((f) => ({ ...f, foto_url: e.target.value }))} />
+              <div className="space-y-2">
+                <Label htmlFor="lf-fotos-input">Fotos de evidencia (max. 3)</Label>
+                <Input
+                  id="lf-fotos-input"
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/gif"
+                  onChange={handleFotosChange}
+                  disabled={!canAddFotos}
+                />
+                {!canAddFotos && <p className="text-xs text-amber-600">Ya alcanzaste el maximo de 3 fotos.</p>}
+                {fotos.length > 0 && (
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                    <p className="text-xs font-medium text-slate-600">Adjuntos seleccionados ({fotos.length})</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {fotos.map((foto, index) => (
+                        <AttachmentPreviewCard
+                          key={`${foto.file.name}-${index}`}
+                          foto={foto}
+                          onPreview={() => previewFoto(foto)}
+                          onRemove={() => removeFoto(index)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            <DrawerFooter className="mx-auto w-full max-w-2xl">
+            <DrawerFooter className="mx-auto w-full max-w-2xl shrink-0 border-t bg-white px-4 py-3">
               <Button onClick={createThread} disabled={isPending || Boolean(validateCase(form))}>Publicar hilo</Button>
               <DrawerClose asChild><Button variant="outline">Cancelar</Button></DrawerClose>
             </DrawerFooter>
@@ -192,6 +339,20 @@ export function LostFoundThreads({ initialCasos, categorias }: Props) {
         </Button>
         </div>
       </section>
+
+      <Dialog open={Boolean(previewSeleccionado)} onOpenChange={(isOpen) => !isOpen && closePreview()}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{previewSeleccionado?.file.name ?? "Vista previa"}</DialogTitle>
+          </DialogHeader>
+          {previewSeleccionado && (
+            <div className="rounded-lg border bg-slate-50 p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={previewSeleccionado.previewUrl} alt={previewSeleccionado.file.name} className="max-h-[70vh] w-full rounded object-contain" />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className={gridClass(columns)}>
           {casos.map((caso) => (
@@ -253,4 +414,46 @@ function validateCase(form: CasoLfCreatePayload) {
   if (!form.categoria_id) return "Selecciona una categoria.";
   if (form.lugar_referencia.trim().length < 3) return "El lugar de referencia debe tener al menos 3 caracteres.";
   return "";
+}
+
+function AttachmentPreviewCard({
+  foto,
+  onPreview,
+  onRemove,
+}: {
+  foto: FotoAdjunta;
+  onPreview: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-lg border bg-white p-2">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={foto.previewUrl} alt={foto.file.name} className="h-20 w-full rounded object-cover" />
+      <p className="mt-2 truncate text-[11px] text-slate-600">{foto.file.name}</p>
+      <div className="mt-2 grid grid-cols-2 gap-1">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 w-full p-0"
+          aria-label="Ver imagen adjunta"
+          title="Ver imagen"
+          onClick={onPreview}
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 w-full p-0 text-rose-600"
+          aria-label="Quitar imagen adjunta"
+          title="Quitar imagen"
+          onClick={onRemove}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
 }
