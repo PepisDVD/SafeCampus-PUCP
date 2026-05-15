@@ -4,7 +4,7 @@
 📦 Capa: API
 """
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session, require_roles
@@ -14,6 +14,7 @@ from app.schemas.incidente import (
     ComentarioIncidenteCreateInput,
     ComentarioIncidenteItem,
     DashboardStats,
+    EvidenciaIncidenteItem,
     ExpedienteCierreAiDraft,
     IncidenteAsignacionUpdate,
     IncidenteCreated,
@@ -210,6 +211,32 @@ async def crear_comentario_incidente(
         autor_id=current_user.id,
         roles=current_user.roles,
         data=body,
+    )
+
+
+@router.post(
+    "/{incidente_id}/evidencias",
+    response_model=EvidenciaIncidenteItem,
+    status_code=status.HTTP_201_CREATED,
+)
+async def subir_evidencia_incidente(
+    incidente_id: str,
+    archivo: UploadFile = File(..., description="Imagen de evidencia (jpg, png, webp, heic, gif). Máx 10 MB."),
+    descripcion: str | None = Form(default=None, max_length=500),
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: IncidenteService = Depends(get_service),
+):
+    """Adjunta una imagen de evidencia a un incidente.
+
+    Accesible por el reportante (comunidad) y por staff operativo.
+    El archivo se almacena en Supabase Storage y la URL pública queda
+    registrada en sc_incidentes.evidencia.
+    """
+    return await service.subir_evidencia(
+        incidente_id=incidente_id,
+        archivo=archivo,
+        descripcion=descripcion,
+        usuario_actual=current_user,
     )
 
 

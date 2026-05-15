@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     ALLOWED_INSTITUTIONAL_DOMAIN: str
     DEFAULT_COMMUNITY_ROLE_ID: str
 
+    # --- Supabase Storage (evidencias de incidentes) ---
+    SUPABASE_SERVICE_KEY: str = ""
+    SUPABASE_STORAGE_BUCKET: str = "evidencias"
+
     # --- Dev allowlist (excepción a ALLOWED_INSTITUTIONAL_DOMAIN) ---
     # Lista separada por comas de correos puntuales (típicamente @gmail.com de devs)
     # autorizados a iniciar sesión. Debe quedar vacío en producción.
