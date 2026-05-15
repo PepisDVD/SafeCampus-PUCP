@@ -385,6 +385,44 @@ class IncidenteRepository:
             "updated_at": comentario.updated_at,
         }
 
+    async def create_evidencia(
+        self,
+        *,
+        incidente_id: str,
+        tipo_archivo: str,
+        nombre_archivo: str,
+        url_archivo: str,
+        tamano_bytes: int | None,
+        mime_type: str | None,
+        descripcion: str | None,
+        cargado_por_id: str,
+    ) -> dict[str, Any]:
+        evidencia = Evidencia(
+            incidente_id=UUID(incidente_id),
+            tipo_archivo=tipo_archivo,
+            nombre_archivo=nombre_archivo,
+            url_archivo=url_archivo,
+            tamano_bytes=tamano_bytes,
+            mime_type=mime_type,
+            descripcion=descripcion,
+            cargado_por_id=UUID(cargado_por_id),
+        )
+        self.db.add(evidencia)
+        await self.db.flush()
+        await self.db.refresh(evidencia)
+        return {
+            "id": evidencia.id,
+            "incidente_id": evidencia.incidente_id,
+            "tipo_archivo": evidencia.tipo_archivo,
+            "nombre_archivo": evidencia.nombre_archivo,
+            "url_archivo": evidencia.url_archivo,
+            "tamano_bytes": evidencia.tamano_bytes,
+            "mime_type": evidencia.mime_type,
+            "descripcion": evidencia.descripcion,
+            "cargado_por_id": evidencia.cargado_por_id,
+            "created_at": evidencia.created_at,
+        }
+
     async def upsert_expediente_cierre(
         self,
         *,
