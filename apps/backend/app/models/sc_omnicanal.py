@@ -6,7 +6,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -225,6 +226,103 @@ class EventoConversacion(Base):
         ForeignKey("sc_users.usuario.id"),
     )
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class ChatbotEstadoConversacion(Base):
+    __tablename__ = "chatbot_estado_conversacion"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversacion_id",
+            name="uq_chatbot_estado_conversacion",
+        ),
+        Index("idx_chatbot_estado_bot_status", "bot_status"),
+        Index("idx_chatbot_estado_requires_review", "requires_human_review"),
+        {"schema": "sc_omnicanal"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    conversacion_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_omnicanal.conversacion.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    bot_status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="BOT_NEW")
+    last_intent: Mapped[str | None] = mapped_column(String(32))
+    last_action: Mapped[str | None] = mapped_column(String(32))
+    requires_human_review: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default="false",
+    )
+    handoff_reason: Mapped[str | None] = mapped_column(Text)
+    ai_summary: Mapped[str | None] = mapped_column(Text)
+    memory_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
+    incident_draft: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
+    missing_fields: Mapped[list[str] | None] = mapped_column(JSONB, server_default="[]")
+    classification_category: Mapped[str | None] = mapped_column(String(100))
+    classification_severity: Mapped[str | None] = mapped_column(String(16))
+    classification_confidence: Mapped[float | None] = mapped_column(postgresql.DOUBLE_PRECISION)
+    suggested_reply: Mapped[str | None] = mapped_column(Text)
+    last_bot_reply: Mapped[str | None] = mapped_column(Text)
+    last_user_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_bot_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class ChatbotLlmUsage(Base):
+    __tablename__ = "chatbot_llm_usage"
+    __table_args__ = (
+        Index("idx_chatbot_llm_usage_conversation", "conversacion_id", "created_at"),
+        Index("idx_chatbot_llm_usage_correlation", "correlation_id"),
+        Index("idx_chatbot_llm_usage_provider", "provider", "created_at"),
+        {"schema": "sc_omnicanal"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    conversacion_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_omnicanal.conversacion.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    incidente_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_incidentes.incidente.id", ondelete="SET NULL"),
+    )
+    correlation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    prompt_version: Mapped[str | None] = mapped_column(String(120))
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    fallback_applied: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    fallback_reason: Mapped[str | None] = mapped_column(String(32))
+    raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

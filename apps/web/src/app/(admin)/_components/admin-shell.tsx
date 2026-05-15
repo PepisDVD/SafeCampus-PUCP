@@ -12,11 +12,15 @@ import {
 } from "@safecampus/ui-kit";
 import {
   BarChart3,
+  BotMessageSquare,
   ClipboardList,
   House,
   LayoutDashboard,
   MapPinned,
   MessageSquare,
+  Map,
+  PackageCheck,
+  PackageSearch,
   Plug,
   Shield,
   ShieldCheck,
@@ -43,6 +47,34 @@ const ADMIN_NAV: NavItem[] = [
     label: "Incidentes",
     icon: ShieldCheck,
     section: "Operacion",
+  },
+  {
+    href: "/lost-found-operaciones",
+    label: "Lost & Found",
+    icon: PackageSearch,
+    section: "Operacion",
+    children: [
+      {
+        href: "/lost-found-operaciones",
+        label: "Dashboard",
+        icon: BarChart3,
+      },
+      {
+        href: "/lost-found-hilos",
+        label: "Hilos",
+        icon: MessageSquare,
+      },
+      {
+        href: "/lost-found-logistica",
+        label: "Logistica",
+        icon: PackageCheck,
+      },
+      {
+        href: "/lost-found-admin",
+        label: "Configuracion",
+        icon: ClipboardList,
+      },
+    ],
   },
   {
     href: "/mapa",
@@ -81,10 +113,33 @@ const ADMIN_NAV: NavItem[] = [
     section: "Administracion",
   },
   {
+    href: "/maestros/ubicaciones",
+    label: "Maestros",
+    icon: Map,
+    section: "Administracion",
+    children: [
+      {
+        href: "/maestros/ubicaciones",
+        label: "Ubicaciones",
+        icon: MapPinned,
+      },
+    ],
+  },
+  {
     href: "/auditoria",
     label: "Auditoria",
     icon: ClipboardList,
     section: "Administracion",
+  },
+  {
+    href: "/llm",
+    label: "Uso de LLM",
+    icon: BotMessageSquare,
+    section: "Administracion",
+    children: [
+      { href: "/llm-dashboard", label: "Dashboard", icon: BarChart3 },
+      { href: "/llm-audit", label: "Historial", icon: ClipboardList },
+    ],
   },
 ];
 

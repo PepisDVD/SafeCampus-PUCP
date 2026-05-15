@@ -19,6 +19,7 @@ from app.models.sc_incidentes import (
     UbicacionIncidente,
 )
 from app.models.sc_lost_found import CategoriaObjeto, CasoLostFound, HistorialCasoLf
+from app.models.sc_maestros import UbicacionMaestra
 from app.models.sc_notificaciones import (
     Notificacion,
     PlantillaNotificacion,
@@ -26,6 +27,8 @@ from app.models.sc_notificaciones import (
 )
 from app.models.sc_omnicanal import (
     CanalReporte,
+    ChatbotEstadoConversacion,
+    ChatbotLlmUsage,
     Conversacion,
     EventoConversacion,
     MensajeConversacion,
@@ -48,6 +51,8 @@ __all__ = [
     "CanalReporte",
     "CasoLostFound",
     "CategoriaObjeto",
+    "ChatbotEstadoConversacion",
+    "ChatbotLlmUsage",
     "ClasificacionIa",
     "ComentarioIncidente",
     "Conversacion",
@@ -76,6 +81,7 @@ __all__ = [
     "SoftDeleteMixin",
     "TimestampMixin",
     "UbicacionIncidente",
+    "UbicacionMaestra",
     "UbicacionTrayecto",
     "Usuario",
     "UsuarioRol",

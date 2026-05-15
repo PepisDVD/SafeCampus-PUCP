@@ -1,16 +1,20 @@
 """Repository for sc_omnicanal webhook ingestion."""
 
+from datetime import UTC, datetime
 import json
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import Integer, and_, cast, Date, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.models.sc_incidentes import Incidente
 from app.models.sc_omnicanal import (
     CanalReporte,
+    ChatbotEstadoConversacion,
+    ChatbotLlmUsage,
     Conversacion,
     EventoConversacion,
     MensajeConversacion,
@@ -22,6 +26,38 @@ from app.models.sc_users import Usuario
 class OmnicanalRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+
+    def _conversation_projection(self):
+        operador = aliased(Usuario, name="operador")
+        tomado_por = aliased(Usuario, name="tomado_por")
+        return (
+            select(
+                Conversacion,
+                ChatbotEstadoConversacion,
+                operador.id.label("operador_id"),
+                operador.nombre.label("operador_nombre"),
+                operador.apellido.label("operador_apellido"),
+                operador.email.label("operador_email"),
+                operador.avatar_url.label("operador_avatar_url"),
+                tomado_por.id.label("tomado_por_id"),
+                tomado_por.nombre.label("tomado_por_nombre"),
+                tomado_por.apellido.label("tomado_por_apellido"),
+                tomado_por.email.label("tomado_por_email"),
+                tomado_por.avatar_url.label("tomado_por_avatar_url"),
+                Incidente.id.label("incidente_id"),
+                Incidente.codigo.label("incidente_codigo"),
+                Incidente.titulo.label("incidente_titulo"),
+                Incidente.estado.label("incidente_estado"),
+                Incidente.severidad.label("incidente_severidad"),
+            )
+            .outerjoin(operador, operador.id == Conversacion.operador_asignado_id)
+            .outerjoin(tomado_por, tomado_por.id == Conversacion.tomado_por_id)
+            .outerjoin(Incidente, Incidente.id == Conversacion.incidente_id)
+            .outerjoin(
+                ChatbotEstadoConversacion,
+                ChatbotEstadoConversacion.conversacion_id == Conversacion.id,
+            )
+        )
 
     async def get_or_create_whatsapp_channel(
         self,
@@ -177,6 +213,8 @@ class OmnicanalRepository:
         preview: str,
         modo_atencion: str | None = None,
         estado: str | None = None,
+        prioridad: str | None = None,
+        incidente_id: str | None = None,
     ) -> Conversacion:
         values: dict[str, Any] = {
             "ultimo_mensaje_preview": preview[:500],
@@ -187,6 +225,10 @@ class OmnicanalRepository:
             values["modo_atencion"] = modo_atencion
         if estado:
             values["estado"] = estado
+        if prioridad:
+            values["prioridad"] = prioridad
+        if incidente_id:
+            values["incidente_id"] = UUID(incidente_id)
         statement = (
             update(Conversacion)
             .where(Conversacion.id == conversacion_id)
@@ -222,26 +264,7 @@ class OmnicanalRepository:
         estado: str | None,
         limit: int,
     ) -> list[dict[str, Any]]:
-        operador = Usuario
-        statement = (
-            select(
-                Conversacion,
-                operador.id.label("operador_id"),
-                operador.nombre.label("operador_nombre"),
-                operador.apellido.label("operador_apellido"),
-                operador.email.label("operador_email"),
-                operador.avatar_url.label("operador_avatar_url"),
-                Incidente.id.label("incidente_id"),
-                Incidente.codigo.label("incidente_codigo"),
-                Incidente.titulo.label("incidente_titulo"),
-                Incidente.estado.label("incidente_estado"),
-                Incidente.severidad.label("incidente_severidad"),
-            )
-            .outerjoin(operador, operador.id == Conversacion.operador_asignado_id)
-            .outerjoin(Incidente, Incidente.id == Conversacion.incidente_id)
-            .order_by(Conversacion.ultimo_mensaje_at.desc())
-            .limit(limit)
-        )
+        statement = self._conversation_projection().order_by(Conversacion.ultimo_mensaje_at.desc()).limit(limit)
         if estado:
             statement = statement.where(Conversacion.estado == estado)
         if search:
@@ -274,15 +297,104 @@ class OmnicanalRepository:
         return int(await self.db.scalar(statement) or 0)
 
     async def get_conversacion_detail(self, conversacion_id: str) -> dict[str, Any] | None:
+        statement = self._conversation_projection().where(Conversacion.id == UUID(conversacion_id)).limit(1)
+        result = await self.db.execute(statement)
+        row = result.mappings().one_or_none()
+        if not row:
+            return None
+        return dict(row)
+
+    async def get_or_create_chatbot_state(self, conversacion_id: str) -> ChatbotEstadoConversacion:
         statement = (
-            select(Conversacion)
-            .where(Conversacion.id == UUID(conversacion_id))
+            select(ChatbotEstadoConversacion)
+            .where(ChatbotEstadoConversacion.conversacion_id == UUID(conversacion_id))
             .limit(1)
         )
-        conversacion = await self.db.scalar(statement)
-        if not conversacion:
-            return None
-        return {"Conversacion": conversacion}
+        chatbot_state = await self.db.scalar(statement)
+        if chatbot_state:
+            return chatbot_state
+
+        chatbot_state = ChatbotEstadoConversacion(conversacion_id=UUID(conversacion_id))
+        self.db.add(chatbot_state)
+        await self.db.flush()
+        await self.db.refresh(chatbot_state)
+        return chatbot_state
+
+    async def update_chatbot_state(
+        self,
+        conversacion_id: str,
+        data: dict[str, Any],
+    ) -> ChatbotEstadoConversacion:
+        chatbot_state = await self.get_or_create_chatbot_state(conversacion_id)
+        for key, value in data.items():
+            setattr(chatbot_state, key, value)
+        await self.db.flush()
+        await self.db.refresh(chatbot_state)
+        return chatbot_state
+
+    async def create_chatbot_llm_usage(
+        self,
+        *,
+        conversacion_id: str,
+        incidente_id: str | None,
+        correlation_id: str,
+        provider: str,
+        model: str,
+        prompt_version: str | None,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+        latency_ms: int | None,
+        fallback_applied: bool,
+        fallback_reason: str | None,
+        raw_response: dict[str, Any] | None,
+    ) -> ChatbotLlmUsage:
+        usage = ChatbotLlmUsage(
+            conversacion_id=UUID(conversacion_id),
+            incidente_id=UUID(incidente_id) if incidente_id else None,
+            correlation_id=correlation_id,
+            provider=provider,
+            model=model,
+            prompt_version=prompt_version,
+            prompt_tokens=max(0, int(prompt_tokens)),
+            completion_tokens=max(0, int(completion_tokens)),
+            total_tokens=max(0, int(total_tokens)),
+            latency_ms=latency_ms,
+            fallback_applied=fallback_applied,
+            fallback_reason=fallback_reason,
+            raw_response=raw_response or {},
+        )
+        self.db.add(usage)
+        await self.db.flush()
+        await self.db.refresh(usage)
+        return usage
+
+    async def update_conversacion_chatbot_routing(
+        self,
+        conversacion_id: str,
+        *,
+        prioridad: str | None = None,
+        estado: str | None = None,
+        modo_atencion: str | None = None,
+        incidente_id: str | None = None,
+    ) -> Conversacion | None:
+        values: dict[str, Any] = {"updated_at": func.now()}
+        if prioridad is not None:
+            values["prioridad"] = prioridad
+        if estado is not None:
+            values["estado"] = estado
+        if modo_atencion is not None:
+            values["modo_atencion"] = modo_atencion
+        if incidente_id is not None:
+            values["incidente_id"] = UUID(incidente_id)
+        statement = (
+            update(Conversacion)
+            .where(Conversacion.id == UUID(conversacion_id))
+            .values(**values)
+            .returning(Conversacion)
+        )
+        result = await self.db.execute(statement)
+        return result.scalar_one_or_none()
 
     async def list_mensajes(self, conversacion_id: str, limit: int) -> list[dict[str, Any]]:
         statement = (
@@ -422,3 +534,156 @@ class OmnicanalRepository:
         )
         result = await self.db.execute(statement)
         return result.scalar_one_or_none()
+
+    async def reactivar_conversacion_nuevo_ciclo(
+        self,
+        *,
+        conversacion_id: str,
+        preview: str,
+    ) -> Conversacion | None:
+        conversacion = await self.db.get(Conversacion, UUID(conversacion_id))
+        if not conversacion:
+            return None
+
+        metadata = dict(conversacion.metadatos or {})
+        metadata["chatbot_cycle_started_at"] = datetime.now(UTC).isoformat()
+
+        conversacion.estado = "EN_BOT"
+        conversacion.modo_atencion = "BOT"
+        conversacion.prioridad = "MEDIO"
+        conversacion.operador_asignado_id = None
+        conversacion.tomado_por_id = None
+        conversacion.tomado_at = None
+        conversacion.incidente_id = None
+        conversacion.cerrado_por_id = None
+        conversacion.cerrado_at = None
+        conversacion.motivo_cierre = None
+        conversacion.ultimo_mensaje_preview = preview[:500]
+        conversacion.ultimo_mensaje_at = datetime.now(UTC)
+        conversacion.updated_at = datetime.now(UTC)
+        conversacion.metadatos = metadata
+
+        await self.db.flush()
+        await self.db.refresh(conversacion)
+        return conversacion
+
+    # ---------------------------------------------------------------------------
+    # LLM Usage Audit
+    # ---------------------------------------------------------------------------
+
+    async def list_llm_usage(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        conversacion_id: str | None = None,
+        provider: str | None = None,
+        desde: str | None = None,
+        hasta: str | None = None,
+    ) -> tuple[list[ChatbotLlmUsage], int]:
+        filters = []
+        if conversacion_id:
+            filters.append(ChatbotLlmUsage.conversacion_id == UUID(conversacion_id))
+        if provider:
+            filters.append(ChatbotLlmUsage.provider == provider)
+        if desde:
+            filters.append(ChatbotLlmUsage.created_at >= desde)
+        if hasta:
+            filters.append(ChatbotLlmUsage.created_at <= hasta)
+
+        where_clause = and_(*filters) if filters else True
+
+        count_stmt = select(func.count()).select_from(ChatbotLlmUsage).where(where_clause)
+        count_result = await self.db.execute(count_stmt)
+        total = count_result.scalar_one()
+
+        offset = (page - 1) * page_size
+        items_stmt = (
+            select(ChatbotLlmUsage)
+            .where(where_clause)
+            .order_by(ChatbotLlmUsage.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+        result = await self.db.execute(items_stmt)
+        items = list(result.scalars().all())
+        return items, total
+
+    async def get_llm_usage_stats(
+        self,
+        *,
+        desde: str | None = None,
+        hasta: str | None = None,
+    ) -> dict[str, Any]:
+        filters = []
+        if desde:
+            filters.append(ChatbotLlmUsage.created_at >= desde)
+        if hasta:
+            filters.append(ChatbotLlmUsage.created_at <= hasta)
+
+        where_clause = and_(*filters) if filters else True
+
+        agg_stmt = select(
+            func.count().label("total_calls"),
+            func.sum(ChatbotLlmUsage.total_tokens).label("total_tokens"),
+            func.sum(ChatbotLlmUsage.prompt_tokens).label("prompt_tokens"),
+            func.sum(ChatbotLlmUsage.completion_tokens).label("completion_tokens"),
+            func.avg(ChatbotLlmUsage.latency_ms).label("avg_latency_ms"),
+            func.sum(
+                func.cast(ChatbotLlmUsage.fallback_applied, Integer)
+            ).label("fallback_count"),
+            func.count(func.distinct(ChatbotLlmUsage.conversacion_id)).label("unique_conversations"),
+        ).where(where_clause)
+
+        agg_result = await self.db.execute(agg_stmt)
+        agg = dict(agg_result.mappings().one())
+
+        prov_stmt = (
+            select(
+                ChatbotLlmUsage.provider,
+                func.count().label("total_calls"),
+                func.sum(ChatbotLlmUsage.total_tokens).label("total_tokens"),
+                func.sum(ChatbotLlmUsage.prompt_tokens).label("prompt_tokens"),
+                func.sum(ChatbotLlmUsage.completion_tokens).label("completion_tokens"),
+                func.avg(ChatbotLlmUsage.latency_ms).label("avg_latency_ms"),
+                func.sum(
+                    func.cast(ChatbotLlmUsage.fallback_applied, Integer)
+                ).label("fallback_count"),
+            )
+            .where(where_clause)
+            .group_by(ChatbotLlmUsage.provider)
+            .order_by(func.count().desc())
+        )
+        prov_result = await self.db.execute(prov_stmt)
+        by_provider = [dict(row) for row in prov_result.mappings()]
+
+        day_stmt = (
+            select(
+                cast(ChatbotLlmUsage.created_at, Date).label("day"),
+                func.sum(ChatbotLlmUsage.total_tokens).label("total_tokens"),
+                func.count().label("calls"),
+            )
+            .where(where_clause)
+            .group_by(cast(ChatbotLlmUsage.created_at, Date))
+            .order_by(cast(ChatbotLlmUsage.created_at, Date))
+        )
+        day_result = await self.db.execute(day_stmt)
+        tokens_per_day = [
+            {"day": str(row.day), "total_tokens": int(row.total_tokens or 0), "calls": int(row.calls)}
+            for row in day_result
+        ]
+
+        total_calls = int(agg["total_calls"] or 0)
+        fallback_count = int(agg["fallback_count"] or 0)
+
+        return {
+            "total_calls": total_calls,
+            "total_tokens": int(agg["total_tokens"] or 0),
+            "prompt_tokens": int(agg["prompt_tokens"] or 0),
+            "completion_tokens": int(agg["completion_tokens"] or 0),
+            "avg_latency_ms": float(agg["avg_latency_ms"]) if agg["avg_latency_ms"] else None,
+            "fallback_rate": (fallback_count / total_calls) if total_calls > 0 else 0.0,
+            "unique_conversations": int(agg["unique_conversations"] or 0),
+            "by_provider": by_provider,
+            "tokens_per_day": tokens_per_day,
+        }

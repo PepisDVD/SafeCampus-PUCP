@@ -63,6 +63,7 @@ class IncidenteCreateInput(BaseModel):
     lugar_referencia: str | None = Field(default=None, max_length=255)
     latitud: float | None = None
     longitud: float | None = None
+    canal_origen: TipoCanal = TipoCanal.WEB
 
 
 class IncidenteCreated(BaseModel):

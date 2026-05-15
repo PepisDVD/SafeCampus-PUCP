@@ -126,10 +126,41 @@ TipoCasoLfEnum = ENUM(
 EstadoCasoLfEnum = ENUM(
     "ABIERTO",
     "EN_REVISION",
+    "CONFIRMADO",
+    "EN_CUSTODIA",
     "DEVUELTO",
     "DESCARTADO",
     "CERRADO",
     name="estado_caso_lf",
+    create_type=False,
+)
+
+EstadoMatchLfEnum = ENUM(
+    "SUGERIDO",
+    "CONFIRMADO",
+    "DESCARTADO",
+    "EXPIRADO",
+    name="estado_match_lf",
+    create_type=False,
+)
+
+MotivoCierreLfEnum = ENUM(
+    "CANCELADO_USUARIO",
+    "DEVUELTO",
+    "DESCARTADO",
+    "DONADO",
+    "ADMINISTRATIVO",
+    name="motivo_cierre_lf",
+    create_type=False,
+)
+
+EstadoCustodiaEnum = ENUM(
+    "ACTIVA",
+    "PROXIMA_VENCER",
+    "VENCIDA",
+    "DEVUELTA",
+    "DESCARTADA",
+    name="estado_custodia",
     create_type=False,
 )
 

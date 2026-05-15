@@ -94,6 +94,18 @@ export {
   DialogDescription,
 } from "./components/ui/dialog";
 export {
+  Drawer,
+  DrawerPortal,
+  DrawerOverlay,
+  DrawerTrigger,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerFooter,
+  DrawerTitle,
+  DrawerDescription,
+} from "./components/ui/drawer";
+export {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -118,6 +130,15 @@ export {
   PopoverContent,
   PopoverAnchor,
 } from "./components/ui/popover";
+export {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "./components/ui/pagination";
 export { Progress } from "./components/ui/progress";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area";
 export {
@@ -133,6 +154,16 @@ export {
   SelectScrollDownButton,
 } from "./components/ui/select";
 export { Separator } from "./components/ui/separator";
+export {
+  Sheet,
+  SheetTrigger,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+} from "./components/ui/sheet";
 export { Skeleton } from "./components/ui/skeleton";
 export { Switch } from "./components/ui/switch";
 export {

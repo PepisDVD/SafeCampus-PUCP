@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import incidentes, notificaciones, omnicanal
+from app.api.v1 import incidentes, lost_found, maestros, notificaciones, omnicanal
 from app.api.v1 import admin, auth
 
 api_router = APIRouter()
@@ -8,6 +8,16 @@ api_router.include_router(
     incidentes.router,
     prefix="/incidentes",
     tags=["Incidentes"],
+)
+api_router.include_router(
+    lost_found.router,
+    prefix="/lost-found",
+    tags=["Lost & Found"],
+)
+api_router.include_router(
+    maestros.router,
+    prefix="/maestros",
+    tags=["Maestros"],
 )
 api_router.include_router(
     notificaciones.router,

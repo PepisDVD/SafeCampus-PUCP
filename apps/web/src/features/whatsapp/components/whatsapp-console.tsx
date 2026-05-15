@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Avatar,
@@ -39,6 +40,7 @@ import {
 
 import { api } from "@/lib/api/client";
 import type {
+  ChatbotStatus,
   Conversation,
   ConversationListResponse,
   ConversationMessage,
@@ -180,10 +182,57 @@ function authorLabel(author: MessageAuthor) {
 
 function getAiClassification(conversation: Conversation) {
   return {
-    category: conversation.incidente?.titulo || "Incidente por clasificar",
-    confidence: null as number | null,
-    requiresHumanReview: conversation.prioridad !== "BAJO" || !conversation.incidente,
+    category:
+      conversation.chatbot?.classification_category ||
+      conversation.incidente?.titulo ||
+      "Incidente por clasificar",
+    confidence: conversation.chatbot?.classification_confidence ?? null,
+    requiresHumanReview:
+      conversation.chatbot?.requires_human_review ??
+      (conversation.prioridad !== "BAJO" || !conversation.incidente),
   };
+}
+
+type IncidentDraftForm = {
+  titulo: string;
+  descripcion: string;
+  severidad: string;
+  categoria: string;
+  lugar_referencia: string;
+};
+
+function buildDraftForm(conversation: Conversation): IncidentDraftForm {
+  const draft = (conversation.chatbot?.incident_draft || {}) as Record<string, unknown>;
+  return {
+    titulo: typeof draft.titulo === "string" ? draft.titulo : "",
+    descripcion: typeof draft.descripcion === "string" ? draft.descripcion : "",
+    severidad: typeof draft.severidad === "string" ? draft.severidad : "",
+    categoria: typeof draft.categoria === "string" ? draft.categoria : "",
+    lugar_referencia:
+      typeof draft.lugar_referencia === "string" ? draft.lugar_referencia : "",
+  };
+}
+
+function chatbotStatusLabel(status: ChatbotStatus) {
+  return {
+    BOT_NEW: "Bot nuevo",
+    BOT_COLLECTING: "Recolectando datos",
+    BOT_INCIDENT_DRAFTED: "Incidente borrador",
+    BOT_ESCALATED: "Derivado a humano",
+    HUMAN_ACTIVE: "Humano activo",
+    BOT_PAUSED: "Bot en pausa",
+  }[status];
+}
+
+function chatbotStatusTone(status: ChatbotStatus) {
+  return {
+    BOT_NEW: "border-sky-200 bg-sky-50 text-sky-700",
+    BOT_COLLECTING: "border-indigo-200 bg-indigo-50 text-indigo-700",
+    BOT_INCIDENT_DRAFTED: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    BOT_ESCALATED: "border-amber-300 bg-amber-50 text-amber-800",
+    HUMAN_ACTIVE: "border-orange-300 bg-orange-50 text-orange-800",
+    BOT_PAUSED: "border-slate-300 bg-slate-100 text-slate-700",
+  }[status];
 }
 
 export function WhatsAppConsole() {
@@ -264,6 +313,13 @@ export function WhatsAppConsole() {
     setErrorMessage(null);
     setMessages(response.items);
   }, []);
+
+  const refreshSelectedConversation = useCallback(async () => {
+    await loadConversations();
+    if (selectedIdRef.current) {
+      await loadMessages(selectedIdRef.current);
+    }
+  }, [loadConversations, loadMessages]);
 
   const loadOperators = useCallback(async () => {
     const response = await api.get<OperatorOption[]>("/incidentes/operadores");
@@ -537,6 +593,17 @@ export function WhatsAppConsole() {
                       )}
                       {selectedConversation.modo_atencion}
                     </Badge>
+                    {selectedConversation.chatbot ? (
+                      <Badge
+                        className={cn(
+                          "border",
+                          chatbotStatusTone(selectedConversation.chatbot.bot_status),
+                        )}
+                      >
+                        <Bot className="mr-1 h-3 w-3" />
+                        {chatbotStatusLabel(selectedConversation.chatbot.bot_status)}
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
 
@@ -598,7 +665,10 @@ export function WhatsAppConsole() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={selectedConversation.estado === "CERRADA"}
+                    disabled={
+                      selectedConversation.estado === "CERRADA" ||
+                      selectedConversation.modo_atencion === "BOT"
+                    }
                     onClick={() =>
                       void runConversationAction(() =>
                         api.post(`/omnicanal/conversaciones/${selectedConversation.id}/modo-bot`),
@@ -611,7 +681,10 @@ export function WhatsAppConsole() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={selectedConversation.estado === "CERRADA"}
+                    disabled={
+                      selectedConversation.estado === "CERRADA" ||
+                      selectedConversation.modo_atencion === "HUMANO"
+                    }
                     onClick={() =>
                       void runConversationAction(() =>
                         api.post(`/omnicanal/conversaciones/${selectedConversation.id}/modo-humano`),
@@ -627,6 +700,11 @@ export function WhatsAppConsole() {
 
                 <AiClassificationPanel conversation={selectedConversation} classification={selectedAi} />
 
+                <ChatbotPanel
+                  conversation={selectedConversation}
+                  onUpdated={() => void refreshSelectedConversation()}
+                />
+
                 <InfoBlock label="Ultima actividad" value={formatDateTime(selectedConversation.ultimo_mensaje_at)} />
                 <InfoBlock label="Tiempo en cola" value={relativeTime(selectedConversation.created_at)} />
 
@@ -640,6 +718,11 @@ export function WhatsAppConsole() {
                       <p className="font-semibold">{selectedConversation.incidente.codigo}</p>
                       <p className="text-slate-700">{selectedConversation.incidente.titulo}</p>
                       <Badge variant="outline">{selectedConversation.incidente.estado}</Badge>
+                      <Button asChild variant="outline" size="sm" className="mt-1">
+                        <Link href={`/incidentes/${selectedConversation.incidente.id}`}>
+                          Revisar incidente
+                        </Link>
+                      </Button>
                     </div>
                   ) : (
                     <p className="mt-3 text-sm text-slate-500">
@@ -762,6 +845,7 @@ function ConversationCard({
 }) {
   const name = contactName(conversation);
   const needsReview = getAiClassification(conversation).requiresHumanReview;
+  const chatbotState = conversation.chatbot;
 
   return (
     <button
@@ -801,6 +885,12 @@ function ConversationCard({
             <Badge className={cn("border", stateTone(conversation.estado))}>
               {STATE_LABEL[conversation.estado]}
             </Badge>
+            {chatbotState ? (
+              <Badge className={cn("border", chatbotStatusTone(chatbotState.bot_status))}>
+                <Bot className="mr-1 h-3 w-3" />
+                {chatbotStatusLabel(chatbotState.bot_status)}
+              </Badge>
+            ) : null}
             {needsReview ? (
               <Badge className="border border-violet-200 bg-violet-50 text-violet-700">
                 <BrainCircuit className="mr-1 h-3 w-3" />
@@ -981,6 +1071,166 @@ function AiClassificationPanel({
           >
             {classification.requiresHumanReview ? "Requerida" : "No requerida"}
           </Badge>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatbotPanel({
+  conversation,
+  onUpdated,
+}: {
+  conversation: Conversation;
+  onUpdated: () => void;
+}) {
+  const chatbot = conversation.chatbot;
+  if (!chatbot) return null;
+
+  const [aiSummary, setAiSummary] = useState(chatbot.ai_summary || "");
+  const [draftForm, setDraftForm] = useState<IncidentDraftForm>(() => buildDraftForm(conversation));
+  const [saving, setSaving] = useState(false);
+  const [creatingIncident, setCreatingIncident] = useState(false);
+
+  useEffect(() => {
+    setAiSummary(chatbot.ai_summary || "");
+    setDraftForm(buildDraftForm(conversation));
+  }, [conversation.id, chatbot.ai_summary, chatbot.incident_draft]);
+
+  async function saveDraft() {
+    setSaving(true);
+    try {
+      await api.patch(`/omnicanal/conversaciones/${conversation.id}/chatbot-borrador`, {
+        ai_summary: aiSummary,
+        titulo: draftForm.titulo,
+        descripcion: draftForm.descripcion,
+        severidad: draftForm.severidad || null,
+        categoria: draftForm.categoria,
+        lugar_referencia: draftForm.lugar_referencia,
+      });
+      onUpdated();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createIncidentFromDraft() {
+    setCreatingIncident(true);
+    try {
+      await api.post(`/omnicanal/conversaciones/${conversation.id}/crear-incidente`, {
+        titulo: draftForm.titulo || null,
+        descripcion: draftForm.descripcion || null,
+        severidad: draftForm.severidad || null,
+        categoria: draftForm.categoria || null,
+        lugar_referencia: draftForm.lugar_referencia || null,
+      });
+      onUpdated();
+    } finally {
+      setCreatingIncident(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <div className="flex items-center gap-2 font-semibold text-slate-900">
+        <Bot className="h-4 w-4 text-[#001C55]" />
+        Estado del chatbot
+      </div>
+      <div className="mt-3 space-y-3 text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-slate-500">Estado</span>
+          <Badge className={cn("border", chatbotStatusTone(chatbot.bot_status))}>
+            {chatbotStatusLabel(chatbot.bot_status)}
+          </Badge>
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase text-slate-500">Resumen editable</p>
+          <Textarea
+            value={aiSummary}
+            onChange={(event) => setAiSummary(event.target.value)}
+            className="min-h-20 resize-y bg-slate-50"
+            placeholder="Resumen operativo editable para supervisor"
+          />
+        </div>
+        {chatbot.handoff_reason ? (
+          <InfoRow label="Derivacion" value={chatbot.handoff_reason} />
+        ) : null}
+        {chatbot.missing_fields.length ? (
+          <InfoRow label="Datos faltantes" value={chatbot.missing_fields.join(", ")} />
+        ) : null}
+        {chatbot.suggested_reply ? (
+          <InfoRow label="Ultima respuesta bot" value={chatbot.suggested_reply} />
+        ) : null}
+        <div className="rounded-lg border bg-slate-50 p-3">
+          <p className="text-xs font-medium uppercase text-slate-500">Borrador de incidente</p>
+          <div className="mt-2 space-y-2">
+            <Input
+              value={draftForm.titulo}
+              onChange={(event) => setDraftForm((prev) => ({ ...prev, titulo: event.target.value }))}
+              placeholder="Titulo del incidente"
+              className="bg-white"
+            />
+            <Textarea
+              value={draftForm.descripcion}
+              onChange={(event) =>
+                setDraftForm((prev) => ({ ...prev, descripcion: event.target.value }))
+              }
+              className="min-h-20 resize-y bg-white"
+              placeholder="Descripcion del incidente"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                value={draftForm.categoria}
+                onChange={(event) =>
+                  setDraftForm((prev) => ({ ...prev, categoria: event.target.value }))
+                }
+                placeholder="Categoria"
+                className="bg-white"
+              />
+              <Select
+                value={draftForm.severidad || "NONE"}
+                onValueChange={(value) =>
+                  setDraftForm((prev) => ({ ...prev, severidad: value === "NONE" ? "" : value }))
+                }
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue placeholder="Severidad" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">Sin severidad</SelectItem>
+                  <SelectItem value="BAJO">BAJO</SelectItem>
+                  <SelectItem value="MEDIO">MEDIO</SelectItem>
+                  <SelectItem value="ALTO">ALTO</SelectItem>
+                  <SelectItem value="CRITICO">CRITICO</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Input
+              value={draftForm.lugar_referencia}
+              onChange={(event) =>
+                setDraftForm((prev) => ({ ...prev, lugar_referencia: event.target.value }))
+              }
+              placeholder="Ubicacion o referencia"
+              className="bg-white"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="outline" disabled={saving} onClick={() => void saveDraft()}>
+                {saving ? "Guardando..." : "Guardar borrador"}
+              </Button>
+              <Button
+                type="button"
+                className="bg-[#001C55]"
+                disabled={creatingIncident || Boolean(conversation.incidente)}
+                onClick={() => void createIncidentFromDraft()}
+              >
+                {conversation.incidente
+                  ? "Incidente ya vinculado"
+                  : creatingIncident
+                    ? "Registrando..."
+                    : "Registrar incidente"}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

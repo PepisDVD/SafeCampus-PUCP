@@ -114,7 +114,7 @@ function SummaryFact({
         <p className="text-xs font-medium text-slate-500">{label}</p>
         <p
           className={cn(
-            "mt-0.5 text-sm leading-snug font-semibold break-words text-slate-900",
+            "mt-0.5 text-sm leading-snug font-semibold wrap-break-word text-slate-900",
             tone === "danger" && "text-orange-600",
           )}
         >
@@ -211,7 +211,7 @@ export default async function IncidenteDetallePage({
     : "Sin severidad";
 
   return (
-    <div className="mx-auto w-full max-w-[1540px] space-y-5 p-4 lg:p-6">
+    <div className="mx-auto w-full max-w-385 space-y-5 p-4 lg:p-6">
       <Link
         href="/incidentes"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-[#001C55] hover:text-[#032E84]"

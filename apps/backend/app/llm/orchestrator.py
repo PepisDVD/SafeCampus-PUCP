@@ -67,12 +67,16 @@ class LLMOrchestrator:
             selected_provider,
             prompt.metadata.modelo_objetivo,
         )
+        max_tokens = prompt.metadata.max_tokens
+        if selected_provider == LLMProviderName.GEMINI:
+            max_tokens = max(prompt.metadata.max_tokens, settings.GEMINI_MAX_TOKENS)
+
         request = LLMInvocationRequest(
             system_prompt=prompt.system_message,
             user_prompt=user_prompt,
             model=model,
             temperature=prompt.metadata.temperatura,
-            max_tokens=prompt.metadata.max_tokens,
+            max_tokens=max_tokens,
             correlation_id=context.correlation_id,
             prompt_version=prompt.metadata.id,
             incident_id=context.incident_id,

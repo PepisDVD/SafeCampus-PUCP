@@ -16,6 +16,8 @@ import {
   LayoutDashboard,
   MapPinned,
   MessageSquare,
+  PackageCheck,
+  PackageSearch,
   ShieldCheck,
 } from "lucide-react";
 import { OfficialLogoMark } from "@/components/branding/official-logo-mark";
@@ -26,6 +28,16 @@ const OPERATIVO_NAV: NavItem[] = [
   { href: "/bienvenida", label: "Bienvenida", icon: House },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/incidentes", label: "Incidentes", icon: ShieldCheck },
+  {
+    href: "/lost-found-operaciones",
+    label: "Lost & Found",
+    icon: PackageSearch,
+    children: [
+      { href: "/lost-found-operaciones", label: "Dashboard", icon: BarChart3 },
+      { href: "/lost-found-hilos", label: "Hilos", icon: MessageSquare },
+      { href: "/lost-found-logistica", label: "Logistica", icon: PackageCheck },
+    ],
+  },
   { href: "/mapa", label: "Mapa", icon: MapPinned },
   { href: "/kpis", label: "KPIs", icon: BarChart3 },
   { href: "/mensajes", label: "Mensajes", icon: MessageSquare },
