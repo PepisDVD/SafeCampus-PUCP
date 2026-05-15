@@ -7,6 +7,7 @@ description: React 19 server/client boundary, hydration, and rendering performan
 
 Use this skill for React 19 patterns in web and shared UI packages.
 
+
 ## Goals
 - Clear server/client boundaries.
 - Stable rendering and hydration behavior.
