@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, useEffect, useRef, useState, useTransition } from "react";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Badge,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Avatar,
   AvatarFallback,
   AvatarImage,
@@ -21,6 +30,8 @@ import {
   DrawerTrigger,
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   Input,
@@ -30,9 +41,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Skeleton,
   Textarea,
+  ToggleGroup,
+  ToggleGroupItem,
 } from "@safecampus/ui-kit";
-import { Eye, MessageSquare, Plus, Search, Trash2 } from "lucide-react";
+import { Eye, Grid2X2, List, MapPin, MessageSquare, PackageSearch, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
@@ -40,6 +54,7 @@ import type { CasoLfListItem, CategoriaLf, UbicacionMaestra } from "../types";
 
 type Props = {
   initialCasos: CasoLfListItem[];
+  initialNextCursor?: string | null;
   categorias: CategoriaLf[];
   ubicaciones: UbicacionMaestra[];
 };
@@ -48,6 +63,17 @@ type FotoAdjunta = {
   file: File;
   previewUrl: string;
 };
+
+type FormErrors = Partial<Record<"titulo" | "descripcion" | "categoria_id" | "lugar_referencia" | "fecha_evento" | "fotos", string>>;
+type TouchedFields = Partial<Record<keyof FormErrors, boolean>>;
+
+const PAGE_SIZE = 12;
+const DEFAULT_MAP_POINT = { lat: -12.06945, lng: -77.08055 };
+
+const LeafletCoordinatePicker = dynamic(
+  () => import("@/features/admin/components/maestros/leaflet-coordinate-picker").then((mod) => mod.LeafletCoordinatePicker),
+  { ssr: false },
+);
 
 const emptyForm: CasoLfCreatePayload = {
   tipo: "ENCONTRADO",
@@ -61,21 +87,52 @@ const emptyForm: CasoLfCreatePayload = {
   etiquetas: [],
 };
 
-export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Props) {
+export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, ubicaciones }: Props) {
   const router = useRouter();
   const [casos, setCasos] = useState(initialCasos);
+  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor ?? null);
   const [query, setQuery] = useState("");
   const [tipo, setTipo] = useState("TODOS");
   const [estado, setEstado] = useState("TODOS");
   const [categoria, setCategoria] = useState("TODAS");
   const [columns, setColumns] = useState("4");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<CasoLfCreatePayload>(emptyForm);
+  const [touched, setTouched] = useState<TouchedFields>({});
+  const [submitted, setSubmitted] = useState(false);
   const [ubicacionSeleccionada, setUbicacionSeleccionada] = useState("OTRO");
   const [fotos, setFotos] = useState<FotoAdjunta[]>([]);
   const [previewSeleccionado, setPreviewSeleccionado] = useState<FotoAdjunta | null>(null);
+  const [mapDialogOpen, setMapDialogOpen] = useState(false);
+  const [mapConfirmOpen, setMapConfirmOpen] = useState(false);
+  const [mapDraft, setMapDraft] = useState<{ lat: number; lng: number } | null>(null);
   const [isPending, startTransition] = useTransition();
   const fotosRef = useRef<FotoAdjunta[]>([]);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const formErrors = useMemo(() => validateCase(form, fotos.length), [form, fotos.length]);
+  const canSubmit = Object.keys(formErrors).length === 0;
+
+  const threadParams = useCallback((cursor?: string | null) => ({
+    limit: String(PAGE_SIZE),
+    ...(query.trim() ? { search: query.trim() } : {}),
+    ...(tipo !== "TODOS" ? { tipo } : {}),
+    ...(estado !== "TODOS" ? { estado } : {}),
+    ...(categoria !== "TODAS" ? { categoria_id: categoria } : {}),
+    ...(cursor ? { cursor } : {}),
+  }), [categoria, estado, query, tipo]);
+
+  const loadMore = useCallback(() => {
+    if (!nextCursor || isPending) return;
+    startTransition(async () => {
+      const response = await lostFoundClient.casosOperativo(threadParams(nextCursor));
+      setCasos((current) => {
+        const seen = new Set(current.map((caso) => caso.id));
+        return [...current, ...response.items.filter((caso) => !seen.has(caso.id))];
+      });
+      setNextCursor(response.next_cursor ?? null);
+    });
+  }, [isPending, nextCursor, threadParams]);
 
   useEffect(() => {
     fotosRef.current = fotos;
@@ -87,7 +144,18 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
     };
   }, []);
 
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !nextCursor) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) loadMore();
+    }, { rootMargin: "280px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loadMore, nextCursor]);
+
   const handleUbicacionChange = (value: string) => {
+    setTouched((current) => ({ ...current, lugar_referencia: true }));
     setUbicacionSeleccionada(value);
     if (value === "OTRO") {
       setForm((current) => ({ ...current, lugar_referencia: "" }));
@@ -98,10 +166,13 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
     setForm((current) => ({
       ...current,
       lugar_referencia: ubicacion.nombre,
+      latitud: ubicacion.latitud,
+      longitud: ubicacion.longitud,
     }));
   };
 
   const handleFotosChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setTouched((current) => ({ ...current, fotos: true }));
     const selectedFiles = Array.from(event.target.files ?? []);
     const imageFiles = selectedFiles.filter((file) => file.type.startsWith("image/"));
     if (imageFiles.length !== selectedFiles.length) {
@@ -129,6 +200,7 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
   };
 
   const removeFoto = (index: number) => {
+    setTouched((current) => ({ ...current, fotos: true }));
     setFotos((current) => {
       const target = current[index];
       if (target) URL.revokeObjectURL(target.previewUrl);
@@ -152,12 +224,36 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
     setPreviewSeleccionado(null);
   };
 
+  const openMapDialog = () => {
+    const selectedLocation = ubicaciones.find((item) => item.id === ubicacionSeleccionada);
+    setMapDraft({
+      lat: form.latitud ?? selectedLocation?.latitud ?? DEFAULT_MAP_POINT.lat,
+      lng: form.longitud ?? selectedLocation?.longitud ?? DEFAULT_MAP_POINT.lng,
+    });
+    setMapDialogOpen(true);
+  };
+
+  const applyMapCoordinates = () => {
+    if (!mapDraft) {
+      setMapConfirmOpen(false);
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      latitud: Number(mapDraft.lat.toFixed(6)),
+      longitud: Number(mapDraft.lng.toFixed(6)),
+    }));
+    setMapConfirmOpen(false);
+    setMapDialogOpen(false);
+    toast.success("Ubicacion marcada en el mapa");
+  };
+
   const canAddFotos = fotos.length < 3;
 
   const createThread = () => {
-    const validation = validateCase(form);
-    if (validation) {
-      toast.error(validation);
+    setSubmitted(true);
+    if (!canSubmit) {
+      toast.error("Revisa los campos marcados antes de publicar.");
       return;
     }
     startTransition(async () => {
@@ -169,8 +265,12 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
         if (fotos.length > 0) {
           await lostFoundClient.subirFotosArchivos(created.id, fotos.map((item) => item.file));
         }
-        setCasos((await lostFoundClient.casosOperativo()).items);
+        const response = await lostFoundClient.casosOperativo(threadParams());
+        setCasos(response.items);
+        setNextCursor(response.next_cursor ?? null);
         setForm(emptyForm);
+        setTouched({});
+        setSubmitted(false);
         setUbicacionSeleccionada("OTRO");
         resetAdjuntos();
         setOpen(false);
@@ -184,13 +284,9 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
 
   const search = () => {
     startTransition(async () => {
-      const params = query.trim() ? { search: query.trim() } : undefined;
-      setCasos((await lostFoundClient.casosOperativo({
-        ...(params ?? {}),
-        ...(tipo !== "TODOS" ? { tipo } : {}),
-        ...(estado !== "TODOS" ? { estado } : {}),
-        ...(categoria !== "TODAS" ? { categoria_id: categoria } : {}),
-      })).items);
+      const response = await lostFoundClient.casosOperativo(threadParams());
+      setCasos(response.items);
+      setNextCursor(response.next_cursor ?? null);
     });
   };
 
@@ -207,6 +303,8 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
             setOpen(nextOpen);
             if (!nextOpen) {
               setForm(emptyForm);
+              setTouched({});
+              setSubmitted(false);
               setUbicacionSeleccionada("OTRO");
               resetAdjuntos();
             }
@@ -229,14 +327,55 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
                   <SelectItem value="PERDIDO">Perdido</SelectItem>
                 </SelectContent>
               </Select>
-              <Input placeholder="Titulo" value={form.titulo} onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))} />
-              <Textarea placeholder="Descripcion" value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} />
-              <Select value={form.categoria_id || undefined} onValueChange={(value) => setForm((f) => ({ ...f, categoria_id: value }))}>
+              <div className="space-y-2">
+                <Label htmlFor="lf-titulo">Titulo</Label>
+                <Input
+                  id="lf-titulo"
+                  placeholder="Ej. Celular negro en pabellon A"
+                  value={form.titulo}
+                  onBlur={() => setTouched((current) => ({ ...current, titulo: true }))}
+                  onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
+                />
+                <FieldError message={visibleError(formErrors.titulo, touched.titulo, submitted)} />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="lf-descripcion">Descripcion</Label>
+                  <span className="text-xs text-slate-500">{form.descripcion.length}/500</span>
+                </div>
+                <Textarea
+                  id="lf-descripcion"
+                  placeholder="Describe rasgos, contenido visible, estado y detalles utiles para confirmar propiedad."
+                  value={form.descripcion}
+                  onBlur={() => setTouched((current) => ({ ...current, descripcion: true }))}
+                  onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
+                />
+                <FieldError message={visibleError(formErrors.descripcion, touched.descripcion, submitted)} />
+              </div>
+              <Select
+                value={form.categoria_id || undefined}
+                onValueChange={(value) => {
+                  setTouched((current) => ({ ...current, categoria_id: true }));
+                  setForm((f) => ({ ...f, categoria_id: value }));
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="Categoria" /></SelectTrigger>
                 <SelectContent>
                   {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <FieldError message={visibleError(formErrors.categoria_id, touched.categoria_id, submitted)} />
+              <div className="space-y-2">
+                <Label htmlFor="lf-fecha-evento">Fecha del evento</Label>
+                <Input
+                  id="lf-fecha-evento"
+                  type="datetime-local"
+                  value={toDateTimeLocalValue(form.fecha_evento)}
+                  onBlur={() => setTouched((current) => ({ ...current, fecha_evento: true }))}
+                  onChange={(e) => setForm((f) => ({ ...f, fecha_evento: fromDateTimeLocalValue(e.target.value) }))}
+                />
+                <FieldError message={visibleError(formErrors.fecha_evento, touched.fecha_evento, submitted)} />
+              </div>
               <Select value={ubicacionSeleccionada} onValueChange={handleUbicacionChange}>
                 <SelectTrigger><SelectValue placeholder="Ubicacion" /></SelectTrigger>
                 <SelectContent>
@@ -246,13 +385,23 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
                   <SelectItem value="OTRO">Otro (ingresar manualmente)</SelectItem>
                 </SelectContent>
               </Select>
-              {ubicacionSeleccionada === "OTRO" && (
-                <Input
-                  placeholder="Lugar de referencia"
-                  value={form.lugar_referencia}
-                  onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))}
-                />
+              <div className="flex gap-2">
+                {ubicacionSeleccionada === "OTRO" && (
+                  <Input
+                    placeholder="Lugar de referencia"
+                    value={form.lugar_referencia}
+                    onBlur={() => setTouched((current) => ({ ...current, lugar_referencia: true }))}
+                    onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))}
+                  />
+                )}
+                <Button type="button" variant="outline" size="icon" className="shrink-0" onClick={openMapDialog} aria-label="Marcar ubicacion en mapa">
+                  <MapPin className="h-4 w-4" />
+                </Button>
+              </div>
+              {form.latitud != null && form.longitud != null && (
+                <p className="text-xs text-slate-500">Coordenadas: {form.latitud.toFixed(6)}, {form.longitud.toFixed(6)}</p>
               )}
+              <FieldError message={visibleError(formErrors.lugar_referencia, touched.lugar_referencia, submitted)} />
               <div className="grid gap-3 sm:grid-cols-2">
                 <Input placeholder="Color" value={form.color_principal ?? ""} onChange={(e) => setForm((f) => ({ ...f, color_principal: e.target.value }))} />
                 <Input placeholder="Marca" value={form.marca ?? ""} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} />
@@ -267,6 +416,7 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
                   onChange={handleFotosChange}
                   disabled={!canAddFotos}
                 />
+                <FieldError message={visibleError(formErrors.fotos, touched.fotos, submitted)} />
                 {!canAddFotos && <p className="text-xs text-amber-600">Ya alcanzaste el maximo de 3 fotos.</p>}
                 {fotos.length > 0 && (
                   <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
@@ -286,7 +436,7 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
               </div>
             </div>
             <DrawerFooter className="mx-auto w-full max-w-2xl shrink-0 border-t bg-white px-4 py-3">
-              <Button onClick={createThread} disabled={isPending || Boolean(validateCase(form))}>Publicar hilo</Button>
+              <Button onClick={createThread} disabled={isPending}>Publicar hilo</Button>
               <DrawerClose asChild><Button variant="outline">Cancelar</Button></DrawerClose>
             </DrawerFooter>
           </DrawerContent>
@@ -294,7 +444,7 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
       </div>
 
       <section className="rounded-lg border bg-white p-4">
-        <div className="grid gap-3 lg:grid-cols-[1.4fr_160px_180px_220px_150px_auto]">
+        <div className="grid gap-3 lg:grid-cols-[1.4fr_160px_180px_220px_150px_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <Input className="pl-9" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por codigo, objeto, lugar o marca" />
@@ -330,9 +480,21 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
           <SelectContent>
             <SelectItem value="3">3 por fila</SelectItem>
             <SelectItem value="4">4 por fila</SelectItem>
-            <SelectItem value="5">5 por fila</SelectItem>
           </SelectContent>
         </Select>
+        <ToggleGroup
+          type="single"
+          value={viewMode}
+          onValueChange={(value) => value && setViewMode(value as "grid" | "list")}
+          className="justify-start"
+        >
+          <ToggleGroupItem value="grid" aria-label="Vista grid">
+            <Grid2X2 className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="list" aria-label="Vista lista compacta">
+            <List className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
         <Button onClick={search} disabled={isPending}>
           <Search className="mr-2 h-4 w-4" />
           Buscar
@@ -354,11 +516,51 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
         </DialogContent>
       </Dialog>
 
-      <div className={gridClass(columns)}>
-          {casos.map((caso) => (
+      <Dialog open={mapDialogOpen} onOpenChange={setMapDialogOpen}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Seleccionar ubicacion exacta</DialogTitle>
+            <DialogDescription>
+              Haz clic en el mapa para marcar donde se perdio o encontro el objeto.
+            </DialogDescription>
+          </DialogHeader>
+          <LeafletCoordinatePicker
+            lat={mapDraft?.lat ?? null}
+            lng={mapDraft?.lng ?? null}
+            mapClassName="h-[58vh]"
+            showHelperText={false}
+            onChange={(lat, lng) => setMapDraft({ lat, lng })}
+          />
+          <p className="text-xs text-slate-500">
+            Coordenada seleccionada: {mapDraft?.lat.toFixed(6) ?? "-"}, {mapDraft?.lng.toFixed(6) ?? "-"}
+          </p>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setMapDialogOpen(false)}>Cancelar</Button>
+            <Button type="button" onClick={() => setMapConfirmOpen(true)}>Guardar ubicacion</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={mapConfirmOpen} onOpenChange={setMapConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar ubicacion</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se aplicaran las coordenadas seleccionadas al hilo. Puedes ajustar el texto del lugar manualmente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={applyMapCoordinates}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className={viewMode === "grid" ? gridClass(columns) : "grid gap-2"}>
+          {/*
             <Link key={caso.id} href={`/lost-found-hilos/${caso.id}`} className="block">
               <Card className="h-full transition hover:border-[#001C55]/30 hover:shadow-sm">
-                <CardContent className="flex h-full flex-col gap-3 p-4">
+                <CardContent className={viewMode === "grid" ? "relative flex h-full flex-col gap-3 p-4 pr-32" : "relative flex min-h-32 flex-col gap-2 p-3 pr-36"}>
                   <div className="flex items-center gap-2">
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={caso.reportante?.avatar_url ?? undefined} />
@@ -369,24 +571,32 @@ export function LostFoundThreads({ initialCasos, categorias, ubicaciones }: Prop
                       <p className="text-xs text-slate-500">{formatDate(caso.ultimo_comentario_at ?? caso.created_at)}</p>
                     </div>
                   </div>
+                  <CaseThumbnail caso={caso} compact={viewMode === "list"} />
                   <div className="space-y-1">
                     <p className="line-clamp-1 font-semibold text-slate-950">{caso.titulo}</p>
                     <p className="text-xs text-slate-500">{caso.codigo} · {caso.lugar_referencia}</p>
                   </div>
-                  <p className="line-clamp-3 flex-1 text-sm text-slate-600">{caso.ultimo_comentario ?? caso.descripcion}</p>
+                  <p className="text-sm text-slate-600">{truncateText(caso.ultimo_comentario ?? caso.descripcion, 120)}</p>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>
                     <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
+                    {caso.categoria_nombre && <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">{caso.categoria_nombre}</Badge>}
                     <span className="ml-auto flex items-center gap-1 text-sm text-slate-500"><MessageSquare className="h-4 w-4" />{caso.conteo_comentarios}</span>
                   </div>
                 </CardContent>
               </Card>
             </Link>
-          ))}
-          {casos.length === 0 && (
+          */}
+          {casos.map((caso) => <ThreadCard key={caso.id} caso={caso} viewMode={viewMode} />)}
+          {casos.length === 0 && !isPending && (
             <p className="rounded-lg border border-dashed p-6 text-center text-sm text-slate-500">No hay hilos para mostrar.</p>
           )}
+          {isPending && <ThreadSkeletons viewMode={viewMode} count={viewMode === "grid" ? 4 : 3} />}
       </div>
+      <div ref={loadMoreRef} className="h-1" />
+      {!nextCursor && casos.length > 0 && (
+        <p className="text-center text-xs text-slate-500">No hay mas hilos para mostrar.</p>
+      )}
     </div>
   );
 }
@@ -395,25 +605,182 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
+function ThreadCard({ caso, viewMode }: { caso: CasoLfListItem; viewMode: "grid" | "list" }) {
+  if (viewMode === "list") {
+    return (
+      <Link href={`/lost-found-hilos/${caso.id}`} className="block">
+        <Card className="transition hover:border-[#001C55]/30 hover:shadow-sm">
+          <CardContent className="grid min-h-24 grid-cols-[72px_1fr_auto] items-center gap-4 p-4">
+            <CaseThumbnail caso={caso} compact />
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate font-semibold text-slate-950">{caso.titulo}</p>
+                <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>
+                <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
+                {caso.categoria_nombre && <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">{caso.categoria_nombre}</Badge>}
+              </div>
+              <p className="truncate text-sm text-slate-600">{truncateText(caso.ultimo_comentario ?? caso.descripcion, 120)}</p>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>{caso.reportante?.nombre_completo ?? "Usuario"}</span>
+                <span>{formatDate(caso.ultimo_comentario_at ?? caso.created_at)}</span>
+              </div>
+            </div>
+            <div className="hidden min-w-36 text-right text-sm text-slate-500 sm:block">
+              <p className="font-medium text-slate-700">{caso.lugar_referencia ?? "Sin lugar"}</p>
+              <p>{caso.codigo}</p>
+              <p className="mt-2 inline-flex items-center gap-1"><MessageSquare className="h-4 w-4" />{caso.conteo_comentarios}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+    );
+  }
+
+  const hasPhoto = Boolean(caso.foto_url);
+
+  return (
+    <Link href={`/lost-found-hilos/${caso.id}`} className="block">
+      <Card className="h-full overflow-hidden transition hover:border-[#001C55]/30 hover:shadow-sm">
+        <CardContent className={hasPhoto ? "grid h-full min-h-64 grid-cols-[minmax(132px,42%)_minmax(0,1fr)] p-0" : "flex h-full min-h-64 flex-col p-4"}>
+          {hasPhoto && (
+            <div className="relative min-h-full">
+              <Badge variant="outline" className={`absolute left-3 top-3 z-10 bg-white/95 ${estadoLfTone[caso.estado]}`}>{estadoLabel(caso.estado)}</Badge>
+              <CaseThumbnail caso={caso} compact={false} />
+            </div>
+          )}
+          <div className={hasPhoto ? "flex min-w-0 flex-col gap-3 p-4" : "flex min-w-0 flex-1 flex-col gap-3"}>
+            <div className="min-w-0">
+              <p className="line-clamp-1 text-lg font-semibold text-slate-950">{caso.titulo}</p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {!hasPhoto && <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>}
+                <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
+                {caso.categoria_nombre && <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">{caso.categoria_nombre}</Badge>}
+              </div>
+            </div>
+            <p className="line-clamp-3 text-sm leading-5 text-slate-600">{truncateText(caso.ultimo_comentario ?? caso.descripcion, 120)}</p>
+            <div className="mt-auto space-y-2 border-t pt-3 text-sm text-slate-500">
+              <div className="flex min-w-0 items-center gap-2">
+                <Avatar className="h-8 w-8 shrink-0">
+                  <AvatarImage src={caso.reportante?.avatar_url ?? undefined} />
+                  <AvatarFallback>{initials(caso.reportante?.nombre_completo)}</AvatarFallback>
+                </Avatar>
+                <span className="min-w-0 truncate font-medium text-slate-700">{shortDisplayName(caso.reportante?.nombre_completo)}</span>
+              </div>
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-1 text-xs">
+                <span className="inline-flex min-w-0 items-center gap-1 text-slate-600">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{caso.lugar_referencia ?? "Sin lugar"}</span>
+                </span>
+                <span className="inline-flex items-center gap-1 text-slate-600">
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {caso.conteo_comentarios}
+                </span>
+                <span className="col-span-2 break-all text-[11px] text-slate-500">{caso.codigo}</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
+
 function initials(name?: string | null) {
   return (name ?? "U").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function shortDisplayName(name?: string | null) {
+  if (!name) return "Usuario";
+  const [first, second] = name.trim().split(/\s+/);
+  return second ? `${first} ${second[0]}.` : first;
 }
 
 function gridClass(columns: string) {
   const map: Record<string, string> = {
     "3": "grid gap-3 md:grid-cols-2 xl:grid-cols-3",
     "4": "grid gap-3 md:grid-cols-2 xl:grid-cols-4",
-    "5": "grid gap-3 md:grid-cols-2 xl:grid-cols-5",
   };
   return map[columns] ?? map["4"];
 }
 
-function validateCase(form: CasoLfCreatePayload) {
-  if (form.titulo.trim().length < 3) return "El titulo debe tener al menos 3 caracteres.";
-  if (form.descripcion.trim().length < 10) return "La descripcion debe tener al menos 10 caracteres.";
-  if (!form.categoria_id) return "Selecciona una categoria.";
-  if (form.lugar_referencia.trim().length < 3) return "El lugar de referencia debe tener al menos 3 caracteres.";
-  return "";
+function validateCase(form: CasoLfCreatePayload, fotoCount: number): FormErrors {
+  const errors: FormErrors = {};
+  const descriptionLength = form.descripcion.trim().length;
+  if (form.titulo.trim().length < 3) errors.titulo = "El titulo debe tener al menos 3 caracteres.";
+  if (descriptionLength < 20 || descriptionLength > 500) errors.descripcion = "La descripcion debe tener entre 20 y 500 caracteres.";
+  if (!form.categoria_id) errors.categoria_id = "Selecciona una categoria.";
+  if (!form.fecha_evento || Number.isNaN(new Date(form.fecha_evento).getTime())) errors.fecha_evento = "Indica la fecha del evento.";
+  if (form.lugar_referencia.trim().length < 3) errors.lugar_referencia = "El lugar es obligatorio.";
+  if (fotoCount < 1) errors.fotos = "La foto es obligatoria.";
+  return errors;
+}
+
+function visibleError(message: string | undefined, touched?: boolean, submitted?: boolean) {
+  return touched || submitted ? message : undefined;
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-xs font-medium text-rose-600">{message}</p>;
+}
+
+function toDateTimeLocalValue(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+}
+
+function fromDateTimeLocalValue(value: string) {
+  return value ? new Date(value).toISOString() : "";
+}
+
+function truncateText(value: string | null | undefined, maxLength: number) {
+  const text = (value ?? "").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}...` : text;
+}
+
+function CaseThumbnail({ caso, compact }: { caso: CasoLfListItem; compact: boolean }) {
+  const sizeClass = compact ? "h-16 w-16 rounded-lg" : "h-full w-full rounded-none border-0";
+  const frameClass = compact ? "rounded-lg border" : "rounded-none border-0";
+  if (!caso.foto_url) {
+    return (
+      <div className={`${sizeClass} ${frameClass} flex items-center justify-center border-dashed border-slate-300 bg-slate-50 text-slate-400`}>
+        <PackageSearch className="h-7 w-7" />
+      </div>
+    );
+  }
+  return (
+    <div className={`${sizeClass} ${frameClass} overflow-hidden bg-slate-50`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={caso.foto_url} alt={caso.titulo} className="h-full w-full object-cover" />
+    </div>
+  );
+}
+
+function ThreadSkeletons({ viewMode, count }: { viewMode: "grid" | "list"; count: number }) {
+  return Array.from({ length: count }).map((_, index) => (
+    <Card key={`thread-skeleton-${index}`}>
+      <CardContent className={viewMode === "grid" ? "space-y-3 p-4" : "grid gap-3 p-3 sm:grid-cols-[1fr_120px]"}>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-8 w-8 rounded-full" />
+            <div className="space-y-1">
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+          </div>
+          <Skeleton className="h-5 w-2/3" />
+          <Skeleton className="h-4 w-full" />
+          <div className="flex gap-2">
+            <Skeleton className="h-6 w-16 rounded-full" />
+            <Skeleton className="h-6 w-20 rounded-full" />
+          </div>
+        </div>
+        {viewMode === "list" && <Skeleton className="h-24 w-28 justify-self-end" />}
+      </CardContent>
+    </Card>
+  ));
 }
 
 function AttachmentPreviewCard({

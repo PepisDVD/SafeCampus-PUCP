@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useState, useTransition } from "react";
 import {
   Badge,
@@ -12,28 +14,46 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
   Input,
+  ScrollArea,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   Textarea,
 } from "@safecampus/ui-kit";
-import { Archive, MessageSquare } from "lucide-react";
+import { Archive, CheckCircle2, GitCompareArrows, History, ImageIcon, MapPin, MessageSquare, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { lostFoundClient } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
-import type { CasoLfDetail } from "../types";
+import type { CasoLfDetail, MatchLf } from "../types";
 
-export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDetail }) {
+const LostFoundReadonlyMap = dynamic(
+  () => import("./lost-found-readonly-map").then((mod) => mod.LostFoundReadonlyMap),
+  { ssr: false },
+);
+
+export function LostFoundThreadDetail({ initialCase, initialMatches }: { initialCase: CasoLfDetail; initialMatches: MatchLf[] }) {
   const [caso, setCaso] = useState(initialCase);
   const [comment, setComment] = useState("");
   const [operativo, setOperativo] = useState("");
   const [custodia, setCustodia] = useState("");
+  const [matches, setMatches] = useState<MatchLf[]>(initialMatches);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const reload = async () => setCaso(await lostFoundClient.detalle(caso.id));
+  const reloadMatches = async () => setMatches(await lostFoundClient.matches(caso.id));
 
   const sendComment = () => {
     if (!comment.trim()) return;
@@ -73,6 +93,14 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
     });
   };
 
+  const respondMatch = (match: MatchLf, confirmar: boolean) => {
+    startTransition(async () => {
+      await lostFoundClient.responderMatch(match.id, confirmar, confirmar ? "Confirmado desde detalle del hilo" : "Descartado desde detalle del hilo");
+      await Promise.all([reload(), reloadMatches()]);
+      toast.success(confirmar ? "Coincidencia confirmada" : "Coincidencia descartada");
+    });
+  };
+
   return (
     <div className="space-y-5 p-6">
       <div>
@@ -84,20 +112,7 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
         <Card>
           <CardHeader><CardTitle>Publicacion</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            {caso.foto_url && (
-              <div className="relative aspect-video w-full overflow-hidden rounded-lg">
-                <Image src={caso.foto_url} alt="" fill unoptimized className="object-cover" />
-              </div>
-            )}
-            {caso.foto_adicional_urls.length > 0 && (
-              <div className="grid grid-cols-2 gap-2">
-                {caso.foto_adicional_urls.map((url) => (
-                  <div key={url} className="relative aspect-video w-full overflow-hidden rounded-lg">
-                    <Image src={url} alt="" fill unoptimized className="object-cover" />
-                  </div>
-                ))}
-              </div>
-            )}
+            <CaseMediaTabs caso={caso} />
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>
               <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
@@ -125,6 +140,10 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
               <Archive className="mr-2 h-4 w-4" />
               Registrar custodia
             </Button>
+            <Button className="w-full" variant="outline" onClick={() => setHistoryOpen(true)}>
+              <History className="mr-2 h-4 w-4" />
+              Ver historial del caso
+            </Button>
 
             <aside className="rounded-lg border bg-slate-50 p-4">
               <p className="text-sm font-semibold text-slate-950">Resumen del hilo</p>
@@ -138,6 +157,84 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
           </CardContent>
         </Card>
       </div>
+
+      {false && (
+        <>
+        <CardHeader><CardTitle>Historial del caso</CardTitle></CardHeader>
+        <CardContent>
+          {caso.historial.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-4 text-sm text-slate-500">Aun no hay transiciones registradas.</p>
+          ) : (
+            <div className="space-y-0">
+              {caso.historial.map((item, index) => (
+                <div key={item.id} className="grid grid-cols-[18px_1fr] gap-3">
+                  <div className="flex flex-col items-center">
+                    <span className="mt-1 h-3 w-3 rounded-full bg-[#001C55]" />
+                    {index < caso.historial.length - 1 && <span className="h-full min-h-10 w-px bg-slate-200" />}
+                  </div>
+                  <div className="pb-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className={estadoLfTone[item.estado_nuevo]}>{estadoLabel(item.estado_nuevo)}</Badge>
+                      {item.estado_anterior && <span className="text-xs text-slate-500">desde {estadoLabel(item.estado_anterior)}</span>}
+                    </div>
+                    <p className="mt-1 text-sm font-medium text-slate-950">{item.accion}</p>
+                    {item.comentario && <p className="text-sm text-slate-600">{item.comentario}</p>}
+                    <p className="mt-1 text-xs text-slate-500">
+                      {new Date(item.created_at).toLocaleString()} · {item.ejecutado_por?.nombre_completo ?? "Sistema"}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+        </>
+      )}
+      <HistoryDrawer open={historyOpen} onOpenChange={setHistoryOpen} caso={caso} />
+
+      {matches.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><GitCompareArrows className="h-5 w-5" />Coincidencias sugeridas</CardTitle></CardHeader>
+          <CardContent>
+            <ScrollArea className="w-full">
+              <div className="flex gap-3 pb-3">
+                {matches.map((match) => {
+                  const candidate = match.caso_contraparte;
+                  return (
+                    <div key={match.id} className="w-80 shrink-0 rounded-lg border bg-white p-3">
+                      <div className="flex gap-3">
+                        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border bg-slate-50">
+                          {candidate?.foto_url ? <Image src={candidate.foto_url} alt="" fill unoptimized className="object-cover" /> : <GitCompareArrows className="m-6 h-8 w-8 text-slate-400" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-1 font-medium text-slate-950">{candidate?.titulo ?? "Caso candidato"}</p>
+                          <p className="text-xs text-slate-500">{candidate?.codigo} · {candidate?.lugar_referencia}</p>
+                          <Badge variant="outline" className="mt-2 border-sky-200 bg-sky-50 text-sky-700">Score {Math.round(match.score_total * 100)}%</Badge>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        {candidate && (
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={`/lost-found-hilos/${candidate.id}`}>Ver detalle</Link>
+                          </Button>
+                        )}
+                        <Button size="sm" onClick={() => respondMatch(match, true)} disabled={isPending}>
+                          <CheckCircle2 className="mr-1 h-4 w-4" />
+                          Confirmar
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => respondMatch(match, false)} disabled={isPending}>
+                          <XCircle className="mr-1 h-4 w-4" />
+                          Descartar
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Hilo de conversacion</CardTitle></CardHeader>
@@ -157,6 +254,7 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-medium">{item.autor?.nombre_completo ?? "Usuario"}</p>
+                    {roleBadge(item.autor?.rol)}
                     <span className="text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</span>
                     <Badge variant={item.visible ? "secondary" : "outline"} className="ml-auto">{item.visible ? "Visible" : "Oculto"}</Badge>
                   </div>
@@ -181,4 +279,100 @@ export function LostFoundThreadDetail({ initialCase }: { initialCase: CasoLfDeta
 
 function initials(name?: string | null) {
   return (name ?? "U").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function CaseMediaTabs({ caso }: { caso: CasoLfDetail }) {
+  const photos = [caso.foto_url, ...caso.foto_adicional_urls].filter(Boolean) as string[];
+  const hasCoordinates = caso.latitud != null && caso.longitud != null;
+
+  return (
+    <Tabs defaultValue="imagenes" className="w-full">
+      <TabsList>
+        <TabsTrigger value="imagenes"><ImageIcon className="mr-2 h-4 w-4" />Imagenes</TabsTrigger>
+        <TabsTrigger value="mapa" disabled={!hasCoordinates}><MapPin className="mr-2 h-4 w-4" />Mapa</TabsTrigger>
+      </TabsList>
+      <TabsContent value="imagenes" className="mt-4 space-y-3">
+        {photos.length > 0 ? (
+          <>
+            <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-slate-50">
+              <Image src={photos[0]!} alt="" fill unoptimized className="object-cover" />
+            </div>
+            {photos.length > 1 && (
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                {photos.slice(1).map((url) => (
+                  <div key={url} className="relative aspect-video w-full overflow-hidden rounded-lg border bg-slate-50">
+                    <Image src={url} alt="" fill unoptimized className="object-cover" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex aspect-video items-center justify-center rounded-lg border border-dashed bg-slate-50 text-sm text-slate-500">
+            Sin imagenes registradas.
+          </div>
+        )}
+      </TabsContent>
+      <TabsContent value="mapa" className="mt-4">
+        {hasCoordinates ? (
+          <div className="overflow-hidden rounded-lg border">
+            <LostFoundReadonlyMap lat={caso.latitud!} lng={caso.longitud!} />
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed p-4 text-sm text-slate-500">Este caso no tiene coordenadas registradas.</div>
+        )}
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function HistoryDrawer({ open, onOpenChange, caso }: { open: boolean; onOpenChange: (open: boolean) => void; caso: CasoLfDetail }) {
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} direction="right">
+      <DrawerContent className="h-full overflow-hidden p-0 sm:max-w-xl">
+        <DrawerHeader className="border-b px-6 py-5 text-left">
+          <DrawerTitle>Historial del caso</DrawerTitle>
+          <DrawerDescription>Transiciones de estado, actor y motivo registrado.</DrawerDescription>
+        </DrawerHeader>
+        <ScrollArea className="h-full px-6 py-5">
+          {caso.historial.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-4 text-sm text-slate-500">Aun no hay transiciones registradas.</p>
+          ) : (
+            <div className="space-y-0">
+              {caso.historial.map((item, index) => (
+                <div key={item.id} className="grid grid-cols-[18px_1fr] gap-3">
+                  <div className="flex flex-col items-center">
+                    <span className="mt-1 h-3 w-3 rounded-full bg-[#001C55]" />
+                    {index < caso.historial.length - 1 && <span className="h-full min-h-10 w-px bg-slate-200" />}
+                  </div>
+                  <div className="pb-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className={estadoLfTone[item.estado_nuevo]}>{estadoLabel(item.estado_nuevo)}</Badge>
+                      {item.estado_anterior && <span className="text-xs text-slate-500">desde {estadoLabel(item.estado_anterior)}</span>}
+                    </div>
+                    <p className="mt-1 text-sm font-medium text-slate-950">{item.accion}</p>
+                    {item.comentario && <p className="text-sm text-slate-600">{item.comentario}</p>}
+                    <p className="mt-1 text-xs text-slate-500">
+                      {new Date(item.created_at).toLocaleString()} - {item.ejecutado_por?.nombre_completo ?? "Sistema"}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function roleBadge(role?: string | null) {
+  const normalized = role?.toLowerCase();
+  if (normalized === "supervisor") {
+    return <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">Supervisor</Badge>;
+  }
+  if (normalized === "operador") {
+    return <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">Operador</Badge>;
+  }
+  return null;
 }

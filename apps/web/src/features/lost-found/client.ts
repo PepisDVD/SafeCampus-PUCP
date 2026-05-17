@@ -14,6 +14,8 @@ export type CasoLfCreatePayload = {
   marca?: string;
   etiquetas?: string[];
   contacto_info?: string;
+  latitud?: number | null;
+  longitud?: number | null;
 };
 
 export const lostFoundClient = {

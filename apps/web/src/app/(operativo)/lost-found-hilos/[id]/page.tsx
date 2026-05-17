@@ -1,5 +1,5 @@
 import { LostFoundThreadDetail } from "@/features/lost-found/components/lost-found-thread-detail";
-import { getLostFoundThreadDetail } from "@/features/lost-found/service";
+import { getLostFoundThreadDetail, getLostFoundThreadMatches } from "@/features/lost-found/service";
 
 export default async function LostFoundHiloDetallePage({
   params,
@@ -7,7 +7,9 @@ export default async function LostFoundHiloDetallePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const detail = await getLostFoundThreadDetail(id);
-  return <LostFoundThreadDetail initialCase={detail} />;
+  const [detail, matches] = await Promise.all([
+    getLostFoundThreadDetail(id),
+    getLostFoundThreadMatches(id),
+  ]);
+  return <LostFoundThreadDetail initialCase={detail} initialMatches={matches} />;
 }
-

@@ -2,7 +2,7 @@ from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, desc, func, or_, select, update
+from sqlalchemy import and_, case, desc, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -18,7 +18,7 @@ from app.models.sc_lost_found import (
     MatchSugerido,
     ParticipanteHiloLf,
 )
-from app.models.sc_users import Usuario
+from app.models.sc_users import Rol, Usuario, UsuarioRol
 
 
 class LostFoundRepository:
@@ -162,6 +162,7 @@ class LostFoundRepository:
         tipo: str | None,
         estado: str | None,
         categoria_id: str | None,
+        cursor: datetime | None,
         limit: int,
     ) -> list[dict[str, Any]]:
         statement = self._base_select()
@@ -171,6 +172,8 @@ class LostFoundRepository:
             statement = statement.where(CasoLostFound.estado == estado)
         if categoria_id:
             statement = statement.where(CasoLostFound.categoria_id == UUID(categoria_id))
+        if cursor:
+            statement = statement.where(CasoLostFound.created_at < cursor)
         if search:
             pattern = f"%{search.strip()}%"
             statement = statement.where(or_(CasoLostFound.codigo.ilike(pattern), CasoLostFound.titulo.ilike(pattern)))
@@ -356,6 +359,14 @@ class LostFoundRepository:
         )
         return [{"match": row} for row in result.scalars()]
 
+    async def list_matches_for_case(self, caso_id: str) -> list[dict[str, Any]]:
+        result = await self.db.execute(
+            select(MatchSugerido)
+            .where(or_(MatchSugerido.caso_perdido_id == UUID(caso_id), MatchSugerido.caso_encontrado_id == UUID(caso_id)))
+            .order_by(MatchSugerido.created_at.desc())
+        )
+        return [{"match": row} for row in result.scalars()]
+
     async def get_match(self, match_id: str) -> MatchSugerido | None:
         return await self.db.get(MatchSugerido, UUID(match_id))
 
@@ -363,8 +374,19 @@ class LostFoundRepository:
         await self.db.execute(update(MatchSugerido).where(MatchSugerido.id == UUID(match_id)).values(estado=estado, respondido_por_id=UUID(usuario_id), respuesta_comentario=comentario, updated_at=datetime.now(timezone.utc)))
 
     async def list_comentarios(self, caso_id: str, include_hidden: bool = False) -> list[dict[str, Any]]:
+        autor_rol = (
+            select(Rol.nombre)
+            .join(UsuarioRol, UsuarioRol.rol_id == Rol.id)
+            .where(
+                UsuarioRol.usuario_id == ComentarioCasoLf.autor_id,
+                func.lower(Rol.nombre).in_(("supervisor", "operador")),
+            )
+            .order_by(case((func.lower(Rol.nombre) == "supervisor", 0), else_=1))
+            .limit(1)
+            .scalar_subquery()
+        )
         statement = (
-            select(ComentarioCasoLf.id, ComentarioCasoLf.caso_id, ComentarioCasoLf.autor_id, ComentarioCasoLf.contenido, ComentarioCasoLf.visible, ComentarioCasoLf.motivo_ocultamiento, ComentarioCasoLf.created_at, ComentarioCasoLf.updated_at, Usuario.nombre.label("autor_nombre"), Usuario.apellido.label("autor_apellido"), Usuario.email.label("autor_email"), Usuario.avatar_url.label("autor_avatar_url"))
+            select(ComentarioCasoLf.id, ComentarioCasoLf.caso_id, ComentarioCasoLf.autor_id, ComentarioCasoLf.contenido, ComentarioCasoLf.visible, ComentarioCasoLf.motivo_ocultamiento, ComentarioCasoLf.created_at, ComentarioCasoLf.updated_at, Usuario.nombre.label("autor_nombre"), Usuario.apellido.label("autor_apellido"), Usuario.email.label("autor_email"), Usuario.avatar_url.label("autor_avatar_url"), autor_rol.label("autor_rol"))
             .outerjoin(Usuario, Usuario.id == ComentarioCasoLf.autor_id)
             .where(ComentarioCasoLf.caso_id == UUID(caso_id))
             .order_by(ComentarioCasoLf.created_at.asc())
