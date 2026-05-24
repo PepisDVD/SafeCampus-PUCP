@@ -6,6 +6,8 @@
     "jsx": "preserve",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "declaration": false,
+    "declarationMap": false,
     "noEmit": true,
     "allowJs": true,
     "incremental": true,

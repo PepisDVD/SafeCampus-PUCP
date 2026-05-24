@@ -47,6 +47,11 @@
       "name": "omnichannel-whatsapp-operations",
       "scope": ["apps/backend", "apps/web/src/features/whatsapp", "infra/docker/evolution", "docs"],
       "description": "SafeCampus WhatsApp/EvolutionAPI webhooks, realtime inbox, and sc_omnicanal operations"
+    },
+    {
+      "name": "mobile-operator-app",
+      "scope": ["apps/mobile", "packages/ui-native", "packages/data", "apps/backend"],
+      "description": "React Native + Expo mobile operator app conventions"
     }
   ]
 }

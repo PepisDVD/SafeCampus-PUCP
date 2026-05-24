@@ -47,6 +47,7 @@ src/
 
 ## Conventions
 - Import shared UI from `@safecampus/ui-kit`
+- For UI changes, search and use shadcn/ui primitives exported by `@safecampus/ui-kit` before creating local components. Compose feature-specific UI locally only when needed; add a new primitive to `packages/ui-kit` only if it is reusable across screens/apps.
 - Import shared types from `@safecampus/shared-types`
 - Path alias: `@/*` → `./src/*`
 - Use `"use client"` only when necessary (events, hooks, browser APIs)

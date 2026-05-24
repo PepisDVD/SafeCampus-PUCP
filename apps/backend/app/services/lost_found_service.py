@@ -1,4 +1,5 @@
 from difflib import SequenceMatcher
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 from uuid import uuid4
@@ -106,6 +107,7 @@ class LostFoundService:
         tipo: str | None,
         estado: str | None,
         categoria_id: str | None,
+        cursor: datetime | None,
         limit: int,
     ) -> list[CasoLfListItem]:
         return [
@@ -115,6 +117,7 @@ class LostFoundService:
                 tipo=tipo,
                 estado=estado,
                 categoria_id=categoria_id,
+                cursor=cursor,
                 limit=max(1, min(limit, 200)),
             )
         ]
@@ -245,11 +248,16 @@ class LostFoundService:
         )
         return await self.obtener_detalle(caso_id, usuario_id, roles)
 
-    async def listar_matches(self, usuario_id: str) -> list[MatchLfItem]:
+    async def listar_matches(self, caso_id: str, usuario_id: str, roles: list[str]) -> list[MatchLfItem]:
+        caso = await self._repo.get_estado(caso_id)
+        is_operativo = bool(set(roles).intersection({"admin", "operador", "supervisor"}))
+        if not caso or (str(caso["reportante_id"]) != usuario_id and not is_operativo):
+            raise HTTPException(status_code=403, detail="No puedes ver matches de este caso.")
         items: list[MatchLfItem] = []
-        for row in await self._repo.list_matches_for_user(usuario_id):
+        for row in await self._repo.list_matches_for_case(caso_id):
             match = row["match"]
-            contraparte = await self._repo.get_detail_by_ref(str(match.caso_encontrado_id))
+            contraparte_id = match.caso_encontrado_id if str(match.caso_perdido_id) == caso_id else match.caso_perdido_id
+            contraparte = await self._repo.get_detail_by_ref(str(contraparte_id))
             items.append(MatchLfItem(
                 id=str(match.id),
                 caso_perdido_id=str(match.caso_perdido_id),
@@ -262,12 +270,13 @@ class LostFoundService:
             ))
         return items
 
-    async def responder_match(self, match_id: str, usuario_id: str, data: MatchLfResponderInput) -> None:
+    async def responder_match(self, match_id: str, usuario_id: str, roles: list[str], data: MatchLfResponderInput) -> None:
         match = await self._repo.get_match(match_id)
         if not match:
             raise HTTPException(status_code=404, detail="Match no encontrado.")
         perdido = await self._repo.get_estado(str(match.caso_perdido_id))
-        if not perdido or str(perdido["reportante_id"]) != usuario_id:
+        is_operativo = bool(set(roles).intersection({"admin", "operador", "supervisor"}))
+        if not perdido or (str(perdido["reportante_id"]) != usuario_id and not is_operativo):
             raise HTTPException(status_code=403, detail="No puedes responder este match.")
         estado = "CONFIRMADO" if data.confirmar else "DESCARTADO"
         await self._repo.update_match_estado(match_id, estado, usuario_id, data.comentario)
@@ -440,7 +449,7 @@ class LostFoundService:
         if not user_id:
             return None
         nombre = f"{row.get(f'{prefix}nombre') or row.get('reportante_nombre') or row.get('autor_nombre') or ''} {row.get(f'{prefix}apellido') or row.get('reportante_apellido') or row.get('autor_apellido') or ''}".strip() or "Usuario"
-        return UsuarioMini(id=str(user_id), nombre_completo=nombre, email=row.get(f"{prefix}email") or row.get("reportante_email") or row.get("autor_email"), avatar_url=row.get(f"{prefix}avatar_url") or row.get("reportante_avatar_url") or row.get("autor_avatar_url"))
+        return UsuarioMini(id=str(user_id), nombre_completo=nombre, email=row.get(f"{prefix}email") or row.get("reportante_email") or row.get("autor_email"), avatar_url=row.get(f"{prefix}avatar_url") or row.get("reportante_avatar_url") or row.get("autor_avatar_url"), rol=row.get(f"{prefix}rol") or row.get("autor_rol"))
 
     @classmethod
     def _map_list(cls, row: dict[str, Any]) -> CasoLfListItem:

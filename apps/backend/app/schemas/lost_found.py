@@ -80,6 +80,7 @@ class CasoLfListItem(BaseModel):
 class CasoLfListResponse(BaseModel):
     items: list[CasoLfListItem]
     total: int
+    next_cursor: datetime | None = None
 
 
 class HistorialLfItem(BaseModel):

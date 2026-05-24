@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -112,18 +114,22 @@ async def listar_casos_operativo(
     tipo: TipoCasoLF | None = Query(default=None),
     estado: EstadoCasoLF | None = Query(default=None),
     categoria_id: str | None = Query(default=None),
+    cursor: datetime | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: LostFoundService = Depends(get_service),
 ):
+    page_limit = max(1, min(limit, 200))
     items = await service.listar_operativo(
         search=search,
         tipo=tipo.value if tipo else None,
         estado=estado.value if estado else None,
         categoria_id=categoria_id,
-        limit=limit,
+        cursor=cursor,
+        limit=min(page_limit + 1, 200),
     )
-    return CasoLfListResponse(items=items, total=len(items))
+    next_cursor = items[page_limit - 1].created_at if len(items) > page_limit else None
+    return CasoLfListResponse(items=items[:page_limit], total=len(items[:page_limit]), next_cursor=next_cursor)
 
 
 @router.get("/casos/{ref}", response_model=CasoLfDetail)
@@ -177,11 +183,11 @@ async def subir_fotos_archivo(
 
 @router.get("/casos/{caso_id}/matches", response_model=list[MatchLfItem])
 async def listar_matches(
-    _caso_id: str,
+    caso_id: str,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
 ):
-    return await service.listar_matches(current_user.id)
+    return await service.listar_matches(caso_id, current_user.id, current_user.roles)
 
 
 @router.post("/matches/{match_id}/responder", status_code=status.HTTP_204_NO_CONTENT)
@@ -191,7 +197,7 @@ async def responder_match(
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
 ):
-    await service.responder_match(match_id, current_user.id, body)
+    await service.responder_match(match_id, current_user.id, current_user.roles, body)
 
 
 @router.get("/casos/{caso_id}/comentarios", response_model=list[ComentarioLfItem])

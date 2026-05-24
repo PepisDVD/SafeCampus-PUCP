@@ -1,5 +1,5 @@
 import { serverApi } from "@/lib/api/server";
-import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CustodiaLf, KpisLf, ListResponse, UbicacionMaestra } from "./types";
+import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CustodiaLf, KpisLf, ListResponse, MatchLf, UbicacionMaestra } from "./types";
 
 export async function getLostFoundBootstrap() {
   const [categorias, feed, misCasos, ubicaciones] = await Promise.all([
@@ -13,7 +13,7 @@ export async function getLostFoundBootstrap() {
 
 export async function getLostFoundOperativo() {
   const [casos, custodias, kpis] = await Promise.all([
-    serverApi.get<ListResponse<CasoLfListItem>>("/lost-found/casos"),
+    serverApi.get<ListResponse<CasoLfListItem>>("/lost-found/casos", { limit: "200" }),
     serverApi.get<ListResponse<CustodiaLf> & { page: number; per_page: number }>("/lost-found/custodias", { per_page: "8" }),
     serverApi.get<KpisLf>("/lost-found/kpis"),
   ]);
@@ -34,15 +34,19 @@ export async function getLostFoundLogistica() {
 
 export async function getLostFoundThreads() {
   const [casos, categorias, ubicaciones] = await Promise.all([
-    serverApi.get<ListResponse<CasoLfListItem>>("/lost-found/casos"),
+    serverApi.get<ListResponse<CasoLfListItem>>("/lost-found/casos", { limit: "12" }),
     serverApi.get<CategoriaLf[]>("/lost-found/categorias"),
     serverApi.get<UbicacionMaestra[]>("/maestros/ubicaciones"),
   ]);
-  return { casos: casos.items, categorias, ubicaciones };
+  return { casos: casos.items, nextCursor: casos.next_cursor ?? null, categorias, ubicaciones };
 }
 
 export async function getLostFoundThreadDetail(id: string) {
   return serverApi.get<CasoLfDetail>(`/lost-found/casos/${id}`);
+}
+
+export async function getLostFoundThreadMatches(id: string) {
+  return serverApi.get<MatchLf[]>(`/lost-found/casos/${id}/matches`);
 }
 
 export async function getLostFoundAdmin() {

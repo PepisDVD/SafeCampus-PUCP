@@ -12,5 +12,5 @@ export type {
 export type ListResponse<T> = {
   items: T[];
   total: number;
+  next_cursor?: string | null;
 };
-

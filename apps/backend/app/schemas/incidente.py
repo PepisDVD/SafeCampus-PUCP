@@ -112,6 +112,7 @@ class UsuarioMini(BaseModel):
     nombre_completo: str
     email: EmailStr | None = None
     avatar_url: str | None = None
+    rol: str | None = None
 
 
 class HistorialEvento(BaseModel):

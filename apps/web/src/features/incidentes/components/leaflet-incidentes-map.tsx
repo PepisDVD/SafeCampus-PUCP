@@ -66,7 +66,7 @@ export function LeafletIncidentesMap({
       maxZoom={19}
       maxBounds={PUCP_BOUNDS}
       scrollWheelZoom
-      className="h-full min-h-[520px] w-full"
+      className="h-full min-h-130 w-full"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

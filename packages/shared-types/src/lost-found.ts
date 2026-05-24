@@ -37,6 +37,7 @@ export type UsuarioMiniLf = {
   nombre_completo: string;
   email?: string | null;
   avatar_url?: string | null;
+  rol?: string | null;
 };
 
 export type ComentarioLf = {
