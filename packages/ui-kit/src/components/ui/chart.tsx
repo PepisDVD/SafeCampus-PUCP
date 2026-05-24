@@ -272,7 +272,7 @@ function ChartTooltipContent({
   );
 }
 
-const ChartLegend = RechartsPrimitive.Legend;
+const ChartLegend: typeof RechartsPrimitive.Legend = RechartsPrimitive.Legend;
 
 function ChartLegendContent({
   className,

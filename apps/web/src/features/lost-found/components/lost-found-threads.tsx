@@ -3,7 +3,7 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { type ChangeEvent, type ReactElement, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Badge,
   AlertDialog,
@@ -87,7 +87,7 @@ const emptyForm: CasoLfCreatePayload = {
   etiquetas: [],
 };
 
-export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, ubicaciones }: Props) {
+export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, ubicaciones }: Props): ReactElement {
   const router = useRouter();
   const [casos, setCasos] = useState(initialCasos);
   const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor ?? null);
