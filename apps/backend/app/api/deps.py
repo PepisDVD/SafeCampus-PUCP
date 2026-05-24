@@ -4,7 +4,7 @@ Shared FastAPI dependencies for database sessions and authorization.
 
 from collections.abc import AsyncGenerator, Callable
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -27,9 +27,17 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def get_current_user(
     session_token: str | None = Cookie(default=None, alias=settings.SESSION_COOKIE_NAME),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> AuthUserResponse:
-    return await AuthService(db).get_user_from_session_token(session_token)
+    bearer_token: str | None = None
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() == "bearer" and token:
+            bearer_token = token
+    return await AuthService(db).get_user_from_session_token(
+        bearer_token or session_token,
+    )
 
 
 def require_roles(roles: set[str]) -> Callable[..., AuthUserResponse]:

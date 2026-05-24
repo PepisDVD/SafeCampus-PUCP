@@ -14,7 +14,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.security import create_access_token, decode_access_token
+from app.core.security import create_access_token, decode_access_token, verify_password
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import AuthProfileUpdateInput, AuthUserResponse
 
@@ -76,17 +76,60 @@ class AuthService:
         next_path = self._sanitize_next_path(str(state_payload.get("next") or "/dashboard"))
         supabase_session = await self._exchange_code_for_session(code, code_verifier)
         user = await self.sync_supabase_user_data(supabase_session["user"])
-        session_token = create_access_token(
-            {
-                "kind": "user_session",
-                "sub": user.id,
-                "email": user.email,
-                "roles": user.roles,
-            }
-        )
+        session_token = self._create_user_session_token(user)
         return user, session_token, next_path
 
-    async def sync_supabase_user_data(self, supabase_user: dict[str, Any]) -> AuthUserResponse:
+    async def login_operator_with_password(
+        self,
+        *,
+        email: str,
+        password: str,
+    ) -> tuple[AuthUserResponse, str]:
+        normalized_email = email.strip().lower()
+        profile = await self._repo.get_user_credentials_by_email(normalized_email)
+        if (
+            not profile
+            or profile.get("estado") != "ACTIVO"
+            or not profile.get("password_hash")
+            or not verify_password(password, str(profile["password_hash"]))
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Credenciales invalidas.",
+            )
+
+        roles = await self._repo.list_role_names(str(profile["id"]))
+        if not {"operador", "supervisor", "administrador"}.intersection(roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="La app movil esta habilitada para personal operativo.",
+            )
+
+        user = self._build_auth_user_response(profile, roles)
+        return user, self._create_user_session_token(user)
+
+    async def login_mobile_with_supabase_access_token(
+        self,
+        access_token: str,
+    ) -> tuple[AuthUserResponse, str]:
+        supabase_user = await self._get_supabase_user(access_token)
+        user = await self.sync_supabase_user_data(
+            supabase_user,
+            assign_default_admin=False,
+        )
+        if not {"operador", "supervisor", "administrador"}.intersection(user.roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="La app movil esta habilitada para personal operativo.",
+            )
+        return user, self._create_user_session_token(user)
+
+    async def sync_supabase_user_data(
+        self,
+        supabase_user: dict[str, Any],
+        *,
+        assign_default_admin: bool = True,
+    ) -> AuthUserResponse:
         email = str(supabase_user.get("email", "")).strip().lower()
         if not self._is_allowed_login_email(email):
             raise HTTPException(
@@ -111,7 +154,7 @@ class AuthService:
         )
 
         roles = await self._repo.list_role_names(str(usuario["id"]))
-        if not roles:
+        if not roles and assign_default_admin:
             role_id = await self._repo.get_role_id_by_name("administrador")
             if role_id:
                 await self._repo.assign_role(str(usuario["id"]), role_id)
@@ -200,6 +243,31 @@ class AuthService:
             )
         return data
 
+    async def _get_supabase_user(self, access_token: str) -> dict[str, Any]:
+        token = access_token.strip()
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Token de acceso requerido.",
+            )
+
+        url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/user"
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                url,
+                headers={
+                    "apikey": settings.SUPABASE_ANON_KEY,
+                    "Authorization": f"Bearer {token}",
+                },
+            )
+
+        if response.status_code != status.HTTP_200_OK:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Sesion institucional invalida.",
+            )
+        return response.json()
+
     @staticmethod
     def _is_allowed_login_email(email: str) -> bool:
         normalized = email.strip().lower()
@@ -239,6 +307,17 @@ class AuthService:
         parts = urlsplit(callback_url)
         query = urlencode({"oauth_state": oauth_state})
         return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+    @staticmethod
+    def _create_user_session_token(user: AuthUserResponse) -> str:
+        return create_access_token(
+            {
+                "kind": "user_session",
+                "sub": user.id,
+                "email": user.email,
+                "roles": user.roles,
+            }
+        )
 
     @staticmethod
     def _build_auth_user_response(

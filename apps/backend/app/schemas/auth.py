@@ -22,3 +22,18 @@ class AuthProfileUpdateInput(BaseModel):
     apellido: str
     telefono: str | None = None
     departamento: str | None = None
+
+
+class OperatorLoginInput(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class SupabaseAccessTokenInput(BaseModel):
+    access_token: str
+
+
+class MobileAuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: AuthUserResponse

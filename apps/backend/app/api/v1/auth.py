@@ -4,13 +4,19 @@ Backend-owned authentication endpoints.
 
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session
 from app.core.config import settings
-from app.schemas.auth import AuthProfileUpdateInput, AuthUserResponse
+from app.schemas.auth import (
+    AuthProfileUpdateInput,
+    AuthUserResponse,
+    MobileAuthResponse,
+    OperatorLoginInput,
+    SupabaseAccessTokenInput,
+)
 from app.services.auth_service import AuthService
 
 router = APIRouter()
@@ -91,9 +97,38 @@ async def google_callback(
 @router.get("/me", response_model=AuthUserResponse, tags=["Auth"])
 async def me(
     session_token: str | None = Cookie(default=None, alias=settings.SESSION_COOKIE_NAME),
+    authorization: str | None = Header(default=None),
     service: AuthService = Depends(get_service),
 ) -> AuthUserResponse:
-    return await service.get_user_from_session_token(session_token)
+    bearer_token: str | None = None
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() == "bearer" and token:
+            bearer_token = token
+    return await service.get_user_from_session_token(bearer_token or session_token)
+
+
+@router.post("/mobile/operator/login", response_model=MobileAuthResponse, tags=["Auth"])
+async def mobile_operator_login(
+    body: OperatorLoginInput,
+    service: AuthService = Depends(get_service),
+) -> MobileAuthResponse:
+    user, access_token = await service.login_operator_with_password(
+        email=str(body.email),
+        password=body.password,
+    )
+    return MobileAuthResponse(access_token=access_token, user=user)
+
+
+@router.post("/mobile/supabase-session", response_model=MobileAuthResponse, tags=["Auth"])
+async def mobile_supabase_session(
+    body: SupabaseAccessTokenInput,
+    service: AuthService = Depends(get_service),
+) -> MobileAuthResponse:
+    user, access_token = await service.login_mobile_with_supabase_access_token(
+        body.access_token,
+    )
+    return MobileAuthResponse(access_token=access_token, user=user)
 
 
 @router.patch("/me", response_model=AuthUserResponse, tags=["Auth"])

@@ -103,6 +103,30 @@ class AuthRepository:
         row = result.mappings().one_or_none()
         return dict(row) if row else None
 
+    async def get_user_credentials_by_email(self, email: str) -> dict[str, Any] | None:
+        statement = (
+            select(
+                Usuario.id,
+                Usuario.email,
+                Usuario.nombre,
+                Usuario.apellido,
+                Usuario.avatar_url,
+                Usuario.codigo_institucional,
+                Usuario.telefono,
+                Usuario.departamento,
+                Usuario.estado,
+                Usuario.password_hash,
+            )
+            .where(
+                func.lower(Usuario.email) == email.strip().lower(),
+                Usuario.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        result = await self.db.execute(statement)
+        row = result.mappings().one_or_none()
+        return dict(row) if row else None
+
     async def update_user_profile(self, usuario_id: str, data: dict[str, Any]) -> None:
         statement = (
             update(Usuario)
