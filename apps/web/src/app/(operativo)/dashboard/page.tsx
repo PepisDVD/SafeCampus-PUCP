@@ -9,18 +9,10 @@
 
 import Link from "next/link";
 import {
-  Badge,
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   cn,
 } from "@safecampus/ui-kit";
 import {
@@ -29,16 +21,24 @@ import {
 } from "@safecampus/shared-types";
 import {
   AlertTriangle,
+  BotMessageSquare,
   ChevronRight,
   Clock3,
-  MapPin,
+  MessageSquare,
   ShieldCheck,
   Siren,
+  Users,
 } from "lucide-react";
 
-import { listarIncidentes, obtenerStats } from "@/features/incidentes/service";
 import {
-  ESTADO_STYLE,
+  listarIncidentes,
+  listarIncidentesMapa,
+  obtenerStats,
+} from "@/features/incidentes/service";
+import { obtenerOmnicanalStats } from "@/features/whatsapp/service";
+import { IncidentesLineChart } from "@/components/charts/incidentes-line-chart";
+import { IncidentesHeatmapCard } from "@/features/incidentes/components/incidentes-heatmap-card";
+import {
   SEVERIDAD_COLOR,
   SEVERIDAD_LABEL,
 } from "@/features/incidentes/presentation";
@@ -86,7 +86,7 @@ function MetricCard({
 }
 
 export default async function DashboardPage() {
-  const [stats, recientes] = await Promise.all([
+  const [stats, recientes, mapaData, chatStats] = await Promise.all([
     obtenerStats().catch(() => ({
       total: 0,
       activos: 0,
@@ -99,16 +99,24 @@ export default async function DashboardPage() {
       items: [] as IncidenteListItem[],
       total: 0,
     })),
+    listarIncidentesMapa({ limit: 300, activos_only: false }).catch(() => ({
+      items: [],
+      total: 0,
+      georreferenciados: 0,
+      sin_coordenadas: 0,
+    })),
+    obtenerOmnicanalStats().catch(() => ({
+      en_bot: 0,
+      en_cola: 0,
+      en_atencion: 0,
+      abierta: 0,
+      total_activos: 0,
+    })),
   ]);
 
   const activos = recientes.items
     .filter((item) => !ESTADOS_TERMINALES.has(item.estado))
     .slice(0, 6);
-  const tablaRecientes = recientes.items.slice(0, 10);
-  const maxZonaTotal = stats.por_zona.reduce(
-    (max, z) => (z.total > max ? z.total : max),
-    0,
-  );
 
   return (
     <div className="w-full min-w-0 space-y-5 p-4 sm:p-6">
@@ -154,54 +162,53 @@ export default async function DashboardPage() {
         />
       </section>
 
-      {/* Top zonas + Feed */}
+      {/* Chatbot — chats activos */}
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <BotMessageSquare className="h-4 w-4 text-[#001C55]" />
+          <h2 className="text-sm font-semibold text-slate-700">
+            Chatbot WhatsApp
+          </h2>
+          <Link
+            href="/mensajes"
+            className="ml-auto flex items-center gap-0.5 text-xs font-medium text-[#001C55]"
+          >
+            Ver consola <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            title="Chats activos"
+            value={chatStats.total_activos}
+            hint="En bot, cola o atención"
+            icon={MessageSquare}
+          />
+          <MetricCard
+            title="En bot"
+            value={chatStats.en_bot}
+            hint="Atendidos por IA"
+            icon={BotMessageSquare}
+          />
+          <MetricCard
+            title="En cola"
+            value={chatStats.en_cola}
+            hint="Esperando operador"
+            icon={Users}
+            tone="warning"
+          />
+          <MetricCard
+            title="En atención humana"
+            value={chatStats.en_atencion}
+            hint="Con operador asignado"
+            icon={Clock3}
+            tone="success"
+          />
+        </div>
+      </section>
+
+      {/* Mapa de calor + Feed */}
       <section className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <MapPin className="h-4 w-4 text-[#001C55]" />
-              Top zonas con más incidentes
-            </CardTitle>
-            <CardDescription>
-              Lugares con más casos abiertos en el campus.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {stats.por_zona.length === 0 ? (
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                No hay zonas con incidentes abiertos.
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {stats.por_zona.map((z) => {
-                  const pct =
-                    maxZonaTotal > 0
-                      ? Math.round((z.total / maxZonaTotal) * 100)
-                      : 0;
-                  return (
-                    <li key={z.zona} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium text-slate-900">
-                          {z.zona}
-                        </span>
-                        <span className="font-semibold text-slate-700">
-                          {z.total}
-                        </span>
-                      </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className="h-full rounded-full bg-[#001C55]"
-                          style={{ width: `${pct}%` }}
-                          aria-hidden
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <IncidentesHeatmapCard items={mapaData.items} />
 
         <Card>
           <CardHeader>
@@ -262,87 +269,9 @@ export default async function DashboardPage() {
         </Card>
       </section>
 
-      {/* Tabla reciente */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between text-base">
-            <span>Incidentes recientes</span>
-            <Link
-              href="/incidentes"
-              className="flex items-center gap-0.5 text-xs font-medium text-[#001C55]"
-            >
-              Ver todos <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          {tablaRecientes.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              Aún no hay incidentes registrados.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Código</TableHead>
-                  <TableHead>Título</TableHead>
-                  <TableHead>Zona</TableHead>
-                  <TableHead>Severidad</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Operador</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tablaRecientes.map((item) => {
-                  const estadoStyle = ESTADO_STYLE[item.estado];
-                  return (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-mono font-medium">
-                        {item.codigo}
-                      </TableCell>
-                      <TableCell>{item.titulo}</TableCell>
-                      <TableCell className="text-slate-600">
-                        {item.lugar_referencia ?? "—"}
-                      </TableCell>
-                      <TableCell>
-                        {item.severidad ? (
-                          <span className="inline-flex items-center gap-1.5 text-sm">
-                            <span
-                              aria-hidden
-                              className={cn(
-                                "h-2 w-2 rounded-full",
-                                SEVERIDAD_COLOR[item.severidad],
-                              )}
-                            />
-                            {SEVERIDAD_LABEL[item.severidad]}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={cn(
-                            "rounded-full border-0 px-2.5 py-0.5 text-xs font-medium",
-                            estadoStyle.className,
-                          )}
-                        >
-                          {estadoStyle.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {item.operador_nombre ?? (
-                          <span className="text-slate-400">Sin asignar</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Gráfico de evolución */}
+      <IncidentesLineChart />
+
     </div>
   );
 }

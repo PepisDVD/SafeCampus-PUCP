@@ -89,7 +89,7 @@ async def obtener_mi_detalle_incidente(
 
 @router.get("/kpis", response_model=KpisResponse)
 async def obtener_kpis(
-    period: str = Query(default="mes", pattern="^(semana|mes|trimestre)$"),
+    period: str = Query(default="mes", pattern="^(semana|mes|trimestre|año)$"),
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
 ):

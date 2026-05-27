@@ -14,7 +14,6 @@ import {
   BarChart3,
   BotMessageSquare,
   ClipboardList,
-  House,
   LayoutDashboard,
   MapPinned,
   MessageSquare,
@@ -30,12 +29,6 @@ import { OfficialLogoMark } from "@/components/branding/official-logo-mark";
 import { signOut } from "@/lib/auth";
 
 const ADMIN_NAV: NavItem[] = [
-  {
-    href: "/bienvenida",
-    label: "Bienvenida",
-    icon: House,
-    section: "Operacion",
-  },
   {
     href: "/dashboard",
     label: "Dashboard",

@@ -24,6 +24,7 @@ from app.schemas.omnicanal import (
     MensajeConversacionOut,
     MensajesConversacionResponse,
     OmnicanalRealtimeEvent,
+    OmnicanalStats,
     ReporteEntranteCreated,
     UsuarioConversacionOut,
     VincularIncidenteInput,
@@ -173,6 +174,10 @@ class OmnicanalService:
                 created_at=reporte.created_at,
             )
         )
+
+    async def obtener_stats(self) -> OmnicanalStats:
+        data = await self._repo.get_stats()
+        return OmnicanalStats(**data)
 
     async def listar_conversaciones(
         self,
