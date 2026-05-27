@@ -139,6 +139,7 @@ export {
   PaginationNext,
   PaginationPrevious,
 } from "./components/ui/pagination";
+export { TablePaginationBar } from "./components/ui/table-pagination-bar";
 export { Progress } from "./components/ui/progress";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area";
 export {

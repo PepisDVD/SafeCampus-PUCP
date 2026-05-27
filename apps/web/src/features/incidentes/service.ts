@@ -50,9 +50,10 @@ export async function listarIncidentes(
   const params: Record<string, string> = {
     limit: String(filters.limit ?? 50),
   };
+  if (filters.skip) params.skip = String(filters.skip);
   if (filters.search) params.search = filters.search;
-  if (filters.severidad) params.severidad = filters.severidad;
-  if (filters.estado) params.estado = filters.estado;
+  if (filters.severidades?.length) params.severidad = filters.severidades.join(",");
+  if (filters.estados?.length) params.estado = filters.estados.join(",");
 
   return serverApi.get<IncidenteListResponse>("/incidentes/", params);
 }
@@ -64,8 +65,8 @@ export async function listarIncidentesMapa(
     limit: String(filters.limit ?? 300),
     activos_only: String(filters.activos_only ?? true),
   };
-  if (filters.severidad) params.severidad = filters.severidad;
-  if (filters.estado) params.estado = filters.estado;
+  if (filters.severidades?.length) params.severidad = filters.severidades.join(",");
+  if (filters.estados?.length) params.estado = filters.estados.join(",");
 
   return serverApi.get<IncidenteMapaResponse>("/incidentes/mapa", params);
 }

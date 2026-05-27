@@ -4,6 +4,7 @@
  * 📦 Módulo: Operativo / Incidentes
  */
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 import type { IncidenteListItem } from "@safecampus/shared-types";
@@ -19,6 +20,7 @@ import {
 
 type Props = {
   items: IncidenteListItem[];
+  footer?: ReactNode;
 };
 
 function CategoriaLabel({ categoria }: { categoria: string | null }) {
@@ -26,7 +28,7 @@ function CategoriaLabel({ categoria }: { categoria: string | null }) {
   return <p className="text-xs text-slate-500">{formatCategoria(categoria)}</p>;
 }
 
-export function IncidentesTable({ items }: Props) {
+export function IncidentesTable({ items, footer }: Props) {
   if (items.length === 0) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center">
@@ -152,6 +154,7 @@ export function IncidentesTable({ items }: Props) {
           );
         })}
       </ul>
+      {footer}
     </div>
   );
 }

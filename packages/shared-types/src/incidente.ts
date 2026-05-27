@@ -50,9 +50,10 @@ export interface IncidenteListItem {
 /** Filtros aceptados por GET /api/v1/incidentes (vista operativa). */
 export interface IncidenteListFilters {
   search?: string;
-  severidad?: NivelSeveridad;
-  estado?: EstadoIncidente;
+  severidades?: NivelSeveridad[];
+  estados?: EstadoIncidente[];
   limit?: number;
+  skip?: number;
 }
 
 /** Representación reducida de usuario en respuestas de incidente. */
