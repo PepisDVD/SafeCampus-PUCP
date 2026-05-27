@@ -29,6 +29,7 @@ from app.schemas.omnicanal import (
     EventosConversacionResponse,
     MensajeConversacionOut,
     MensajesConversacionResponse,
+    OmnicanalStats,
     VincularIncidenteInput,
     WhatsAppWebhookResponse,
 )
@@ -74,6 +75,18 @@ async def recibir_webhook_whatsapp(
         ip_origen=client_host,
         user_agent=request.headers.get("user-agent"),
     )
+
+
+@router.get(
+    "/conversaciones/stats",
+    response_model=OmnicanalStats,
+    dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
+)
+async def obtener_stats_conversaciones(
+    service: Annotated[OmnicanalService, Depends(get_service)],
+):
+    """Conteo de conversaciones activas agrupadas por estado."""
+    return await service.obtener_stats()
 
 
 @router.get(

@@ -171,7 +171,7 @@ export interface SlaIndicador {
   unidad: string;
 }
 
-export type KpisPeriod = "semana" | "mes" | "trimestre";
+export type KpisPeriod = "semana" | "mes" | "trimestre" | "año";
 
 /** Respuesta de GET /api/v1/incidentes/kpis. */
 export interface KpisResponse {

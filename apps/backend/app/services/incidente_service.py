@@ -58,6 +58,8 @@ def _period_days(period: str) -> int:
         return 7
     if period == "trimestre":
         return 90
+    if period == "año":
+        return 365
     return 30
 
 
@@ -144,7 +146,7 @@ class IncidenteService:
 
     async def obtener_kpis(self, period: str) -> KpisResponse:
         """KPIs del periodo + comparación vs periodo anterior + breakdowns."""
-        period_norm = period if period in {"semana", "mes", "trimestre"} else "mes"
+        period_norm = period if period in {"semana", "mes", "trimestre", "año"} else "mes"
         days = _period_days(period_norm)
         end = datetime.now(timezone.utc)
         start_current = end - timedelta(days=days)

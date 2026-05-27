@@ -187,3 +187,12 @@ export {
   TooltipProvider,
 } from "./components/ui/tooltip";
 export { Toaster } from "./components/ui/sonner";
+export {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  ChartStyle,
+  type ChartConfig,
+} from "./components/ui/chart";
