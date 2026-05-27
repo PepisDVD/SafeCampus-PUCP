@@ -81,19 +81,32 @@ function toChartPoints(puntos: EvolucionPunto[], period: KpisPeriod): ChartPoint
 }
 
 export function IncidentesLineChart() {
-  const [activeTab, setActiveTab] = useState<PeriodTab>(TABS[0]);
+  const [activeTab, setActiveTab] = useState<PeriodTab>(TABS[0]!);
   const [data, setData] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    api
-      .get<{ evolucion: EvolucionPunto[] }>("/incidentes/kpis", {
-        params: { period: activeTab.period },
-      })
-      .then((res) => setData(toChartPoints(res.evolucion, activeTab.period)))
-      .catch(() => setData([]))
-      .finally(() => setLoading(false));
+    let isMounted = true;
+
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get<{ evolucion: EvolucionPunto[] }>("/incidentes/kpis", {
+          params: { period: activeTab.period },
+        });
+        if (isMounted) setData(toChartPoints(res.evolucion, activeTab.period));
+      } catch {
+        if (isMounted) setData([]);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [activeTab]);
 
   return (
