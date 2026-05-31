@@ -39,8 +39,12 @@ export const lostFoundClient = {
   responderMatch: (id: string, confirmar: boolean, comentario?: string) =>
     api.post<void>(`/lost-found/matches/${id}/responder`, { confirmar, comentario }),
   comentarios: (casoId: string) => api.get<ComentarioLf[]>(`/lost-found/casos/${casoId}/comentarios`),
-  comentar: (casoId: string, contenido: string) =>
-    api.post<ComentarioLf>(`/lost-found/casos/${casoId}/comentarios`, { contenido }),
+  comentar: (casoId: string, contenido: string, parentId?: string | null) =>
+    api.post<ComentarioLf>(`/lost-found/casos/${casoId}/comentarios`, { contenido, parent_id: parentId ?? null }),
+  eliminarComentario: (id: string) =>
+    api.delete<void>(`/lost-found/comentarios/${id}`),
+  actualizarParticipacion: (casoId: string, suscrito: boolean, marcarLeido = false) =>
+    api.patch<void>(`/lost-found/casos/${casoId}/participacion`, { suscrito, marcar_leido: marcarLeido }),
   moderarComentario: (id: string, visible: boolean, motivo?: string) =>
     api.patch<void>(`/lost-found/comentarios/${id}/visibilidad`, { visible, motivo }),
   casosOperativo: (params?: Record<string, string>) =>

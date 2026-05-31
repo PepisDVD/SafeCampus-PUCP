@@ -96,16 +96,19 @@ class HistorialLfItem(BaseModel):
 class ComentarioLfItem(BaseModel):
     id: str
     caso_id: str
+    parent_id: str | None = None
     autor: UsuarioMini | None = None
     contenido: str
     visible: bool
     motivo_ocultamiento: str | None = None
+    puede_eliminar: bool = False
     created_at: datetime
     updated_at: datetime
 
 
 class ComentarioLfCreateInput(BaseModel):
     contenido: str = Field(min_length=2, max_length=2000)
+    parent_id: str | None = None
 
 
 class CasoLfDetail(CasoLfListItem):
@@ -208,6 +211,7 @@ class ComentarioVisibilidadInput(BaseModel):
 
 class ParticipacionLfInput(BaseModel):
     suscrito: bool
+    marcar_leido: bool = False
 
 
 class ConfiguracionLfItem(BaseModel):

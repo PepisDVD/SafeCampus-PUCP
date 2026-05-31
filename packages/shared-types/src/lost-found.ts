@@ -43,10 +43,12 @@ export type UsuarioMiniLf = {
 export type ComentarioLf = {
   id: string;
   caso_id: string;
+  parent_id?: string | null;
   autor?: UsuarioMiniLf | null;
   contenido: string;
   visible: boolean;
   motivo_ocultamiento?: string | null;
+  puede_eliminar?: boolean;
   created_at: string;
   updated_at: string;
 };
