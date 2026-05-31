@@ -1,5 +1,5 @@
 import React from "react";
-import { SafeAreaView, StatusBar, StyleSheet, View } from "react-native";
+import { ActivityIndicator, SafeAreaView, StatusBar, StyleSheet, View } from "react-native";
 import { Button, Label, colors, spacing } from "@safecampus/ui-native";
 
 import { LoginScreen } from "../features/auth/LoginScreen";
@@ -10,21 +10,47 @@ import { MapScreen } from "../features/operator/MapScreen";
 import { NotificationsScreen } from "../features/operator/NotificationsScreen";
 import { ProfileScreen } from "../features/operator/ProfileScreen";
 import { useOperatorData } from "../features/operator/use-operator-data";
+import { useNetworkStatus } from "../shared/net/use-network-status";
 
 type Tab = "inicio" | "incidentes" | "mapa" | "alertas" | "perfil";
 
 export function OperatorApp() {
   const auth = useAuth();
-  const data = useOperatorData(auth.token);
-  const [tab, setTab] = React.useState<Tab>("inicio");
 
-  if (!auth.user) {
+  if (auth.status === "UNKNOWN") {
+    return (
+      <View style={styles.splash}>
+        <StatusBar barStyle="light-content" />
+        <ActivityIndicator color={colors.primary} size="large" />
+      </View>
+    );
+  }
+
+  if (auth.status !== "AUTHENTICATED") {
     return <LoginScreen />;
   }
 
+  return <AuthenticatedShell />;
+}
+
+function AuthenticatedShell() {
+  const auth = useAuth();
+  const data = useOperatorData(auth.token);
+  const { isOnline } = useNetworkStatus();
+  const [tab, setTab] = React.useState<Tab>("inicio");
+
+  if (!auth.user) return null;
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} onTouchStart={auth.notifyActivity}>
       <StatusBar barStyle="light-content" />
+      {!isOnline ? (
+        <View style={styles.offlineBanner}>
+          <Label size="xs" weight="800">
+            Sin conexión · trabajando con los últimos datos disponibles
+          </Label>
+        </View>
+      ) : null}
       <View style={styles.body}>
         {tab === "inicio" ? (
           <DashboardScreen
@@ -60,9 +86,20 @@ export function OperatorApp() {
 }
 
 const styles = StyleSheet.create({
+  splash: {
+    alignItems: "center",
+    backgroundColor: colors.background,
+    flex: 1,
+    justifyContent: "center",
+  },
   safe: {
     backgroundColor: colors.background,
     flex: 1,
+  },
+  offlineBanner: {
+    backgroundColor: colors.warning,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
   body: {
     flex: 1,

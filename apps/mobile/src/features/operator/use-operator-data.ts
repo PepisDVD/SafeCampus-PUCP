@@ -7,6 +7,7 @@ import {
   listIncidents,
   updateIncidentStatus,
 } from "../../shared/api/client";
+import { logger } from "../../shared/fallback/logger";
 import {
   buildMockDetail,
   mockIncidents,
@@ -44,6 +45,9 @@ export function useOperatorData(token: string | null) {
       setIncidents(nextIncidents.items);
       setStats(nextStats);
       setLastSyncAt(new Date());
+    } catch (error) {
+      // Degradación: conservar los últimos datos disponibles; el 401 ya transiciona la sesión.
+      logger.error("operator-data/refresh", error);
     } finally {
       setLoading(false);
     }
