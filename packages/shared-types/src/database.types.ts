@@ -998,6 +998,17 @@ export type Database = {
         | "FINALIZADO"
         | "CANCELADO"
       estado_alerta: "ACTIVA" | "ATENDIDA" | "CANCELADA"
+      estado_alerta_campus:
+        | "BORRADOR"
+        | "PROGRAMADA"
+        | "ACTIVA"
+        | "ENVIADA"
+        | "FINALIZADA"
+        | "CANCELADA"
+        | "PENDIENTE_APROBACION"
+        | "EN_ATENCION"
+        | "ATENDIDA"
+        | "EXPIRADA"
       estado_caso_lf:
         | "ABIERTO"
         | "EN_REVISION"
@@ -1046,6 +1057,7 @@ export type Database = {
         | "FIN"
         | "CANCELACION"
       tipo_kpi: "FRT" | "TMR" | "VOLUMEN" | "DISTRIBUCION" | "TASA_RESOLUCION"
+      tipo_segmento_alerta: "ROL" | "DEPARTAMENTO" | "USUARIO" | "ZONA"
     }
     CompositeTypes: {
       geometry_dump: {
@@ -2040,9 +2052,11 @@ export type Database = {
           caso_id: string
           contenido: string
           created_at: string
+          deleted_at: string | null
           id: string
           motivo_ocultamiento: string | null
           ocultado_por_id: string | null
+          parent_id: string | null
           updated_at: string
           visible: boolean
         }
@@ -2051,9 +2065,11 @@ export type Database = {
           caso_id: string
           contenido: string
           created_at?: string
+          deleted_at?: string | null
           id?: string
           motivo_ocultamiento?: string | null
           ocultado_por_id?: string | null
+          parent_id?: string | null
           updated_at?: string
           visible?: boolean
         }
@@ -2062,9 +2078,11 @@ export type Database = {
           caso_id?: string
           contenido?: string
           created_at?: string
+          deleted_at?: string | null
           id?: string
           motivo_ocultamiento?: string | null
           ocultado_por_id?: string | null
+          parent_id?: string | null
           updated_at?: string
           visible?: boolean
         }
@@ -2074,6 +2092,13 @@ export type Database = {
             columns: ["caso_id"]
             isOneToOne: false
             referencedRelation: "caso_lost_found"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_lf_comentario_parent"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "comentario_caso_lf"
             referencedColumns: ["id"]
           },
         ]
@@ -2277,6 +2302,7 @@ export type Database = {
           created_at: string
           id: string
           suscrito: boolean
+          ultima_lectura_at: string | null
           updated_at: string
           usuario_id: string
         }
@@ -2285,6 +2311,7 @@ export type Database = {
           created_at?: string
           id?: string
           suscrito?: boolean
+          ultima_lectura_at?: string | null
           updated_at?: string
           usuario_id: string
         }
@@ -2293,6 +2320,7 @@ export type Database = {
           created_at?: string
           id?: string
           suscrito?: boolean
+          ultima_lectura_at?: string | null
           updated_at?: string
           usuario_id?: string
         }
@@ -3287,6 +3315,18 @@ export const Constants = {
         "CANCELADO",
       ],
       estado_alerta: ["ACTIVA", "ATENDIDA", "CANCELADA"],
+      estado_alerta_campus: [
+        "BORRADOR",
+        "PROGRAMADA",
+        "ACTIVA",
+        "ENVIADA",
+        "FINALIZADA",
+        "CANCELADA",
+        "PENDIENTE_APROBACION",
+        "EN_ATENCION",
+        "ATENDIDA",
+        "EXPIRADA",
+      ],
       estado_caso_lf: [
         "ABIERTO",
         "EN_REVISION",
@@ -3340,6 +3380,7 @@ export const Constants = {
         "CANCELACION",
       ],
       tipo_kpi: ["FRT", "TMR", "VOLUMEN", "DISTRIBUCION", "TASA_RESOLUCION"],
+      tipo_segmento_alerta: ["ROL", "DEPARTAMENTO", "USUARIO", "ZONA"],
     },
   },
   sc_acompanamiento: {

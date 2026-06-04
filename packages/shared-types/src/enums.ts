@@ -42,6 +42,31 @@ export enum EstadoNotificacion {
   DESCARTADA = "DESCARTADA",
 }
 
+export enum EstadoAlertaCampus {
+  BORRADOR = "BORRADOR",
+  PENDIENTE_APROBACION = "PENDIENTE_APROBACION",
+  PROGRAMADA = "PROGRAMADA",
+  ACTIVA = "ACTIVA",
+  EN_ATENCION = "EN_ATENCION",
+  ATENDIDA = "ATENDIDA",
+  EXPIRADA = "EXPIRADA",
+  ENVIADA = "ENVIADA",
+  FINALIZADA = "FINALIZADA",
+  CANCELADA = "CANCELADA",
+}
+
+export enum OrigenAlerta {
+  MANUAL = "MANUAL",
+  AUTOMATICA = "AUTOMATICA",
+}
+
+export enum TipoSegmentoAlerta {
+  ROL = "ROL",
+  DEPARTAMENTO = "DEPARTAMENTO",
+  USUARIO = "USUARIO",
+  ZONA = "ZONA",
+}
+
 export enum EstadoCasoLF {
   ABIERTO = "ABIERTO",
   EN_REVISION = "EN_REVISION",

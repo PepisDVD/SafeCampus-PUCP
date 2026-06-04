@@ -15,6 +15,7 @@ import {
   BotMessageSquare,
   ClipboardList,
   LayoutDashboard,
+  Megaphone,
   MapPinned,
   MessageSquare,
   Map,
@@ -74,6 +75,24 @@ const ADMIN_NAV: NavItem[] = [
     label: "Mapa",
     icon: MapPinned,
     section: "Operacion",
+  },
+  {
+    href: "/alertas",
+    label: "Alertas",
+    icon: Megaphone,
+    section: "Operacion",
+    children: [
+      {
+        href: "/alertas",
+        label: "Consola",
+        icon: Megaphone,
+      },
+      {
+        href: "/alertas/reportes",
+        label: "Reportes",
+        icon: BarChart3,
+      },
+    ],
   },
   {
     href: "/kpis",

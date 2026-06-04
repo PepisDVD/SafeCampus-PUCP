@@ -21,6 +21,8 @@ export const ROUTES = {
   INCIDENTE_DETALLE: (id: string) => `/incidentes/${id}`,
   MENSAJES: "/mensajes",
   MAPA: "/mapa",
+  ALERTAS: "/alertas",
+  ALERTAS_REPORTES: "/alertas/reportes",
   KPIS: "/kpis",
 
   // Admin

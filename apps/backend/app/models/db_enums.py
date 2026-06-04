@@ -190,6 +190,30 @@ EstadoAlertaEnum = ENUM(
     create_type=False,
 )
 
+EstadoAlertaCampusEnum = ENUM(
+    "BORRADOR",
+    "PENDIENTE_APROBACION",
+    "PROGRAMADA",
+    "ACTIVA",
+    "EN_ATENCION",
+    "ATENDIDA",
+    "EXPIRADA",
+    "ENVIADA",
+    "FINALIZADA",
+    "CANCELADA",
+    name="estado_alerta_campus",
+    create_type=False,
+)
+
+TipoSegmentoAlertaEnum = ENUM(
+    "ROL",
+    "DEPARTAMENTO",
+    "USUARIO",
+    "ZONA",
+    name="tipo_segmento_alerta",
+    create_type=False,
+)
+
 TipoEventoAsEnum = ENUM(
     "INICIO",
     "ALERTA",
