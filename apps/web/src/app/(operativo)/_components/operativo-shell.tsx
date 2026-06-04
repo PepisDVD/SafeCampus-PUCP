@@ -13,6 +13,7 @@ import {
 import {
   BarChart3,
   LayoutDashboard,
+  Megaphone,
   MapPinned,
   MessageSquare,
   PackageCheck,
@@ -37,6 +38,15 @@ const OPERATIVO_NAV: NavItem[] = [
     ],
   },
   { href: "/mapa", label: "Mapa", icon: MapPinned },
+  {
+    href: "/alertas",
+    label: "Alertas",
+    icon: Megaphone,
+    children: [
+      { href: "/alertas", label: "Consola", icon: Megaphone },
+      { href: "/alertas/reportes", label: "Reportes", icon: BarChart3 },
+    ],
+  },
   { href: "/kpis", label: "KPIs", icon: BarChart3 },
   { href: "/mensajes", label: "Mensajes", icon: MessageSquare },
 ];

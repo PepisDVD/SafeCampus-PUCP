@@ -6,6 +6,17 @@ from app.models.sc_acompanamiento import (
     UbicacionTrayecto,
 )
 from app.models.sc_auditoria import RegistroAuditoria
+from app.models.sc_alertas import (
+    AlertaCampus,
+    AlertaEntrega,
+    AlertaEvento,
+    AlertaSegmento,
+    AlertaZona,
+    PlantillaAlerta,
+    PuntoInteres,
+    ReglaAlerta,
+    ZonaGeografica,
+)
 from app.models.sc_clasificacion import ClasificacionIa, ReglaClasificacion
 from app.models.sc_dashboard import EstadoIntegracion
 from app.models.sc_dashboard import KpiOperativo, ReporteExportado
@@ -46,7 +57,12 @@ from app.models.sc_users import (
 
 __all__ = [
     "AcompanamientoSeguro",
+    "AlertaCampus",
     "AlertaAcompanamiento",
+    "AlertaEntrega",
+    "AlertaEvento",
+    "AlertaSegmento",
+    "AlertaZona",
     "AsignacionRecurso",
     "CanalReporte",
     "CasoLostFound",
@@ -69,9 +85,12 @@ __all__ = [
     "MensajeConversacion",
     "Notificacion",
     "Permiso",
+    "PlantillaAlerta",
     "PlantillaNotificacion",
     "PreferenciaNotificacion",
+    "PuntoInteres",
     "RegistroAuditoria",
+    "ReglaAlerta",
     "ReglaClasificacion",
     "ReporteEntrante",
     "ReporteExportado",
@@ -86,4 +105,5 @@ __all__ = [
     "Usuario",
     "UsuarioRol",
     "UUIDPrimaryKeyMixin",
+    "ZonaGeografica",
 ]

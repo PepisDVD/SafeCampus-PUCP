@@ -151,6 +151,31 @@ class EstadoAlerta(StrEnum):
     CANCELADA = "CANCELADA"
 
 
+class EstadoAlertaCampus(StrEnum):
+    BORRADOR = "BORRADOR"
+    PENDIENTE_APROBACION = "PENDIENTE_APROBACION"
+    PROGRAMADA = "PROGRAMADA"
+    ACTIVA = "ACTIVA"
+    EN_ATENCION = "EN_ATENCION"
+    ATENDIDA = "ATENDIDA"
+    EXPIRADA = "EXPIRADA"
+    ENVIADA = "ENVIADA"
+    FINALIZADA = "FINALIZADA"
+    CANCELADA = "CANCELADA"
+
+
+class OrigenAlerta(StrEnum):
+    MANUAL = "MANUAL"
+    AUTOMATICA = "AUTOMATICA"
+
+
+class TipoSegmentoAlerta(StrEnum):
+    ROL = "ROL"
+    DEPARTAMENTO = "DEPARTAMENTO"
+    USUARIO = "USUARIO"
+    ZONA = "ZONA"
+
+
 class TipoEventoAS(StrEnum):
     INICIO = "INICIO"
     ALERTA = "ALERTA"
