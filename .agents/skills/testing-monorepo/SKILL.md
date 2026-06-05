@@ -20,9 +20,13 @@ Use this skill when adding or reviewing tests across SafeCampus packages.
   - `pnpm --filter @safecampus/web test:e2e`
 - Backend:
   - `pnpm test:backend`
+- Mobile:
+  - `pnpm --filter @safecampus/mobile test`
+  - `pnpm turbo run typecheck --filter=@safecampus/mobile`
 - Before merge:
   - `pnpm test`
 
 ## Rules
 - Do not rely on `--passWithNoTests` for critical modules forever.
 - Do not merge API changes without at least one backend test covering new behavior.
+- Do not merge mobile runtime config or API-client changes without Vitest coverage for the affected fallback/path.
