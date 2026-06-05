@@ -1,6 +1,28 @@
+import { NativeModules } from "react-native";
+
+const DEFAULT_API_PATH = "/api/v1";
+
+function getDevServerApiUrl(): string | null {
+  if (!__DEV__) return null;
+
+  const scriptURL = NativeModules.SourceCode?.scriptURL;
+  if (typeof scriptURL !== "string") return null;
+
+  try {
+    const hostname = new URL(scriptURL).hostname;
+    if (!hostname || hostname === "localhost" || hostname === "127.0.0.1") {
+      return null;
+    }
+    return `http://${hostname}:8000${DEFAULT_API_PATH}`;
+  } catch {
+    return null;
+  }
+}
+
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "") ??
-  "http://localhost:8000/api/v1";
+  getDevServerApiUrl() ??
+  `http://localhost:8000${DEFAULT_API_PATH}`;
 
 export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 export const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
