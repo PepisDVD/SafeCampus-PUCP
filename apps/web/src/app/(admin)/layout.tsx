@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUserProfile } from "@/lib/auth/server";
 import { AdminShell } from "./_components/admin-shell";
 
+const OPERATIVE_ROLES = new Set(["supervisor", "operador"]);
+
 export default async function AdminLayout({
   children,
 }: {
@@ -15,6 +17,10 @@ export default async function AdminLayout({
   }
 
   if (!profile.roles.includes("administrador")) {
+    if (!profile.roles.some((role) => OPERATIVE_ROLES.has(role))) {
+      redirect("/inicio");
+    }
+
     redirect("/dashboard?error=forbidden");
   }
 
