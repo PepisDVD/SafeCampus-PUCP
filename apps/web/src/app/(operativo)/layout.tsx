@@ -4,6 +4,8 @@ import { getCurrentUserProfile } from "@/lib/auth/server";
 import { AdminShell } from "../(admin)/_components/admin-shell";
 import { OperativoShell } from "./_components/operativo-shell";
 
+const OPERATIVE_ROLES = new Set(["administrador", "supervisor", "operador"]);
+
 export default async function OperativoLayout({
   children,
 }: {
@@ -13,6 +15,10 @@ export default async function OperativoLayout({
 
   if (!profile) {
     redirect("/login?next=/dashboard");
+  }
+
+  if (!profile.roles.some((role) => OPERATIVE_ROLES.has(role))) {
+    redirect("/inicio");
   }
 
   if (profile.roles.includes("administrador")) {

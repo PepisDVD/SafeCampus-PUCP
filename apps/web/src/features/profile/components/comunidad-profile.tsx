@@ -54,6 +54,14 @@ function formatRole(role: string | undefined): string {
   return ROLE_LABELS[role.toLowerCase()] ?? role;
 }
 
+function getCommunityRole(roles: string[]): string {
+  return (
+    roles.find((role) => role.toLowerCase() === "comunidad") ??
+    roles[0] ??
+    "comunidad"
+  );
+}
+
 function getInitials(nombre: string, apellido: string): string {
   const ini = `${nombre.charAt(0)}${apellido.charAt(0)}`.toUpperCase();
   return ini || "SC";
@@ -113,7 +121,7 @@ const preferenciasMock = [
 export function ComunidadProfile({ perfil, stats }: ComunidadProfileProps) {
   const fullName = `${perfil.nombre} ${perfil.apellido}`.trim() || perfil.email;
   const initials = getInitials(perfil.nombre, perfil.apellido);
-  const rolPrincipal = formatRole(perfil.roles[0]);
+  const rolPrincipal = formatRole(getCommunityRole(perfil.roles));
   const facultad = perfil.departamento ?? "Sin facultad registrada";
   const noLeidas = notificacionesMock.filter((n) => !n.leida).length;
 

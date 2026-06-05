@@ -12,6 +12,60 @@ import type { LoginRoleId } from "@/features/auth/types";
 import { isAllowedLoginEmail } from "@/features/auth/auth.policy";
 import { signInWithPucpSso } from "@/lib/auth";
 
+const COMMUNITY_PATH_PREFIXES = [
+  "/inicio",
+  "/reportar",
+  "/mis-casos",
+  "/notificaciones",
+  "/lost-found",
+];
+
+const OPERATIVE_PATH_PREFIXES = [
+  "/bienvenida",
+  "/dashboard",
+  "/incidentes",
+  "/mapa",
+  "/kpis",
+  "/mensajes",
+  "/lost-found-operaciones",
+  "/lost-found-hilos",
+  "/lost-found-logistica",
+];
+
+const ADMIN_PATH_PREFIXES = [
+  "/usuarios",
+  "/roles",
+  "/integraciones",
+  "/auditoria",
+  "/lost-found-admin",
+  "/llm-dashboard",
+  "/llm-audit",
+  "/maestros",
+];
+
+function matchesPathPrefix(path: string, prefixes: readonly string[]): boolean {
+  return prefixes.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
+
+function isCompatibleNextPath(path: string, roleId: LoginRoleId): boolean {
+  if (path === "/perfil") return true;
+
+  if (roleId === "comunidad") {
+    return matchesPathPrefix(path, COMMUNITY_PATH_PREFIXES);
+  }
+
+  if (roleId === "admin") {
+    return (
+      matchesPathPrefix(path, ADMIN_PATH_PREFIXES) ||
+      matchesPathPrefix(path, OPERATIVE_PATH_PREFIXES)
+    );
+  }
+
+  return matchesPathPrefix(path, OPERATIVE_PATH_PREFIXES);
+}
+
 function LoginPageContent() {
   const searchParams = useSearchParams();
   const [selectedRoleId, setSelectedRoleId] = useState<LoginRoleId>("comunidad");
@@ -55,7 +109,10 @@ function LoginPageContent() {
     try {
       await signInWithPucpSso({
         email: normalizedEmail,
-        nextPath: nextFromGuard ?? selectedRole.ruta,
+        nextPath:
+          nextFromGuard && isCompatibleNextPath(nextFromGuard, selectedRole.id)
+            ? nextFromGuard
+            : selectedRole.ruta,
       });
     } catch (error) {
       setLoading(false);

@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Linking, StyleSheet, View } from "react-native";
 import { Button, Card, Field, Label, colors, spacing } from "@safecampus/ui-native";
 
-import { API_BASE_URL } from "../../shared/config/env";
+import { API_BASE_URL, CONFIG } from "../../shared/config/env";
 import { useAuth } from "./auth-context";
 
 export function LoginScreen() {
-  const { continueAsDemoOperator, error, loading, loginWithOperatorEmail } = useAuth();
+  const { continueAsDemoOperator, error, loading, loginWithOperatorEmail, status } = useAuth();
   const [email, setEmail] = useState("operador.seguridad@example.com");
   const [password, setPassword] = useState("");
 
@@ -30,6 +30,11 @@ export function LoginScreen() {
         <Label size="sm" weight="800" tone="muted" style={styles.section}>
           ACCESO OPERATIVO
         </Label>
+        {status === "EXPIRED" ? (
+          <Label tone="warning" size="sm">
+            Tu sesión expiró por inactividad. Vuelve a ingresar.
+          </Label>
+        ) : null}
         <Field
           autoCapitalize="none"
           keyboardType="email-address"
@@ -52,9 +57,11 @@ export function LoginScreen() {
         </Button>
       </Card>
 
-      <Button variant="ghost" onPress={continueAsDemoOperator}>
-        <Label tone="muted" weight="700">Continuar con datos demo</Label>
-      </Button>
+      {CONFIG.ALLOW_DEMO_MODE ? (
+        <Button variant="ghost" onPress={continueAsDemoOperator}>
+          <Label tone="muted" weight="700">Continuar con datos demo</Label>
+        </Button>
+      ) : null}
     </View>
   );
 }

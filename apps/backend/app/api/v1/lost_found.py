@@ -35,7 +35,7 @@ from app.schemas.lost_found import (
 from app.services.lost_found_service import LostFoundService
 
 router = APIRouter()
-OPERATIVO_ROLES = {"supervisor", "administrador"}
+OPERATIVO_ROLES = {"supervisor", "operador", "administrador"}
 ADMIN_ROLES = {"administrador"}
 
 
@@ -85,17 +85,29 @@ async def listar_feed(
     tipo: TipoCasoLF | None = Query(default=None),
     estado: EstadoCasoLF | None = Query(default=None),
     categoria_id: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=100),
+    lugar: str | None = Query(default=None),
+    fecha_desde: datetime | None = Query(default=None),
+    fecha_hasta: datetime | None = Query(default=None),
+    color: str | None = Query(default=None),
+    cursor: datetime | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
     service: LostFoundService = Depends(get_service),
 ):
+    page_limit = max(1, min(limit, 100))
     items = await service.listar_feed(
         search=search,
         tipo=tipo.value if tipo else None,
         estado=estado.value if estado else None,
         categoria_id=categoria_id,
-        limit=limit,
+        lugar=lugar,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        color=color,
+        cursor=cursor,
+        limit=min(page_limit + 1, 100),
     )
-    return CasoLfListResponse(items=items, total=len(items))
+    next_cursor = items[page_limit - 1].created_at if len(items) > page_limit else None
+    return CasoLfListResponse(items=items[:page_limit], total=len(items[:page_limit]), next_cursor=next_cursor)
 
 
 @router.get("/casos/mis", response_model=CasoLfListResponse)
@@ -175,7 +187,7 @@ async def actualizar_fotos(
 async def subir_fotos_archivo(
     caso_id: str,
     archivos: list[UploadFile] = File(..., description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo."),
-    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
 ):
     return await service.subir_fotos_archivos(caso_id, current_user.id, current_user.roles, archivos)
@@ -206,7 +218,7 @@ async def listar_comentarios(
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
 ):
-    return await service.listar_comentarios(caso_id, current_user.roles)
+    return await service.listar_comentarios(caso_id, current_user.roles, current_user.id)
 
 
 @router.post("/casos/{caso_id}/comentarios", response_model=ComentarioLfItem, status_code=status.HTTP_201_CREATED)
@@ -217,6 +229,15 @@ async def crear_comentario(
     service: LostFoundService = Depends(get_service),
 ):
     return await service.crear_comentario(caso_id, current_user.id, body)
+
+
+@router.delete("/comentarios/{comentario_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def eliminar_comentario_propio(
+    comentario_id: str,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: LostFoundService = Depends(get_service),
+):
+    await service.eliminar_comentario_propio(comentario_id, current_user.id)
 
 
 @router.patch("/casos/{caso_id}/participacion", status_code=status.HTTP_204_NO_CONTENT)

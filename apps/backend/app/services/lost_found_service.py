@@ -1,5 +1,5 @@
 from difflib import SequenceMatcher
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 from uuid import uuid4
@@ -40,8 +40,8 @@ from app.schemas.lost_found import (
 from app.schemas.incidente import UsuarioMini
 from app.services.storage_service import StorageService
 
-OPERATIVO_ROLES = {"supervisor", "administrador"}
-ACTIVE_STATES = {"ABIERTO", "EN_REVISION", "CONFIRMADO", "EN_CUSTODIA"}
+OPERATIVO_ROLES = {"supervisor", "operador", "administrador"}
+CHAT_STATES = {"ABIERTO", "EN_REVISION"}
 TRANSITIONS = {
     "ABIERTO": {"EN_REVISION", "EN_CUSTODIA", "CERRADO"},
     "EN_REVISION": {"CONFIRMADO", "ABIERTO", "CERRADO"},
@@ -93,9 +93,33 @@ class LostFoundService:
         matches = await self._generar_matches(creado["id"], reportante_id)
         return CasoLfCreated(**creado, matches_generados=matches)
 
-    async def listar_feed(self, *, search: str | None, tipo: str | None, estado: str | None, categoria_id: str | None, limit: int) -> list[CasoLfListItem]:
-        rows = await self._repo.list_feed(search=search, tipo=tipo, estado=estado, categoria_id=categoria_id, limit=max(1, min(limit, 100)))
-        return [self._map_list(row) for row in rows]
+    async def listar_feed(
+        self,
+        *,
+        search: str | None,
+        tipo: str | None,
+        estado: str | None,
+        categoria_id: str | None,
+        lugar: str | None,
+        fecha_desde: datetime | None,
+        fecha_hasta: datetime | None,
+        color: str | None,
+        cursor: datetime | None,
+        limit: int,
+    ) -> list[CasoLfListItem]:
+        rows = await self._repo.list_feed(
+            search=search,
+            tipo=tipo,
+            estado=estado,
+            categoria_id=categoria_id,
+            lugar=lugar,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            color=color,
+            cursor=cursor,
+            limit=max(1, min(limit, 100)),
+        )
+        return [self._map_list(row, public=True) for row in rows]
 
     async def listar_mis_casos(self, usuario_id: str, limit: int) -> list[CasoLfListItem]:
         return [self._map_list(row) for row in await self._repo.list_by_reportante(usuario_id, max(1, min(limit, 100)))]
@@ -131,8 +155,8 @@ class LostFoundService:
         if row["estado"] == "CERRADO" and not is_owner and not is_operativo:
             raise HTTPException(status_code=403, detail="No tienes acceso a este caso.")
         historial = await self._repo.list_historial(str(row["id"])) if is_owner or is_operativo else []
-        comentarios = await self._repo.list_comentarios(str(row["id"]), include_hidden=is_operativo)
-        return self._map_detail(row, historial, comentarios)
+        comentarios = self._mark_deletable(await self._repo.list_comentarios(str(row["id"]), include_hidden=is_operativo), usuario_id)
+        return self._map_detail(row, historial, comentarios, public=not is_owner and not is_operativo)
 
     async def cambiar_estado(self, caso_id: str, actor_id: str, data: CasoLfEstadoUpdate) -> CasoLfDetail:
         actual = await self._repo.get_estado(caso_id)
@@ -193,7 +217,7 @@ class LostFoundService:
     ) -> CasoLfDetail:
         actual = await self._repo.get_estado(caso_id)
         is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
-        if not actual or not is_operativo:
+        if not actual or (str(actual["reportante_id"]) != usuario_id and not is_operativo):
             raise HTTPException(status_code=404, detail="Caso no encontrado.")
         if actual["estado"] == "CERRADO":
             raise HTTPException(status_code=422, detail="No se pueden actualizar fotos de un caso cerrado.")
@@ -250,7 +274,7 @@ class LostFoundService:
 
     async def listar_matches(self, caso_id: str, usuario_id: str, roles: list[str]) -> list[MatchLfItem]:
         caso = await self._repo.get_estado(caso_id)
-        is_operativo = bool(set(roles).intersection({"admin", "operador", "supervisor"}))
+        is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
         if not caso or (str(caso["reportante_id"]) != usuario_id and not is_operativo):
             raise HTTPException(status_code=403, detail="No puedes ver matches de este caso.")
         items: list[MatchLfItem] = []
@@ -265,7 +289,7 @@ class LostFoundService:
                 score_total=float(match.score_total),
                 score_detalle=match.score_detalle or {},
                 estado=match.estado,
-                caso_contraparte=self._map_list(contraparte) if contraparte else None,
+                caso_contraparte=self._map_list(contraparte, public=True) if contraparte else None,
                 created_at=match.created_at,
             ))
         return items
@@ -275,7 +299,7 @@ class LostFoundService:
         if not match:
             raise HTTPException(status_code=404, detail="Match no encontrado.")
         perdido = await self._repo.get_estado(str(match.caso_perdido_id))
-        is_operativo = bool(set(roles).intersection({"admin", "operador", "supervisor"}))
+        is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
         if not perdido or (str(perdido["reportante_id"]) != usuario_id and not is_operativo):
             raise HTTPException(status_code=403, detail="No puedes responder este match.")
         estado = "CONFIRMADO" if data.confirmar else "DESCARTADO"
@@ -287,14 +311,21 @@ class LostFoundService:
             await self._repo.update_estado(caso_id=str(match.caso_perdido_id), estado="ABIERTO", ejecutor_id=usuario_id, comentario=data.comentario)
         await self._audit_lf(usuario_id, "LF_MATCH_RESPONDIDO", "match_sugerido", match_id, {"estado": estado, "score": float(match.score_total)})
 
-    async def listar_comentarios(self, caso_id: str, roles: list[str]) -> list[ComentarioLfItem]:
-        return [self._map_comment(row) for row in await self._repo.list_comentarios(caso_id, include_hidden=bool(OPERATIVO_ROLES.intersection(roles)))]
+    async def listar_comentarios(self, caso_id: str, roles: list[str], usuario_id: str) -> list[ComentarioLfItem]:
+        rows = await self._repo.list_comentarios(caso_id, include_hidden=bool(OPERATIVO_ROLES.intersection(roles)))
+        return [self._map_comment(row) for row in self._mark_deletable(rows, usuario_id)]
 
     async def crear_comentario(self, caso_id: str, usuario_id: str, data: ComentarioLfCreateInput) -> ComentarioLfItem:
         actual = await self._repo.get_estado(caso_id)
-        if not actual or str(actual["estado"]) not in ACTIVE_STATES:
+        if not actual or str(actual["estado"]) not in CHAT_STATES:
             raise HTTPException(status_code=404, detail="Caso activo no encontrado.")
-        row = await self._repo.create_comentario(caso_id, usuario_id, data.contenido.strip())
+        if data.parent_id:
+            parent = await self._repo.get_comentario_meta(data.parent_id)
+            if not parent or str(parent["caso_id"]) != caso_id or not parent["visible"]:
+                raise HTTPException(status_code=422, detail="Comentario padre invalido.")
+        elif await self._repo.count_root_comentarios(caso_id) >= 200:
+            raise HTTPException(status_code=422, detail="El hilo alcanzo el limite de comentarios principales.")
+        row = await self._repo.create_comentario(caso_id, usuario_id, data.contenido.strip(), data.parent_id)
         await self._audit_lf(usuario_id, "LF_COMENTARIO_CREADO", "comentario_caso_lf", str(row["id"]), {"caso_id": caso_id})
         participantes = await self._repo.list_participantes(caso_id)
         for p in participantes:
@@ -304,7 +335,17 @@ class LostFoundService:
         return self._map_comment(row)
 
     async def actualizar_participacion(self, caso_id: str, usuario_id: str, data: ParticipacionLfInput) -> None:
-        await self._repo.upsert_participacion(caso_id, usuario_id, data.suscrito)
+        await self._repo.upsert_participacion(caso_id, usuario_id, data.suscrito, marcar_leido=data.marcar_leido)
+
+    async def eliminar_comentario_propio(self, comentario_id: str, usuario_id: str) -> None:
+        comentario = await self._repo.get_comentario_meta(comentario_id)
+        if not comentario or str(comentario["autor_id"]) != usuario_id or not comentario["visible"]:
+            raise HTTPException(status_code=404, detail="Comentario no encontrado.")
+        if comentario["created_at"] < datetime.now(timezone.utc) - timedelta(minutes=5):
+            raise HTTPException(status_code=422, detail="Solo puedes eliminar comentarios dentro de los primeros 5 minutos.")
+        if not await self._repo.delete_own_comentario(comentario_id, usuario_id, "Eliminado por el autor"):
+            raise HTTPException(status_code=404, detail="Comentario no encontrado.")
+        await self._audit_lf(usuario_id, "LF_COMENTARIO_ELIMINADO", "comentario_caso_lf", comentario_id, {"caso_id": str(comentario["caso_id"])})
 
     async def moderar_comentario(self, comentario_id: str, actor_id: str, data: ComentarioVisibilidadInput) -> None:
         if not await self._repo.update_comentario_visibility(comentario_id, data.visible, actor_id, data.motivo):
@@ -438,7 +479,18 @@ class LostFoundService:
         await self._audit.create_registro(usuario_id=usuario_id, modulo="LOST_FOUND", accion=accion, entidad=entidad, entidad_id=entidad_id, detalle=detalle)
 
     @staticmethod
-    def _usuario(row: dict[str, Any], prefix: str = "") -> UsuarioMini | None:
+    def _mark_deletable(rows: list[dict[str, Any]], usuario_id: str) -> list[dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            row["puede_eliminar"] = (
+                str(row.get("autor_id")) == usuario_id
+                and bool(row.get("visible"))
+                and row.get("created_at") >= now - timedelta(minutes=5)
+            )
+        return rows
+
+    @staticmethod
+    def _usuario(row: dict[str, Any], prefix: str = "", public: bool = False) -> UsuarioMini | None:
         user_id = (
             row.get(f"{prefix}id")
             or row.get(f"{prefix}autor_id")
@@ -448,11 +500,16 @@ class LostFoundService:
         )
         if not user_id:
             return None
-        nombre = f"{row.get(f'{prefix}nombre') or row.get('reportante_nombre') or row.get('autor_nombre') or ''} {row.get(f'{prefix}apellido') or row.get('reportante_apellido') or row.get('autor_apellido') or ''}".strip() or "Usuario"
+        first_name = row.get(f"{prefix}nombre") or row.get("reportante_nombre") or row.get("autor_nombre") or ""
+        last_name = row.get(f"{prefix}apellido") or row.get("reportante_apellido") or row.get("autor_apellido") or ""
+        if public:
+            initial = f" {str(last_name).strip()[:1]}." if last_name else ""
+            return UsuarioMini(id=str(user_id), nombre_completo=(f"{first_name}{initial}".strip() or "Usuario"), email=None, avatar_url=None, rol=row.get(f"{prefix}rol") or row.get("autor_rol"))
+        nombre = f"{first_name} {last_name}".strip() or "Usuario"
         return UsuarioMini(id=str(user_id), nombre_completo=nombre, email=row.get(f"{prefix}email") or row.get("reportante_email") or row.get("autor_email"), avatar_url=row.get(f"{prefix}avatar_url") or row.get("reportante_avatar_url") or row.get("autor_avatar_url"), rol=row.get(f"{prefix}rol") or row.get("autor_rol"))
 
     @classmethod
-    def _map_list(cls, row: dict[str, Any]) -> CasoLfListItem:
+    def _map_list(cls, row: dict[str, Any], public: bool = False) -> CasoLfListItem:
         return CasoLfListItem(
             id=str(row["id"]),
             codigo=row["codigo"],
@@ -471,18 +528,18 @@ class LostFoundService:
             conteo_comentarios=row.get("conteo_comentarios") or 0,
             ultimo_comentario=row.get("ultimo_comentario"),
             ultimo_comentario_at=row.get("ultimo_comentario_at"),
-            reportante=cls._usuario(row),
+            reportante=cls._usuario(row, public=public),
             created_at=row["created_at"],
         )
 
     @classmethod
-    def _map_detail(cls, row: dict[str, Any], historial: list[dict[str, Any]], comentarios: list[dict[str, Any]]) -> CasoLfDetail:
-        base = cls._map_list(row).model_dump()
+    def _map_detail(cls, row: dict[str, Any], historial: list[dict[str, Any]], comentarios: list[dict[str, Any]], public: bool = False) -> CasoLfDetail:
+        base = cls._map_list(row, public=public).model_dump()
         base.pop("reportante", None)
         return CasoLfDetail(
             **base,
-            reportante=cls._usuario(row),
-            contacto_info=row.get("contacto_info"),
+            reportante=cls._usuario(row, public=public),
+            contacto_info=None if public else row.get("contacto_info"),
             foto_adicional_urls=row.get("foto_adicional_urls") or [],
             etiquetas=row.get("etiquetas") or [],
             motivo_cierre=row.get("motivo_cierre"),
@@ -510,10 +567,12 @@ class LostFoundService:
         return ComentarioLfItem(
             id=str(row["id"]),
             caso_id=str(row["caso_id"]),
+            parent_id=str(row["parent_id"]) if row.get("parent_id") else None,
             autor=cls._usuario(row, "autor_"),
             contenido=row["contenido"],
             visible=bool(row["visible"]),
             motivo_ocultamiento=row.get("motivo_ocultamiento"),
+            puede_eliminar=bool(row.get("puede_eliminar", False)),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

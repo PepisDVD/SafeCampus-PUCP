@@ -10,6 +10,11 @@ const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME ?? "safecampus_sessi
 
 const LAYOUT_GUARDED_PREFIXES = [
   "/bienvenida",
+  "/inicio",
+  "/reportar",
+  "/mis-casos",
+  "/notificaciones",
+  "/lost-found",
   "/dashboard",
   "/incidentes",
   "/mapa",

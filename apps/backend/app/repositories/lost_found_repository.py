@@ -29,6 +29,7 @@ class LostFoundRepository:
         ultimo_comentario = (
             select(ComentarioCasoLf.contenido)
             .where(ComentarioCasoLf.caso_id == CasoLostFound.id)
+            .where(ComentarioCasoLf.visible.is_(True))
             .order_by(ComentarioCasoLf.created_at.desc())
             .limit(1)
             .scalar_subquery()
@@ -36,6 +37,7 @@ class LostFoundRepository:
         ultimo_comentario_at = (
             select(ComentarioCasoLf.created_at)
             .where(ComentarioCasoLf.caso_id == CasoLostFound.id)
+            .where(ComentarioCasoLf.visible.is_(True))
             .order_by(ComentarioCasoLf.created_at.desc())
             .limit(1)
             .scalar_subquery()
@@ -131,15 +133,30 @@ class LostFoundRepository:
         tipo: str | None,
         estado: str | None,
         categoria_id: str | None,
+        lugar: str | None,
+        fecha_desde: datetime | None,
+        fecha_hasta: datetime | None,
+        color: str | None,
+        cursor: datetime | None,
         limit: int,
     ) -> list[dict[str, Any]]:
-        statement = self._base_select().where(CasoLostFound.estado.in_(("ABIERTO", "EN_REVISION", "CONFIRMADO", "EN_CUSTODIA")))
+        statement = self._base_select().where(CasoLostFound.estado.in_(("ABIERTO", "EN_REVISION")))
         if tipo:
             statement = statement.where(CasoLostFound.tipo == tipo)
         if estado:
             statement = statement.where(CasoLostFound.estado == estado)
         if categoria_id:
             statement = statement.where(CasoLostFound.categoria_id == UUID(categoria_id))
+        if lugar:
+            statement = statement.where(CasoLostFound.lugar_referencia.ilike(f"%{lugar.strip()}%"))
+        if fecha_desde:
+            statement = statement.where(CasoLostFound.fecha_evento >= fecha_desde)
+        if fecha_hasta:
+            statement = statement.where(CasoLostFound.fecha_evento <= fecha_hasta)
+        if color:
+            statement = statement.where(CasoLostFound.color_principal.ilike(f"%{color.strip()}%"))
+        if cursor:
+            statement = statement.where(CasoLostFound.created_at < cursor)
         if search:
             pattern = f"%{search.strip()}%"
             statement = statement.where(
@@ -386,7 +403,7 @@ class LostFoundRepository:
             .scalar_subquery()
         )
         statement = (
-            select(ComentarioCasoLf.id, ComentarioCasoLf.caso_id, ComentarioCasoLf.autor_id, ComentarioCasoLf.contenido, ComentarioCasoLf.visible, ComentarioCasoLf.motivo_ocultamiento, ComentarioCasoLf.created_at, ComentarioCasoLf.updated_at, Usuario.nombre.label("autor_nombre"), Usuario.apellido.label("autor_apellido"), Usuario.email.label("autor_email"), Usuario.avatar_url.label("autor_avatar_url"), autor_rol.label("autor_rol"))
+            select(ComentarioCasoLf.id, ComentarioCasoLf.caso_id, ComentarioCasoLf.parent_id, ComentarioCasoLf.autor_id, ComentarioCasoLf.contenido, ComentarioCasoLf.visible, ComentarioCasoLf.motivo_ocultamiento, ComentarioCasoLf.created_at, ComentarioCasoLf.updated_at, Usuario.nombre.label("autor_nombre"), Usuario.apellido.label("autor_apellido"), Usuario.email.label("autor_email"), Usuario.avatar_url.label("autor_avatar_url"), autor_rol.label("autor_rol"))
             .outerjoin(Usuario, Usuario.id == ComentarioCasoLf.autor_id)
             .where(ComentarioCasoLf.caso_id == UUID(caso_id))
             .order_by(ComentarioCasoLf.created_at.asc())
@@ -396,24 +413,50 @@ class LostFoundRepository:
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
-    async def create_comentario(self, caso_id: str, autor_id: str, contenido: str) -> dict[str, Any]:
-        comentario = ComentarioCasoLf(caso_id=UUID(caso_id), autor_id=UUID(autor_id), contenido=contenido)
+    async def count_root_comentarios(self, caso_id: str) -> int:
+        return int(await self.db.scalar(select(func.count(ComentarioCasoLf.id)).where(ComentarioCasoLf.caso_id == UUID(caso_id), ComentarioCasoLf.parent_id.is_(None), ComentarioCasoLf.visible.is_(True))) or 0)
+
+    async def get_comentario_meta(self, comentario_id: str) -> dict[str, Any] | None:
+        result = await self.db.execute(select(ComentarioCasoLf.id, ComentarioCasoLf.caso_id, ComentarioCasoLf.autor_id, ComentarioCasoLf.created_at, ComentarioCasoLf.visible).where(ComentarioCasoLf.id == UUID(comentario_id)).limit(1))
+        row = result.mappings().one_or_none()
+        return dict(row) if row else None
+
+    async def create_comentario(self, caso_id: str, autor_id: str, contenido: str, parent_id: str | None = None) -> dict[str, Any]:
+        comentario = ComentarioCasoLf(caso_id=UUID(caso_id), parent_id=UUID(parent_id) if parent_id else None, autor_id=UUID(autor_id), contenido=contenido)
         self.db.add(comentario)
         await self.db.execute(update(CasoLostFound).where(CasoLostFound.id == UUID(caso_id)).values(conteo_comentarios=CasoLostFound.conteo_comentarios + 1, updated_at=datetime.now(timezone.utc)))
         await self.upsert_participacion(caso_id, autor_id, True)
         await self.db.flush()
         await self.db.refresh(comentario)
-        return {"id": comentario.id, "caso_id": comentario.caso_id, "autor_id": comentario.autor_id, "contenido": comentario.contenido, "visible": comentario.visible, "motivo_ocultamiento": comentario.motivo_ocultamiento, "created_at": comentario.created_at, "updated_at": comentario.updated_at}
+        return {"id": comentario.id, "caso_id": comentario.caso_id, "parent_id": comentario.parent_id, "autor_id": comentario.autor_id, "contenido": comentario.contenido, "visible": comentario.visible, "motivo_ocultamiento": comentario.motivo_ocultamiento, "created_at": comentario.created_at, "updated_at": comentario.updated_at}
+
+    async def delete_own_comentario(self, comentario_id: str, usuario_id: str, motivo: str) -> bool:
+        result = await self.db.execute(
+            update(ComentarioCasoLf)
+            .where(ComentarioCasoLf.id == UUID(comentario_id), ComentarioCasoLf.autor_id == UUID(usuario_id), ComentarioCasoLf.visible.is_(True))
+            .values(visible=False, motivo_ocultamiento=motivo, deleted_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
+            .returning(ComentarioCasoLf.id)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def update_comentario_visibility(self, comentario_id: str, visible: bool, actor_id: str, motivo: str | None) -> bool:
         result = await self.db.execute(update(ComentarioCasoLf).where(ComentarioCasoLf.id == UUID(comentario_id)).values(visible=visible, ocultado_por_id=UUID(actor_id), motivo_ocultamiento=motivo, updated_at=datetime.now(timezone.utc)).returning(ComentarioCasoLf.id))
         return result.scalar_one_or_none() is not None
 
-    async def upsert_participacion(self, caso_id: str, usuario_id: str, suscrito: bool) -> None:
+    async def upsert_participacion(self, caso_id: str, usuario_id: str, suscrito: bool, *, marcar_leido: bool = False) -> None:
+        values = {
+            "caso_id": UUID(caso_id),
+            "usuario_id": UUID(usuario_id),
+            "suscrito": suscrito,
+            "ultima_lectura_at": datetime.now(timezone.utc) if marcar_leido else None,
+        }
+        update_values: dict[str, Any] = {"suscrito": suscrito, "updated_at": datetime.now(timezone.utc)}
+        if marcar_leido:
+            update_values["ultima_lectura_at"] = datetime.now(timezone.utc)
         await self.db.execute(
             insert(ParticipanteHiloLf)
-            .values(caso_id=UUID(caso_id), usuario_id=UUID(usuario_id), suscrito=suscrito)
-            .on_conflict_do_update(index_elements=["caso_id", "usuario_id"], set_={"suscrito": suscrito, "updated_at": datetime.now(timezone.utc)})
+            .values(**values)
+            .on_conflict_do_update(index_elements=["caso_id", "usuario_id"], set_=update_values)
         )
 
     async def list_participantes(self, caso_id: str) -> list[dict[str, Any]]:
