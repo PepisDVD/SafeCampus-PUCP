@@ -30,6 +30,10 @@ const breaker = new CircuitBreaker({ threshold: 5, cooldownMs: 30_000 });
 const isRetryable = (error: unknown) =>
   error instanceof ServerError || error instanceof TimeoutError || error instanceof TypeError;
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 type RequestOptions = {
   token?: string | null;
   method?: "GET" | "POST" | "PATCH";
@@ -42,7 +46,11 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     response = await breaker.execute(() =>
       withRetry(
         async () => {
-          const res = await fetch(`${CONFIG.API_BASE_URL}${path}`, {
+          const url = `${CONFIG.API_BASE_URL}${path}`;
+          if (__DEV__) {
+            console.info("[api:request]", { method: options.method ?? "GET", url });
+          }
+          const res = await fetch(url, {
             method: options.method ?? "GET",
             headers: {
               Accept: "application/json",
@@ -59,19 +67,19 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     );
   } catch (error) {
     if (error instanceof CircuitOpenError) {
-      logger.fallback("FB-5XX", { path, reason: "circuit-open" });
+      logger.fallback("FB-5XX", { baseUrl: CONFIG.API_BASE_URL, path, reason: "circuit-open" });
       throw new ApiError(error.message, 503);
     }
     if (error instanceof ServerError) {
-      logger.fallback("FB-5XX", { path, status: error.status });
+      logger.fallback("FB-5XX", { baseUrl: CONFIG.API_BASE_URL, path, status: error.status });
       throw new ApiError("El servicio no está disponible. Intenta más tarde.", error.status);
     }
-    logger.fallback("FB-NET", { path });
+    logger.fallback("FB-NET", { baseUrl: CONFIG.API_BASE_URL, error: getErrorMessage(error), path });
     throw new ApiError("Sin conexión con el servidor.", 0);
   }
 
   if (response.status === 401) {
-    logger.fallback("FB-401", { path });
+    logger.fallback("FB-401", { baseUrl: CONFIG.API_BASE_URL, path });
     onUnauthorized?.();
     throw new ApiError("Sesión expirada. Vuelve a ingresar.", 401);
   }
