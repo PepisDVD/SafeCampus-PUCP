@@ -12,7 +12,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.constants import NivelSeveridad
+from app.core.constants import CanalNotificacion, NivelSeveridad, OrigenAlerta, TipoSegmentoAlerta
 from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.incidente_repository import IncidenteRepository
 from app.repositories.notificacion_repository import NotificacionRepository
@@ -43,6 +43,8 @@ from app.schemas.incidente import (
     ZonaCount,
 )
 from app.schemas.auth import AuthUserResponse
+from app.schemas.alerta import AlertaCreateInput, AlertaSegmentoInput
+from app.services.alerta_service import AlertaService
 from app.services.gemini_service import GeminiService
 from app.services.storage_service import StorageService
 
@@ -58,6 +60,8 @@ def _period_days(period: str) -> int:
         return 7
     if period == "trimestre":
         return 90
+    if period == "año":
+        return 365
     return 30
 
 
@@ -144,7 +148,7 @@ class IncidenteService:
 
     async def obtener_kpis(self, period: str) -> KpisResponse:
         """KPIs del periodo + comparación vs periodo anterior + breakdowns."""
-        period_norm = period if period in {"semana", "mes", "trimestre"} else "mes"
+        period_norm = period if period in {"semana", "mes", "trimestre", "año"} else "mes"
         days = _period_days(period_norm)
         end = datetime.now(timezone.utc)
         start_current = end - timedelta(days=days)
@@ -757,7 +761,63 @@ class IncidenteService:
             incidente_id=creado["id"],
             exclude={reportante_id},
         )
+        await self._crear_alerta_automatica_si_aplica(
+            creado=creado,
+            data=data,
+            severidad_final=severidad_final,
+            categoria_final=categoria_final,
+            actor_id=reportante_id,
+        )
         return IncidenteCreated.model_validate(creado)
+
+    async def _crear_alerta_automatica_si_aplica(
+        self,
+        *,
+        creado: dict[str, Any],
+        data: IncidenteCreateInput,
+        severidad_final: str,
+        categoria_final: str | None,
+        actor_id: str,
+    ) -> None:
+        if severidad_final != NivelSeveridad.CRITICO.value:
+            return
+        try:
+            alerta_service = AlertaService(self._repo.db)
+            alerta = await alerta_service.crear(
+                body=AlertaCreateInput(
+                    tipo="ALR-INC-CRIT",
+                    familia="B",
+                    titulo=f"Incidente critico {creado['codigo']}",
+                    contenido=(
+                        f"Incidente CRITICO {creado['codigo']}: {data.titulo.strip()}. "
+                        f"Zona: {data.lugar_referencia or 'sin referencia'}."
+                    ),
+                    severidad=NivelSeveridad.CRITICO,
+                    origen=OrigenAlerta.AUTOMATICA,
+                    canales=[CanalNotificacion.INAPP],
+                    latitud=data.latitud,
+                    longitud=data.longitud,
+                    radio_metros=250,
+                    segmentos=[
+                        AlertaSegmentoInput(tipo=TipoSegmentoAlerta.ROL, valor="supervisor"),
+                        AlertaSegmentoInput(tipo=TipoSegmentoAlerta.ROL, valor="administrador"),
+                    ],
+                ),
+                actor_id=actor_id,
+            )
+            await alerta_service.publicar(alerta_id=alerta.id, actor_id=actor_id)
+        except Exception:
+            await self._registrar_auditoria_incidente(
+                usuario_id=actor_id,
+                accion="alerta_automatica_fallida",
+                incidente_id=creado["id"],
+                detalle={
+                    "codigo": creado["codigo"],
+                    "tipo_alerta": "ALR-INC-CRIT",
+                    "severidad_final": severidad_final,
+                    "categoria_final": categoria_final,
+                },
+            )
 
     async def _priorizar_incidente_ia(
         self,

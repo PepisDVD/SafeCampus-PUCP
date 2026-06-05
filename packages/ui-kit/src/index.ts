@@ -139,6 +139,7 @@ export {
   PaginationNext,
   PaginationPrevious,
 } from "./components/ui/pagination";
+export { TablePaginationBar } from "./components/ui/table-pagination-bar";
 export { Progress } from "./components/ui/progress";
 export { ScrollArea, ScrollBar } from "./components/ui/scroll-area";
 export {
@@ -187,3 +188,12 @@ export {
   TooltipProvider,
 } from "./components/ui/tooltip";
 export { Toaster } from "./components/ui/sonner";
+export {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  ChartStyle,
+  type ChartConfig,
+} from "./components/ui/chart";

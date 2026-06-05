@@ -19,12 +19,13 @@ import { SlaBars } from "./_components/sla-bars";
 import { TiposDonut } from "./_components/tipos-donut";
 import { ZonasBar } from "./_components/zonas-bar";
 
-const VALID_PERIODS = new Set<string>(["semana", "mes", "trimestre"]);
+const VALID_PERIODS = new Set<string>(["semana", "mes", "trimestre", "año"]);
 
 const PERIOD_HINT: Record<KpisPeriod, string> = {
   semana: "(SEMANA)",
   mes: "(MES)",
   trimestre: "(TRIMESTRE)",
+  año: "(AÑO)",
 };
 
 const KPIS_VACIO: KpisResponse = {

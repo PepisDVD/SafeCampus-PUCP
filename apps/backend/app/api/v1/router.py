@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import incidentes, lost_found, maestros, notificaciones, omnicanal
+from app.api.v1 import alertas, gis, incidentes, lost_found, maestros, notificaciones, omnicanal
 from app.api.v1 import admin, auth
 
 api_router = APIRouter()
@@ -28,6 +28,16 @@ api_router.include_router(
     omnicanal.router,
     prefix="/omnicanal",
     tags=["Omnicanal"],
+)
+api_router.include_router(
+    alertas.router,
+    prefix="/alertas",
+    tags=["Alertas"],
+)
+api_router.include_router(
+    gis.router,
+    prefix="/gis",
+    tags=["GIS"],
 )
 api_router.include_router(
     auth.router,

@@ -168,3 +168,11 @@ class OmnicanalRealtimeEvent(BaseModel):
     type: str
     conversacion_id: str | None = None
     payload: dict = Field(default_factory=dict)
+
+
+class OmnicanalStats(BaseModel):
+    en_bot: int
+    en_cola: int
+    en_atencion: int
+    abierta: int
+    total_activos: int

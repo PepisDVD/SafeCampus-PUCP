@@ -687,3 +687,20 @@ class OmnicanalRepository:
             "by_provider": by_provider,
             "tokens_per_day": tokens_per_day,
         }
+
+    async def get_stats(self) -> dict[str, int]:
+        """Conteo de conversaciones activas agrupadas por estado."""
+        statement = select(
+            Conversacion.estado,
+            func.count().label("total"),
+        ).group_by(Conversacion.estado)
+        result = await self.db.execute(statement)
+        counts: dict[str, int] = {row.estado: int(row.total) for row in result}
+        activos = ("EN_BOT", "EN_COLA", "EN_ATENCION", "ABIERTA")
+        return {
+            "en_bot": counts.get("EN_BOT", 0),
+            "en_cola": counts.get("EN_COLA", 0),
+            "en_atencion": counts.get("EN_ATENCION", 0),
+            "abierta": counts.get("ABIERTA", 0),
+            "total_activos": sum(counts.get(e, 0) for e in activos),
+        }

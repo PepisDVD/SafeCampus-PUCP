@@ -99,16 +99,41 @@ class NotificacionRepository:
         contenido: str,
         asunto: str | None = None,
         incidente_id: str | None = None,
-    ) -> None:
-        self.db.add(
-            Notificacion(
-                incidente_id=UUID(incidente_id) if incidente_id else None,
-                destinatario_id=UUID(destinatario_id),
-                tipo_evento=tipo_evento,
-                canal="INAPP",
-                estado="PENDIENTE",
-                asunto=asunto,
-                contenido=contenido,
-                fecha_envio=datetime.now(timezone.utc),
-            )
+    ) -> str:
+        return await self.create(
+            destinatario_id=destinatario_id,
+            tipo_evento=tipo_evento,
+            canal="INAPP",
+            estado="PENDIENTE",
+            contenido=contenido,
+            asunto=asunto,
+            incidente_id=incidente_id,
         )
+
+    async def create(
+        self,
+        *,
+        destinatario_id: str,
+        tipo_evento: str,
+        canal: str,
+        estado: str,
+        contenido: str,
+        asunto: str | None = None,
+        incidente_id: str | None = None,
+        error_detalle: str | None = None,
+    ) -> str:
+        row = Notificacion(
+            incidente_id=UUID(incidente_id) if incidente_id else None,
+            destinatario_id=UUID(destinatario_id),
+            tipo_evento=tipo_evento,
+            canal=canal,
+            estado=estado,
+            asunto=asunto,
+            contenido=contenido,
+            error_detalle=error_detalle,
+            fecha_envio=datetime.now(timezone.utc),
+        )
+        self.db.add(row)
+        await self.db.flush()
+        await self.db.refresh(row)
+        return str(row.id)

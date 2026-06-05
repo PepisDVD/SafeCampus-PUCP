@@ -14,8 +14,8 @@ import {
   BarChart3,
   BotMessageSquare,
   ClipboardList,
-  House,
   LayoutDashboard,
+  Megaphone,
   MapPinned,
   MessageSquare,
   Map,
@@ -30,12 +30,6 @@ import { OfficialLogoMark } from "@/components/branding/official-logo-mark";
 import { signOut } from "@/lib/auth";
 
 const ADMIN_NAV: NavItem[] = [
-  {
-    href: "/bienvenida",
-    label: "Bienvenida",
-    icon: House,
-    section: "Operacion",
-  },
   {
     href: "/dashboard",
     label: "Dashboard",
@@ -81,6 +75,24 @@ const ADMIN_NAV: NavItem[] = [
     label: "Mapa",
     icon: MapPinned,
     section: "Operacion",
+  },
+  {
+    href: "/alertas",
+    label: "Alertas",
+    icon: Megaphone,
+    section: "Operacion",
+    children: [
+      {
+        href: "/alertas",
+        label: "Consola",
+        icon: Megaphone,
+      },
+      {
+        href: "/alertas/reportes",
+        label: "Reportes",
+        icon: BarChart3,
+      },
+    ],
   },
   {
     href: "/kpis",

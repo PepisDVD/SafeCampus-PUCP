@@ -14,11 +14,6 @@ import {
   DrawerTitle,
   Input,
   Label,
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
   Select,
   SelectContent,
   SelectItem,
@@ -31,6 +26,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TablePaginationBar,
   Textarea,
 } from "@safecampus/ui-kit";
 import { CheckCircle2, Edit3, Eye, PackageCheck, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
@@ -199,31 +195,15 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
             )}
           </TableBody>
         </Table>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm text-slate-500">
-          <span>{data.total} registros · pagina {data.page} de {totalPages}</span>
-          <Pagination className="mx-0 w-auto">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  className={data.page <= 1 || isPending ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    if (data.page > 1 && !isPending) load(data.page - 1);
-                  }}
-                />
-              </PaginationItem>
-              <PaginationItem>
-                <PaginationNext
-                  className={data.page >= totalPages || isPending ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    if (data.page < totalPages && !isPending) load(data.page + 1);
-                  }}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
+        <TablePaginationBar
+          page={data.page}
+          totalPages={totalPages}
+          total={data.total}
+          perPage={data.per_page}
+          isPending={isPending}
+          onPrev={() => load(data.page - 1)}
+          onNext={() => load(data.page + 1)}
+        />
       </section>
 
       <CustodiaDrawer

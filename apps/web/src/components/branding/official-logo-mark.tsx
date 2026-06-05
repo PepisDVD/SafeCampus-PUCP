@@ -9,8 +9,8 @@ export function OfficialLogoMark({ className }: OfficialLogoMarkProps) {
     <Image
       src="/logo-main.svg"
       alt="SafeCampus"
-      width={32}
-      height={32}
+      width={48}
+      height={48}
       className={`${className ?? ""} object-contain invert`}
       priority
     />

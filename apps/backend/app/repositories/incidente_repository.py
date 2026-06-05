@@ -554,11 +554,9 @@ class IncidenteRepository:
             .filter(Incidente.severidad == "CRITICO")
             .label("criticos"),
             func.count().filter(Incidente.estado == "ESCALADO").label("escalados"),
-            (func.avg(epoch_frt) / 60.0)
-            .filter(Incidente.fecha_primera_respuesta.is_not(None))
+            (func.avg(epoch_frt).filter(Incidente.fecha_primera_respuesta.is_not(None)) / 60.0)
             .label("frt_min"),
-            (func.avg(epoch_tmr) / 60.0)
-            .filter(Incidente.fecha_resolucion.is_not(None))
+            (func.avg(epoch_tmr).filter(Incidente.fecha_resolucion.is_not(None)) / 60.0)
             .label("tmr_min"),
             func.count()
             .filter(

@@ -3,7 +3,9 @@
     "allow": [
       "Bash(xargs grep *)",
       "PowerShell(head -20)",
-      "Bash(python generate_word_doc.py)"
+      "Bash(python generate_word_doc.py)",
+      "Bash(unzip -q \"Catalogo de Pruebas - Gestion de Usuarios.xlsx\" -d /tmp/excel_usuarios)",
+      "Read(//tmp/**)"
     ]
   }
 }

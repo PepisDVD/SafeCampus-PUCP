@@ -12,8 +12,8 @@ import {
 } from "@safecampus/ui-kit";
 import {
   BarChart3,
-  House,
   LayoutDashboard,
+  Megaphone,
   MapPinned,
   MessageSquare,
   PackageCheck,
@@ -25,7 +25,6 @@ import { NotificationPopover } from "@/features/notificaciones/components/notifi
 import { signOut } from "@/lib/auth";
 
 const OPERATIVO_NAV: NavItem[] = [
-  { href: "/bienvenida", label: "Bienvenida", icon: House },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/incidentes", label: "Incidentes", icon: ShieldCheck },
   {
@@ -39,6 +38,15 @@ const OPERATIVO_NAV: NavItem[] = [
     ],
   },
   { href: "/mapa", label: "Mapa", icon: MapPinned },
+  {
+    href: "/alertas",
+    label: "Alertas",
+    icon: Megaphone,
+    children: [
+      { href: "/alertas", label: "Consola", icon: Megaphone },
+      { href: "/alertas/reportes", label: "Reportes", icon: BarChart3 },
+    ],
+  },
   { href: "/kpis", label: "KPIs", icon: BarChart3 },
   { href: "/mensajes", label: "Mensajes", icon: MessageSquare },
 ];

@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -39,8 +39,10 @@ import {
 import {
   CAMPUS_ZONE_LOCATIONS,
   NivelSeveridad,
+  type CampusZoneLocation,
   type IncidenteCreated,
   type IncidenteCreateInput,
+  type UbicacionMaestra,
 } from "@safecampus/shared-types";
 
 import {
@@ -92,9 +94,11 @@ const severidades = [
   },
 ] as const;
 
-const zonasCampus = [
-  ...CAMPUS_ZONE_LOCATIONS,
-];
+const FALLBACK_ZONAS: CampusZoneLocation[] = [...CAMPUS_ZONE_LOCATIONS];
+
+function toZoneLocation(u: UbicacionMaestra): CampusZoneLocation {
+  return { id: u.id, label: u.nombre, latitud: u.latitud, longitud: u.longitud };
+}
 
 type LocationSource = "zona" | "gps";
 
@@ -117,6 +121,22 @@ export default function ReportarPage() {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creado, setCreado] = useState<IncidenteCreated | null>(null);
+  const [zonasCampus, setZonasCampus] =
+    useState<CampusZoneLocation[]>(FALLBACK_ZONAS);
+
+  useEffect(() => {
+    api
+      .get<UbicacionMaestra[]>("/maestros/ubicaciones", {
+        params: { include_inactive: "true" },
+      })
+      .then((data) => {
+        const zonas = data.map(toZoneLocation);
+        if (zonas.length > 0) setZonasCampus(zonas);
+      })
+      .catch(() => {
+        // Mantiene el fallback hardcodeado si la API no responde
+      });
+  }, []);
 
   const puedeContinuar = useMemo(() => {
     if (step === 0) return Boolean(tipo);
