@@ -10,6 +10,7 @@ import {
   AvatarFallback,
   AvatarImage,
   Button,
+  RoleBadge,
   Card,
   CardContent,
   CardHeader,
@@ -367,12 +368,5 @@ function HistoryDrawer({ open, onOpenChange, caso }: { open: boolean; onOpenChan
 }
 
 function roleBadge(role?: string | null) {
-  const normalized = role?.toLowerCase();
-  if (normalized === "supervisor") {
-    return <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">Supervisor</Badge>;
-  }
-  if (normalized === "operador") {
-    return <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">Operador</Badge>;
-  }
-  return null;
+  return role ? <RoleBadge role={role} /> : null;
 }

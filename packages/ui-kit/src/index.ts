@@ -12,6 +12,12 @@ export { useIsMobile } from "./hooks/use-mobile";
 // Nav — shared sidebar + user nav
 export { AppSidebar, type NavItem } from "./components/nav/app-sidebar";
 export { UserNav, type UserNavUser } from "./components/nav/user-nav";
+export {
+  RoleBadge,
+  formatRoleLabel,
+  getRoleTone,
+  type RoleBadgeProps,
+} from "./components/role-badge";
 
 // Sidebar primitives
 export {
@@ -123,6 +129,13 @@ export {
   DropdownMenuRadioGroup,
 } from "./components/ui/dropdown-menu";
 export { Input } from "./components/ui/input";
+export { SearchInput, type SearchInputProps } from "./components/ui/search-input";
+export {
+  MultiSelectFilter,
+  type MultiSelectFilterProps,
+  type MultiSelectOption,
+} from "./components/ui/multi-select-filter";
+export { FilterBar } from "./components/ui/filter-bar";
 export { Label } from "./components/ui/label";
 export {
   Popover,
@@ -166,6 +179,11 @@ export {
   SheetDescription,
 } from "./components/ui/sheet";
 export { Skeleton } from "./components/ui/skeleton";
+export {
+  StatusBadge,
+  type StatusBadgeProps,
+  type StatusTone,
+} from "./components/ui/status-badge";
 export { Switch } from "./components/ui/switch";
 export {
   Table,

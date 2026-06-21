@@ -3,12 +3,9 @@
 import React, { useMemo, useState } from "react";
 import {
   Badge,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  FilterBar,
+  MultiSelectFilter,
+  SearchInput,
   Table,
   TableBody,
   TableCell,
@@ -16,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@safecampus/ui-kit";
-import { ChevronDown, ChevronRight, ClipboardList, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, ClipboardList } from "lucide-react";
 import type { RegistroAuditoria } from "../../services/auditoria.service";
 
 type AuditoriaClientProps = {
@@ -39,7 +36,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 export function AuditoriaClient({ initialLogs, modulos }: AuditoriaClientProps) {
   const [search, setSearch] = useState("");
-  const [moduloFilter, setModuloFilter] = useState("todos");
+  const [moduloFilters, setModuloFilters] = useState<string[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
@@ -56,11 +53,11 @@ export function AuditoriaClient({ initialLogs, modulos }: AuditoriaClientProps) 
         asText(usuario?.email).toLowerCase().includes(term);
 
       const matchesModulo =
-        moduloFilter === "todos" || asText(log.modulo) === moduloFilter;
+        moduloFilters.length === 0 || moduloFilters.includes(asText(log.modulo));
 
       return matchesSearch && matchesModulo;
     });
-  }, [initialLogs, search, moduloFilter]);
+  }, [initialLogs, search, moduloFilters]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -135,40 +132,31 @@ export function AuditoriaClient({ initialLogs, modulos }: AuditoriaClientProps) 
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">
-          Log de Auditoria
+          Log de Auditoría
         </h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Registro centralizado de todas las acciones del sistema
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por modulo, accion, entidad o usuario..."
-            className="pl-9"
-          />
-        </div>
-        <Select value={moduloFilter} onValueChange={setModuloFilter}>
-          <SelectTrigger className="w-full sm:w-44">
-            <SelectValue placeholder="Modulo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos los modulos</SelectItem>
-            {modulos.map((m) => {
-              const modulo = asText(m);
-              return (
-              <SelectItem key={modulo} value={modulo} className="capitalize">
-                {modulo.replace(/_/g, " ")}
-              </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </div>
+      <FilterBar className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <SearchInput
+          containerClassName="flex-1"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por módulo, acción, entidad o usuario..."
+        />
+        <MultiSelectFilter
+          className="w-full sm:w-52"
+          placeholder="Todos los módulos"
+          options={modulos.map((modulo) => ({
+            value: asText(modulo),
+            label: asText(modulo).replace(/_/g, " "),
+          }))}
+          selected={moduloFilters}
+          onChange={setModuloFilters}
+        />
+      </FilterBar>
 
       <div className="overflow-hidden rounded-lg border bg-white">
         <Table>
@@ -176,8 +164,8 @@ export function AuditoriaClient({ initialLogs, modulos }: AuditoriaClientProps) 
             <TableRow className="bg-slate-50">
               <TableHead className="w-8" />
               <TableHead>Fecha y hora</TableHead>
-              <TableHead>Modulo</TableHead>
-              <TableHead>Accion</TableHead>
+              <TableHead>Módulo</TableHead>
+              <TableHead>Acción</TableHead>
               <TableHead>Entidad</TableHead>
               <TableHead>Usuario</TableHead>
             </TableRow>

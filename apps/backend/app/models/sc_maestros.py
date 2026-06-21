@@ -23,6 +23,7 @@ class UbicacionMaestra(Base):
     )
     codigo: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
     nombre: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    tipo: Mapped[str] = mapped_column(String(40), nullable=False, server_default="OTRO")
     latitud: Mapped[float] = mapped_column(Numeric(9, 6), nullable=False)
     longitud: Mapped[float] = mapped_column(Numeric(9, 6), nullable=False)
     activa: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")

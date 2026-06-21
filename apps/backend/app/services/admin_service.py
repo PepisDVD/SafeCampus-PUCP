@@ -20,8 +20,9 @@ from app.schemas.admin import (
     RolesListResponse,
     UsuarioCreateInput,
     UsuarioOut,
-    UsuarioUpdateInput,
+    UsuarioProfileUpdateInput,
     UsuariosListResponse,
+    UsuarioUpdateInput,
 )
 
 
@@ -104,6 +105,29 @@ class AdminService:
                     )
         await self._repo.cambiar_estado(usuario_id, data.estado)
         return {"message": "Estado actualizado correctamente."}
+
+    async def actualizar_perfil_usuario(
+        self,
+        usuario_id: str,
+        data: UsuarioProfileUpdateInput,
+    ) -> UsuarioOut:
+        updated = await self._repo.update_usuario_profile(
+            usuario_id,
+            {
+                "nombre": data.nombre,
+                "apellido": data.apellido,
+                "telefono": data.telefono,
+                "departamento": data.departamento,
+            },
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+        rows = await self._repo.list_usuarios()
+        row = next((item for item in rows if str(item["id"]) == usuario_id), None)
+        if not row:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        return self._map_usuario(row)
 
     # -----------------------------------------------------------------------
     # Roles & Permisos
@@ -238,6 +262,7 @@ class AdminService:
             apellido=r["apellido"],
             email=r["email"],
             codigo_institucional=r.get("codigo_institucional"),
+            telefono=r.get("telefono"),
             departamento=r.get("departamento"),
             estado=r["estado"],
             avatar_url=r.get("avatar_url"),

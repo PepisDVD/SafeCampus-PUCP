@@ -174,7 +174,17 @@ export function AppSidebar({
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-3">
+      <SidebarContent
+        className={cn(
+          "px-2 py-3",
+          // Scrollbar estilizado para combinar con el azul del sidebar.
+          "[scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.25)_transparent]",
+          "[&::-webkit-scrollbar]:w-1.5",
+          "[&::-webkit-scrollbar-track]:bg-transparent",
+          "[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/25",
+          "hover:[&::-webkit-scrollbar-thumb]:bg-white/40",
+        )}
+      >
         <SidebarMenu className="gap-1.5">
           {navItems.map((item, index) => {
             const isChildActive = item.children?.some(

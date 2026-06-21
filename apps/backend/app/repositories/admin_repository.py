@@ -42,6 +42,7 @@ class AdminRepository:
                 Usuario.apellido,
                 Usuario.email,
                 Usuario.codigo_institucional,
+                Usuario.telefono,
                 Usuario.departamento,
                 Usuario.estado,
                 Usuario.avatar_url,
@@ -150,6 +151,22 @@ class AdminRepository:
             delete(UsuarioRol).where(UsuarioRol.usuario_id == UUID(usuario_id))
         )
         await self.assign_rol(usuario_id, rol_id)
+
+    async def update_usuario_profile(self, usuario_id: str, data: dict[str, Any]) -> bool:
+        statement = (
+            update(Usuario)
+            .where(Usuario.id == UUID(usuario_id), Usuario.deleted_at.is_(None))
+            .values(
+                nombre=data["nombre"],
+                apellido=data["apellido"],
+                telefono=data.get("telefono"),
+                departamento=data.get("departamento"),
+                updated_at=func.now(),
+            )
+            .returning(Usuario.id)
+        )
+        result = await self.db.execute(statement)
+        return result.scalar_one_or_none() is not None
 
     async def cambiar_estado(self, usuario_id: str, estado: str) -> None:
         statement = (

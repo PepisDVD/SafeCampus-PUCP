@@ -1,6 +1,8 @@
 from datetime import datetime
+from enum import Enum
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session, require_roles
@@ -8,8 +10,8 @@ from app.core.constants import EstadoCasoLF, EstadoCustodia, TipoCasoLF
 from app.schemas.auth import AuthUserResponse
 from app.schemas.lost_found import (
     CancelarCasoLfInput,
-    CasoLfCreateInput,
     CasoLfCreated,
+    CasoLfCreateInput,
     CasoLfDetail,
     CasoLfEstadoUpdate,
     CasoLfFotosInput,
@@ -37,6 +39,37 @@ from app.services.lost_found_service import LostFoundService
 router = APIRouter()
 OPERATIVO_ROLES = {"supervisor", "operador", "administrador"}
 ADMIN_ROLES = {"administrador"}
+
+
+def _parse_enum_csv(value: str | None, enum_type: type[Enum]) -> list[str] | None:
+    if not value:
+        return None
+    try:
+        parsed = [enum_type(item.strip()).value for item in value.split(",") if item.strip()]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"Filtro inválido: {exc}") from exc
+    return [str(item) for item in parsed] or None
+
+
+def _parse_uuid_csv(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    try:
+        return [str(UUID(item.strip())) for item in value.split(",") if item.strip()] or None
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Una categoría seleccionada no es válida.",
+        ) from exc
+
+
+def _parse_choice_csv(value: str | None, allowed: set[str]) -> list[str] | None:
+    if not value:
+        return None
+    parsed = [item.strip() for item in value.split(",") if item.strip()]
+    if any(item not in allowed for item in parsed):
+        raise HTTPException(status_code=422, detail="Filtro de vencimiento inválido.")
+    return parsed or None
 
 
 def get_service(db: AsyncSession = Depends(get_session)) -> LostFoundService:
@@ -123,8 +156,8 @@ async def listar_mis_casos(
 @router.get("/casos", response_model=CasoLfListResponse)
 async def listar_casos_operativo(
     search: str | None = Query(default=None),
-    tipo: TipoCasoLF | None = Query(default=None),
-    estado: EstadoCasoLF | None = Query(default=None),
+    tipo: str | None = Query(default=None),
+    estado: str | None = Query(default=None),
     categoria_id: str | None = Query(default=None),
     cursor: datetime | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -134,9 +167,9 @@ async def listar_casos_operativo(
     page_limit = max(1, min(limit, 200))
     items = await service.listar_operativo(
         search=search,
-        tipo=tipo.value if tipo else None,
-        estado=estado.value if estado else None,
-        categoria_id=categoria_id,
+        tipos=_parse_enum_csv(tipo, TipoCasoLF),
+        estados=_parse_enum_csv(estado, EstadoCasoLF),
+        categoria_ids=_parse_uuid_csv(categoria_id),
         cursor=cursor,
         limit=min(page_limit + 1, 200),
     )
@@ -262,18 +295,18 @@ async def crear_custodia(
 
 @router.get("/custodias", response_model=CustodiaLfListResponse)
 async def listar_custodias(
-    estado: EstadoCustodia | None = Query(default=None),
+    estado: str | None = Query(default=None),
     search: str | None = Query(default=None),
-    vencimiento: str | None = Query(default=None, pattern="^(vigente|proxima|vencida)$"),
+    vencimiento: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: LostFoundService = Depends(get_service),
 ):
     return await service.listar_custodias(
-        estado=estado.value if estado else None,
+        estados=_parse_enum_csv(estado, EstadoCustodia),
         search=search,
-        vencimiento=vencimiento,
+        vencimientos=_parse_choice_csv(vencimiento, {"vigente", "proxima", "vencida"}),
         page=page,
         per_page=per_page,
     )

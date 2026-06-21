@@ -1,0 +1,16 @@
+Para levantar el monorepo, primero:
+pnpm install
+pip install -e "apps/backend[dev]"
+
+Luego, en terminales separadas:
+pnpm dev:web
+pnpm dev:backend
+
+Mobile:
+pnpm dev:Mobile
+
+Dependencias Docker
+pnpm dev:deps:up
+
+Para EvolutionAPI:
+pnpm dev:evolution:up

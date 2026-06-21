@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { type FormEvent, type ReactNode, useMemo, useState, useTransition } from "react";
-import type { UbicacionMaestra } from "@safecampus/shared-types";
+import type { TipoUbicacion, UbicacionMaestra } from "@safecampus/shared-types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,7 +12,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  Badge,
   Button,
   Drawer,
   DrawerContent,
@@ -20,6 +19,12 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  FilterBar,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -28,6 +33,7 @@ import {
   DialogTitle,
   Input,
   Label,
+  MultiSelectFilter,
   Pagination,
   PaginationContent,
   PaginationItem,
@@ -38,6 +44,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SearchInput,
+  StatusBadge,
   Switch,
   Table,
   TableBody,
@@ -46,10 +54,14 @@ import {
   TableHeader,
   TableRow,
 } from "@safecampus/ui-kit";
-import { Edit3, MapPinned, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Ban, MoreHorizontal, Pencil, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
+import {
+  TIPO_UBICACION_OPTIONS,
+  formatTipoUbicacion,
+} from "@/features/admin/constants/ubicacion-tipos";
 
 const LeafletCoordinatePicker = dynamic(
   () => import("@/features/admin/components/maestros/leaflet-coordinate-picker").then((mod) => mod.LeafletCoordinatePicker),
@@ -70,6 +82,7 @@ type Props = {
 type FormState = {
   codigo: string;
   nombre: string;
+  tipo: TipoUbicacion;
   latitud: string;
   longitud: string;
   activa: boolean;
@@ -78,6 +91,7 @@ type FormState = {
 const emptyForm: FormState = {
   codigo: "",
   nombre: "",
+  tipo: "OTRO",
   latitud: "",
   longitud: "",
   activa: true,
@@ -86,7 +100,8 @@ const emptyForm: FormState = {
 export function UbicacionesClient({ initialItems }: Props) {
   const [items, setItems] = useState(initialItems);
   const [search, setSearch] = useState("");
-  const [estadoFilter, setEstadoFilter] = useState("TODOS");
+  const [estadoFilters, setEstadoFilters] = useState<string[]>([]);
+  const [tipoFilters, setTipoFilters] = useState<string[]>([]);
   const [perPage, setPerPage] = useState("10");
   const [page, setPage] = useState(1);
 
@@ -109,12 +124,14 @@ export function UbicacionesClient({ initialItems }: Props) {
         !term ||
         item.codigo.toLowerCase().includes(term) ||
         item.nombre.toLowerCase().includes(term);
+      const itemEstado = item.activa ? "ACTIVAS" : "INACTIVAS";
       const matchesEstado =
-        estadoFilter === "TODOS" ||
-        (estadoFilter === "ACTIVAS" ? item.activa : !item.activa);
-      return matchesSearch && matchesEstado;
+        estadoFilters.length === 0 || estadoFilters.includes(itemEstado);
+      const matchesTipo =
+        tipoFilters.length === 0 || tipoFilters.includes(item.tipo);
+      return matchesSearch && matchesEstado && matchesTipo;
     });
-  }, [items, search, estadoFilter]);
+  }, [items, search, estadoFilters, tipoFilters]);
 
   const rowsPerPage = Number(perPage);
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / rowsPerPage));
@@ -131,6 +148,7 @@ export function UbicacionesClient({ initialItems }: Props) {
     setForm({
       codigo: target.codigo,
       nombre: target.nombre,
+      tipo: target.tipo,
       latitud: String(target.latitud),
       longitud: String(target.longitud),
       activa: target.activa,
@@ -168,22 +186,28 @@ export function UbicacionesClient({ initialItems }: Props) {
 
     startTransition(async () => {
       try {
-        const payload = {
-          codigo: form.codigo.trim(),
-          nombre: form.nombre.trim(),
-          latitud: lat,
-          longitud: lng,
-          activa: form.activa,
-        };
-
         if (editing) {
-          const updated = await api.patch<UbicacionMaestra>(`/maestros/ubicaciones/${editing.id}`, payload);
+          // El código es inmutable tras el registro: no se envía al actualizar.
+          const updated = await api.patch<UbicacionMaestra>(`/maestros/ubicaciones/${editing.id}`, {
+            nombre: form.nombre.trim(),
+            tipo: form.tipo,
+            latitud: lat,
+            longitud: lng,
+            activa: form.activa,
+          });
           setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-          toast.success("Ubicacion actualizada.");
+          toast.success("Ubicación actualizada.");
         } else {
-          const created = await api.post<UbicacionMaestra>("/maestros/ubicaciones", payload);
+          const created = await api.post<UbicacionMaestra>("/maestros/ubicaciones", {
+            codigo: form.codigo.trim(),
+            nombre: form.nombre.trim(),
+            tipo: form.tipo,
+            latitud: lat,
+            longitud: lng,
+            activa: form.activa,
+          });
           setItems((current) => [created, ...current]);
-          toast.success("Ubicacion creada.");
+          toast.success("Ubicación creada.");
         }
 
         setDrawerOpen(false);
@@ -191,7 +215,26 @@ export function UbicacionesClient({ initialItems }: Props) {
         setForm(emptyForm);
         resetPaging();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "No se pudo guardar la ubicacion.");
+        toast.error(error instanceof Error ? error.message : "No se pudo guardar la ubicación.");
+      }
+    });
+  };
+
+  const toggleActiva = (target: UbicacionMaestra) => {
+    const nextActiva = !target.activa;
+    startTransition(async () => {
+      try {
+        const updated = await api.patch<UbicacionMaestra>(`/maestros/ubicaciones/${target.id}`, {
+          nombre: target.nombre,
+          tipo: target.tipo,
+          latitud: target.latitud,
+          longitud: target.longitud,
+          activa: nextActiva,
+        });
+        setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        toast.success(nextActiva ? "Ubicación reactivada." : "Ubicación desactivada.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo actualizar el estado.");
       }
     });
   };
@@ -202,11 +245,11 @@ export function UbicacionesClient({ initialItems }: Props) {
       try {
         await api.delete<void>(`/maestros/ubicaciones/${deleteTarget.id}`);
         setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
-        toast.success("Ubicacion eliminada.");
+        toast.success("Ubicación eliminada.");
         setDeleteTarget(null);
         resetPaging();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "No se pudo eliminar la ubicacion.");
+        toast.error(error instanceof Error ? error.message : "No se pudo eliminar la ubicación.");
       }
     });
   };
@@ -238,7 +281,7 @@ export function UbicacionesClient({ initialItems }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-slate-950">Maestros · Ubicaciones</h1>
-          <p className="text-sm text-slate-500">Catalogo transversal de ubicaciones para formularios del sistema.</p>
+          <p className="text-sm text-slate-500">Catálogo transversal de ubicaciones para formularios del sistema.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={refresh} disabled={isPending}>
@@ -247,40 +290,48 @@ export function UbicacionesClient({ initialItems }: Props) {
           </Button>
           <Button onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" />
-            Nueva ubicacion
+            Nueva ubicación
           </Button>
         </div>
       </div>
 
-      <section className="rounded-lg border bg-white p-4">
-        <div className="grid gap-3 lg:grid-cols-[1.2fr_200px_160px_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <Input
-              className="pl-9"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(1);
-              }}
-              placeholder="Buscar por codigo o nombre"
-            />
-          </div>
-
-          <Select
-            value={estadoFilter}
-            onValueChange={(value) => {
-              setEstadoFilter(value);
+      <FilterBar>
+        <div className="grid gap-3 lg:grid-cols-[1.2fr_200px_220px_160px]">
+          <SearchInput
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
               setPage(1);
             }}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODOS">Todos los estados</SelectItem>
-              <SelectItem value="ACTIVAS">Activas</SelectItem>
-              <SelectItem value="INACTIVAS">Inactivas</SelectItem>
-            </SelectContent>
-          </Select>
+            placeholder="Buscar por código o nombre"
+          />
+
+          <MultiSelectFilter
+            placeholder="Todos los estados"
+            options={[
+              { value: "ACTIVAS", label: "Activas" },
+              { value: "INACTIVAS", label: "Inactivas" },
+            ]}
+            selected={estadoFilters}
+            onChange={(value) => {
+              setEstadoFilters(value);
+              setPage(1);
+            }}
+          />
+
+          <MultiSelectFilter
+            placeholder="Todos los tipos"
+            options={TIPO_UBICACION_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.label,
+            }))}
+            selected={tipoFilters}
+            onChange={(value) => {
+              setTipoFilters(value);
+              setPage(1);
+            }}
+            selectedLabel={(count) => `${count} tipos`}
+          />
 
           <Select
             value={perPage}
@@ -296,22 +347,16 @@ export function UbicacionesClient({ initialItems }: Props) {
               <SelectItem value="50">50 filas</SelectItem>
             </SelectContent>
           </Select>
-
-          <Button variant="outline" onClick={resetPaging}>
-            <MapPinned className="mr-2 h-4 w-4" />
-            Reiniciar pagina
-          </Button>
         </div>
-      </section>
+      </FilterBar>
 
       <section className="overflow-hidden rounded-lg border bg-white">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Codigo</TableHead>
+              <TableHead>Código</TableHead>
               <TableHead>Nombre</TableHead>
-              <TableHead>Latitud</TableHead>
-              <TableHead>Longitud</TableHead>
+              <TableHead>Tipo</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -319,7 +364,7 @@ export function UbicacionesClient({ initialItems }: Props) {
           <TableBody>
             {pagedItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-sm text-slate-500">
+                <TableCell colSpan={5} className="h-24 text-center text-sm text-slate-500">
                   No hay ubicaciones para los filtros seleccionados.
                 </TableCell>
               </TableRow>
@@ -328,22 +373,63 @@ export function UbicacionesClient({ initialItems }: Props) {
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.codigo}</TableCell>
                   <TableCell>{item.nombre}</TableCell>
-                  <TableCell>{item.latitud}</TableCell>
-                  <TableCell>{item.longitud}</TableCell>
                   <TableCell>
-                    <Badge variant={item.activa ? "default" : "secondary"}>
-                      {item.activa ? "Activa" : "Inactiva"}
-                    </Badge>
+                    <StatusBadge tone="info">{formatTipoUbicacion(item.tipo)}</StatusBadge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
-                        <Edit3 className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="text-rose-600" onClick={() => setDeleteTarget(item)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <StatusBadge tone={item.activa ? "success" : "neutral"}>
+                      {item.activa ? "Activa" : "Inactiva"}
+                    </StatusBadge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          aria-label={`Acciones para ${item.nombre}`}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onSelect={() => openEdit(item)}>
+                          <Pencil />
+                          Editar
+                        </DropdownMenuItem>
+                        {item.activa ? (
+                          <DropdownMenuItem onSelect={() => toggleActiva(item)}>
+                            <Ban />
+                            Desactivar
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onSelect={() => toggleActiva(item)}>
+                            <RotateCcw />
+                            Reactivar
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        {item.tiene_relaciones ? (
+                          <DropdownMenuItem
+                            disabled
+                            className="text-muted-foreground"
+                            title="Asociada a otras entidades; desactívala en su lugar."
+                          >
+                            <Trash2 />
+                            Eliminar (bloqueado)
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={() => setDeleteTarget(item)}
+                          >
+                            <Trash2 />
+                            Eliminar
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))
@@ -382,7 +468,7 @@ export function UbicacionesClient({ initialItems }: Props) {
         <DrawerContent className="h-full overflow-hidden p-0 sm:max-w-xl">
           <form onSubmit={saveItem} className="flex min-h-full flex-col">
             <DrawerHeader className="border-b px-6 py-5 text-left">
-              <DrawerTitle>{editing ? "Editar ubicacion" : "Nueva ubicacion"}</DrawerTitle>
+              <DrawerTitle>{editing ? "Editar ubicación" : "Nueva ubicación"}</DrawerTitle>
               <DrawerDescription>
                 Define codigo, nombre y coordenadas para reutilizar en formularios del sistema.
               </DrawerDescription>
@@ -390,13 +476,19 @@ export function UbicacionesClient({ initialItems }: Props) {
 
             <div className="flex-1 space-y-4 px-6 py-5">
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Codigo">
+                <Field label="Código">
                   <Input
                     value={form.codigo}
                     onChange={(event) => setForm((current) => ({ ...current, codigo: event.target.value.toUpperCase() }))}
                     placeholder="EJ: PABELLON_A"
                     required
+                    // El código se fija en el registro inicial y no puede cambiarse.
+                    disabled={Boolean(editing)}
                   />
+                  {editing && (
+                    <p className="text-xs text-slate-500">
+                    </p>
+                  )}
                 </Field>
                 <Field label="Nombre">
                   <Input
@@ -407,6 +499,26 @@ export function UbicacionesClient({ initialItems }: Props) {
                   />
                 </Field>
               </div>
+
+              <Field label="Tipo de ubicación">
+                <Select
+                  value={form.tipo}
+                  onValueChange={(value) =>
+                    setForm((current) => ({ ...current, tipo: value as TipoUbicacion }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Seleccionar tipo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIPO_UBICACION_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Latitud">
@@ -435,7 +547,7 @@ export function UbicacionesClient({ initialItems }: Props) {
 
               <Field label="Mapa de coordenadas">
                 <Button type="button" variant="outline" onClick={openMapDialog}>
-                  Abrir mapa en modal
+                  Seleccionar en mapa
                 </Button>
               </Field>
 
@@ -450,7 +562,7 @@ export function UbicacionesClient({ initialItems }: Props) {
 
             <DrawerFooter className="mt-auto border-t px-6 py-4">
               <Button type="button" variant="outline" onClick={() => setDrawerOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={isPending}>{editing ? "Guardar cambios" : "Registrar ubicacion"}</Button>
+              <Button type="submit" disabled={isPending}>{editing ? "Guardar cambios" : "Registrar ubicación"}</Button>
             </DrawerFooter>
           </form>
         </DrawerContent>
@@ -459,9 +571,9 @@ export function UbicacionesClient({ initialItems }: Props) {
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar ubicacion</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar ubicación</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta accion eliminara la ubicacion {deleteTarget?.nombre ?? "seleccionada"}. Asegurate de que no se use en procesos activos.
+              Esta acción eliminará la ubicación {deleteTarget?.nombre ?? "seleccionada"}. Asegúrate de que no se use en procesos activos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -499,7 +611,7 @@ export function UbicacionesClient({ initialItems }: Props) {
               Cancelar
             </Button>
             <Button type="button" onClick={() => setMapConfirmOpen(true)}>
-              Guardar coordenadas
+              Aplicar coordenadas
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -510,7 +622,7 @@ export function UbicacionesClient({ initialItems }: Props) {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar coordenadas</AlertDialogTitle>
             <AlertDialogDescription>
-              Se aplicaran las coordenadas seleccionadas al formulario de ubicacion. ¿Deseas continuar?
+              Se aplicarán las coordenadas seleccionadas al formulario de ubicación. ¿Deseas continuar?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

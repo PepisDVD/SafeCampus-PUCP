@@ -20,8 +20,9 @@ from app.schemas.admin import (
     RolesListResponse,
     UsuarioCreateInput,
     UsuarioOut,
-    UsuarioUpdateInput,
+    UsuarioProfileUpdateInput,
     UsuariosListResponse,
+    UsuarioUpdateInput,
 )
 from app.schemas.common import MessageResponse
 from app.services.admin_service import AdminService
@@ -62,6 +63,19 @@ async def actualizar_usuario(
     service: AdminService = Depends(get_service),
 ):
     return await service.actualizar_usuario(usuario_id, body)
+
+
+@router.patch(
+    "/usuarios/{usuario_id}/perfil",
+    response_model=UsuarioOut,
+    tags=["Admin - Usuarios"],
+)
+async def actualizar_perfil_usuario(
+    usuario_id: str,
+    body: UsuarioProfileUpdateInput,
+    service: AdminService = Depends(get_service),
+):
+    return await service.actualizar_perfil_usuario(usuario_id, body)
 
 
 @router.patch(
@@ -191,7 +205,9 @@ async def listar_llm_usage(
         page=page,
         page_size=page_size,
         conversacion_id=conversacion_id,
-        provider=provider,
+        providers=[item.strip() for item in provider.split(",") if item.strip()]
+        if provider
+        else None,
         desde=desde,
         hasta=hasta,
     )

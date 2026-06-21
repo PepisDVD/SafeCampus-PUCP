@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -176,19 +176,21 @@ class LostFoundRepository:
         self,
         *,
         search: str | None,
-        tipo: str | None,
-        estado: str | None,
-        categoria_id: str | None,
+        tipos: list[str] | None,
+        estados: list[str] | None,
+        categoria_ids: list[str] | None,
         cursor: datetime | None,
         limit: int,
     ) -> list[dict[str, Any]]:
         statement = self._base_select()
-        if tipo:
-            statement = statement.where(CasoLostFound.tipo == tipo)
-        if estado:
-            statement = statement.where(CasoLostFound.estado == estado)
-        if categoria_id:
-            statement = statement.where(CasoLostFound.categoria_id == UUID(categoria_id))
+        if tipos:
+            statement = statement.where(CasoLostFound.tipo.in_(tipos))
+        if estados:
+            statement = statement.where(CasoLostFound.estado.in_(estados))
+        if categoria_ids:
+            statement = statement.where(
+                CasoLostFound.categoria_id.in_([UUID(item) for item in categoria_ids])
+            )
         if cursor:
             statement = statement.where(CasoLostFound.created_at < cursor)
         if search:
@@ -475,15 +477,15 @@ class LostFoundRepository:
     async def list_custodias(
         self,
         *,
-        estado: str | None,
+        estados: list[str] | None,
         search: str | None,
-        vencimiento: str | None,
+        vencimientos: list[str] | None,
         page: int,
         per_page: int,
     ) -> tuple[list[dict[str, Any]], int]:
         filters = []
-        if estado:
-            filters.append(CustodiaObjeto.estado == estado)
+        if estados:
+            filters.append(CustodiaObjeto.estado.in_(estados))
         if search:
             pattern = f"%{search.strip()}%"
             filters.append(or_(
@@ -493,15 +495,31 @@ class LostFoundRepository:
                 CustodiaObjeto.observaciones.ilike(pattern),
             ))
         now = datetime.now(timezone.utc)
-        if vencimiento == "proxima":
-            filters.append(CustodiaObjeto.estado == "ACTIVA")
-            filters.append(CustodiaObjeto.fecha_vencimiento <= now + timedelta(days=2))
-        elif vencimiento == "vencida":
-            filters.append(CustodiaObjeto.estado.in_(("ACTIVA", "PROXIMA_VENCER", "VENCIDA")))
-            filters.append(CustodiaObjeto.fecha_vencimiento < now)
-        elif vencimiento == "vigente":
-            filters.append(CustodiaObjeto.estado.in_(("ACTIVA", "PROXIMA_VENCER")))
-            filters.append(CustodiaObjeto.fecha_vencimiento >= now)
+        if vencimientos:
+            vencimiento_filters = []
+            if "proxima" in vencimientos:
+                vencimiento_filters.append(
+                    and_(
+                        CustodiaObjeto.estado == "ACTIVA",
+                        CustodiaObjeto.fecha_vencimiento >= now,
+                        CustodiaObjeto.fecha_vencimiento <= now + timedelta(days=2),
+                    )
+                )
+            if "vencida" in vencimientos:
+                vencimiento_filters.append(
+                    and_(
+                        CustodiaObjeto.estado.in_(("ACTIVA", "PROXIMA_VENCER", "VENCIDA")),
+                        CustodiaObjeto.fecha_vencimiento < now,
+                    )
+                )
+            if "vigente" in vencimientos:
+                vencimiento_filters.append(
+                    and_(
+                        CustodiaObjeto.estado.in_(("ACTIVA", "PROXIMA_VENCER")),
+                        CustodiaObjeto.fecha_vencimiento >= now,
+                    )
+                )
+            filters.append(or_(*vencimiento_filters))
 
         base = select(CustodiaObjeto, CasoLostFound.codigo, CasoLostFound.titulo).join(CasoLostFound, CasoLostFound.id == CustodiaObjeto.caso_id).where(*filters)
         total = await self.db.scalar(select(func.count()).select_from(base.subquery())) or 0

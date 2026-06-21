@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -12,10 +11,20 @@ import {
   CardTitle,
   Input,
   Label,
+  RoleBadge,
 } from "@safecampus/ui-kit";
-import { Building2, IdCard, Mail, Phone, Save, ShieldCheck, UserCircle2 } from "lucide-react";
+import { Building2, IdCard, Lock, Mail, Pencil, Phone, Save, UserCircle2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { updateCurrentProfile } from "@/lib/auth";
+import { isPucpEmail } from "@/lib/email";
+
+export type ProfileFormValues = {
+  nombre: string;
+  apellido: string;
+  telefono: string;
+  departamento: string;
+};
 
 type ProfilePageClientProps = {
   profile: {
@@ -28,35 +37,30 @@ type ProfilePageClientProps = {
     departamento: string | null;
     roles: string[];
   };
+  readOnly?: boolean;
+  onSave?: (values: ProfileFormValues) => Promise<{ error?: string }>;
+  /** Acciones extra mostradas en la cabecera (p. ej. suspender/reactivar). */
+  headerActions?: React.ReactNode;
 };
 
-function prettyRole(role: string): string {
-  return role.charAt(0).toUpperCase() + role.slice(1);
-}
-
-function getRoleTone(role: string): string {
-  switch (role.toLowerCase()) {
-    case "administrador":
-      return "bg-violet-100 text-violet-700";
-    case "supervisor":
-      return "bg-blue-100 text-blue-700";
-    case "operador":
-      return "bg-orange-100 text-orange-700";
-    default:
-      return "bg-emerald-100 text-emerald-700";
-  }
-}
-
-export function ProfilePageClient({ profile }: ProfilePageClientProps) {
+export function ProfilePageClient({
+  profile,
+  readOnly = false,
+  onSave,
+  headerActions,
+}: ProfilePageClientProps) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
-  const [form, setForm] = useState({
+  const [isEditing, setIsEditing] = useState(!readOnly);
+  const [form, setForm] = useState<ProfileFormValues>({
     nombre: profile.nombre,
     apellido: profile.apellido,
     telefono: profile.telefono ?? "",
     departamento: profile.departamento ?? "",
   });
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const isFormReadOnly = readOnly && !isEditing;
+  // Identidad provista por la PUCP: nombre y apellido no son editables.
+  const identityLocked = isPucpEmail(profile.email);
 
   const fullName = useMemo(
     () => `${form.nombre} ${form.apellido}`.trim() || profile.email,
@@ -78,33 +82,46 @@ export function ProfilePageClient({ profile }: ProfilePageClientProps) {
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setFeedback(null);
-
     setIsSaving(true);
 
     try {
-      await updateCurrentProfile({
+      const normalized = {
         nombre: form.nombre.trim(),
         apellido: form.apellido.trim(),
-        telefono: form.telefono.trim() || null,
-        departamento: form.departamento.trim() || null,
-      });
-      setFeedback({
-        type: "success",
-        message: "Perfil actualizado correctamente.",
-      });
+        telefono: form.telefono.trim(),
+        departamento: form.departamento.trim(),
+      };
+      if (onSave) {
+        const result = await onSave(normalized);
+        if (result.error) throw new Error(result.error);
+      } else {
+        await updateCurrentProfile({
+          ...normalized,
+          telefono: normalized.telefono || null,
+          departamento: normalized.departamento || null,
+        });
+      }
+      setForm(normalized);
+      if (readOnly) setIsEditing(false);
+      toast.success("Perfil actualizado correctamente.");
       router.refresh();
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "No se pudo actualizar el perfil.",
-      });
+      toast.error(
+        error instanceof Error ? error.message : "No se pudo actualizar el perfil.",
+      );
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const cancelEditing = () => {
+    setForm({
+      nombre: profile.nombre,
+      apellido: profile.apellido,
+      telefono: profile.telefono ?? "",
+      departamento: profile.departamento ?? "",
+    });
+    setIsEditing(false);
   };
 
   return (
@@ -115,93 +132,119 @@ export function ProfilePageClient({ profile }: ProfilePageClientProps) {
             {initials || "SC"}
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Perfil personal</p>
+            <p className="text-sm font-medium text-slate-500">
+              {readOnly ? "Perfil de usuario" : "Perfil personal"}
+            </p>
             <h1 className="text-2xl font-bold text-slate-900">{fullName}</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Actualiza tu informacion base visible en el sistema SafeCampus.
+              {readOnly
+                ? "Consulta la información registrada para este usuario."
+                : "Actualiza tu información base visible en el sistema SafeCampus."}
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {profile.roles.map((role) => (
-            <Badge key={role} className={getRoleTone(role)}>
-              {prettyRole(role)}
-            </Badge>
-          ))}
+        <div className="flex flex-col items-start gap-3 sm:items-end">
+          {readOnly && !isEditing && (
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setIsEditing(true)}>
+                <Pencil className="h-4 w-4" />
+                Editar perfil
+              </Button>
+              {headerActions}
+            </div>
+          )}
         </div>
       </div>
-
-      {feedback && (
-        <div
-          className={
-            feedback.type === "success"
-              ? "rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
-              : "rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          }
-        >
-          {feedback.message}
-        </div>
-      )}
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <Card className="rounded-3xl border-slate-200 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
               <UserCircle2 className="h-5 w-5 text-[#001C55]" />
-              Datos editables
+              {readOnly ? "Datos del usuario" : "Datos editables"}
             </CardTitle>
             <CardDescription>
-              Estos datos se usan para identificarte dentro de los modulos operativos y administrativos.
+              {readOnly
+                ? "Datos usados para identificar al usuario en los módulos operativos y administrativos."
+                : "Estos datos se usan para identificarte dentro de los módulos operativos y administrativos."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-5" onSubmit={onSubmit}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="nombre">Nombre</Label>
+                  <Label htmlFor="nombre" className="flex items-center gap-1.5">
+                    Nombre
+                    {identityLocked && <Lock className="h-3 w-3 text-slate-400" />}
+                  </Label>
                   <Input
                     id="nombre"
                     value={form.nombre}
                     onChange={(event) => onChange("nombre", event.target.value)}
                     placeholder="Ingresa tu nombre"
+                    disabled={isFormReadOnly || identityLocked}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="apellido">Apellido</Label>
+                  <Label htmlFor="apellido" className="flex items-center gap-1.5">
+                    Apellido
+                    {identityLocked && <Lock className="h-3 w-3 text-slate-400" />}
+                  </Label>
                   <Input
                     id="apellido"
                     value={form.apellido}
                     onChange={(event) => onChange("apellido", event.target.value)}
                     placeholder="Ingresa tu apellido"
+                    disabled={isFormReadOnly || identityLocked}
                     required
                   />
                 </div>
               </div>
 
+              {identityLocked && !isFormReadOnly && (
+                <p className="-mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                  <Lock className="h-3 w-3" />
+                  El nombre y apellido no podrán editarse.
+                </p>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="telefono">Telefono</Label>
+                  <Label htmlFor="telefono">Teléfono</Label>
                   <Input
                     id="telefono"
                     value={form.telefono}
                     onChange={(event) => onChange("telefono", event.target.value)}
                     placeholder="Ej. +51 999 999 999"
+                    disabled={isFormReadOnly}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="departamento">Departamento / area</Label>
+                  <Label htmlFor="departamento">Departamento</Label>
                   <Input
                     id="departamento"
                     value={form.departamento}
                     onChange={(event) => onChange("departamento", event.target.value)}
                     placeholder="Ej. Seguridad Integral"
+                    disabled={isFormReadOnly}
                   />
                 </div>
               </div>
 
+              {!isFormReadOnly && (
               <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+                {readOnly && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={cancelEditing}
+                    disabled={isSaving}
+                  >
+                    Cancelar
+                  </Button>
+                )}
                 <Button
                   type="submit"
                   disabled={isSaving}
@@ -211,6 +254,7 @@ export function ProfilePageClient({ profile }: ProfilePageClientProps) {
                   {isSaving ? "Guardando..." : "Guardar cambios"}
                 </Button>
               </div>
+              )}
             </form>
           </CardContent>
         </Card>
@@ -219,9 +263,6 @@ export function ProfilePageClient({ profile }: ProfilePageClientProps) {
           <Card className="rounded-3xl border-slate-200 shadow-sm">
             <CardHeader>
               <CardTitle className="text-lg text-slate-900">Resumen de cuenta</CardTitle>
-              <CardDescription>
-                Informacion institucional y de acceso disponible para tu usuario.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4">
@@ -258,25 +299,23 @@ export function ProfilePageClient({ profile }: ProfilePageClientProps) {
                   </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-3xl border-slate-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
-                <ShieldCheck className="h-5 w-5 text-[#001C55]" />
-                Acceso y permisos
-              </CardTitle>
-              <CardDescription>
-                Tus permisos se administran por rol. Si necesitas cambios estructurales, solicitalos a administracion.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {profile.roles.map((role) => (
-                <Badge key={role} className={getRoleTone(role)}>
-                  {prettyRole(role)}
-                </Badge>
-              ))}
+              <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4">
+                <IdCard className="mt-0.5 h-4 w-4 text-slate-500" />
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {profile.roles.length === 1 ? "Rol asignado" : "Roles asignados"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {profile.roles.length > 0 ? (
+                      profile.roles.map((role) => (
+                        <RoleBadge key={role} role={role} />
+                      ))
+                    ) : (
+                      <span className="text-sm text-slate-500">Sin rol asignado</span>
+                    )}
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
