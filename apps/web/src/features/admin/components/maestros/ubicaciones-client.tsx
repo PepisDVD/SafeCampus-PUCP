@@ -13,6 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
+  cn,
   Drawer,
   DrawerContent,
   DrawerDescription,
@@ -54,7 +55,7 @@ import {
   TableHeader,
   TableRow,
 } from "@safecampus/ui-kit";
-import { Ban, MoreHorizontal, Pencil, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { Ban, List, Map as MapIcon, MoreHorizontal, Pencil, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
@@ -74,6 +75,20 @@ const LeafletCoordinatePicker = dynamic(
     ),
   },
 );
+
+const LeafletLocationsMap = dynamic(
+  () => import("@/features/admin/components/maestros/leaflet-locations-map").then((mod) => mod.LeafletLocationsMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[78vh] min-h-130 items-center justify-center bg-slate-50 text-sm text-slate-500">
+        Cargando mapa...
+      </div>
+    ),
+  },
+);
+
+type ViewMode = "list" | "map";
 
 type Props = {
   initialItems: UbicacionMaestra[];
@@ -99,11 +114,14 @@ const emptyForm: FormState = {
 
 export function UbicacionesClient({ initialItems }: Props) {
   const [items, setItems] = useState(initialItems);
+  const [view, setView] = useState<ViewMode>("list");
   const [search, setSearch] = useState("");
   const [estadoFilters, setEstadoFilters] = useState<string[]>([]);
   const [tipoFilters, setTipoFilters] = useState<string[]>([]);
   const [perPage, setPerPage] = useState("10");
   const [page, setPage] = useState(1);
+  // Ubicación resaltada al seleccionar una fila; se centra al pasar al mapa.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<UbicacionMaestra | null>(null);
@@ -296,60 +314,69 @@ export function UbicacionesClient({ initialItems }: Props) {
       </div>
 
       <FilterBar>
-        <div className="grid gap-3 lg:grid-cols-[1.2fr_200px_220px_160px]">
-          <SearchInput
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Buscar por código o nombre"
-          />
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_200px_220px]">
+            <SearchInput
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Buscar por código o nombre"
+            />
 
-          <MultiSelectFilter
-            placeholder="Todos los estados"
-            options={[
-              { value: "ACTIVAS", label: "Activas" },
-              { value: "INACTIVAS", label: "Inactivas" },
-            ]}
-            selected={estadoFilters}
-            onChange={(value) => {
-              setEstadoFilters(value);
-              setPage(1);
-            }}
-          />
+            <MultiSelectFilter
+              placeholder="Todos los estados"
+              options={[
+                { value: "ACTIVAS", label: "Activas" },
+                { value: "INACTIVAS", label: "Inactivas" },
+              ]}
+              selected={estadoFilters}
+              onChange={(value) => {
+                setEstadoFilters(value);
+                setPage(1);
+              }}
+            />
 
-          <MultiSelectFilter
-            placeholder="Todos los tipos"
-            options={TIPO_UBICACION_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.label,
-            }))}
-            selected={tipoFilters}
-            onChange={(value) => {
-              setTipoFilters(value);
-              setPage(1);
-            }}
-            selectedLabel={(count) => `${count} tipos`}
-          />
+            <MultiSelectFilter
+              placeholder="Todos los tipos"
+              options={TIPO_UBICACION_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label,
+              }))}
+              selected={tipoFilters}
+              onChange={(value) => {
+                setTipoFilters(value);
+                setPage(1);
+              }}
+              selectedLabel={(count) => `${count} tipos`}
+            />
+          </div>
 
-          <Select
-            value={perPage}
-            onValueChange={(value) => {
-              setPerPage(value);
-              setPage(1);
-            }}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="10">10 filas</SelectItem>
-              <SelectItem value="20">20 filas</SelectItem>
-              <SelectItem value="50">50 filas</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-3">
+            {view === "list" && (
+              <Select
+                value={perPage}
+                onValueChange={(value) => {
+                  setPerPage(value);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-30"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 filas</SelectItem>
+                  <SelectItem value="20">20 filas</SelectItem>
+                  <SelectItem value="50">50 filas</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+
+            <ViewToggle view={view} onChange={setView} />
+          </div>
         </div>
       </FilterBar>
 
+      {view === "list" ? (
       <section className="overflow-hidden rounded-lg border bg-white">
         <Table>
           <TableHeader>
@@ -370,7 +397,14 @@ export function UbicacionesClient({ initialItems }: Props) {
               </TableRow>
             ) : (
               pagedItems.map((item) => (
-                <TableRow key={item.id}>
+                <TableRow
+                  key={item.id}
+                  onClick={() =>
+                    setSelectedId((current) => (current === item.id ? null : item.id))
+                  }
+                  data-state={selectedId === item.id ? "selected" : undefined}
+                  className="cursor-pointer"
+                >
                   <TableCell className="font-medium">{item.codigo}</TableCell>
                   <TableCell>{item.nombre}</TableCell>
                   <TableCell>
@@ -381,7 +415,10 @@ export function UbicacionesClient({ initialItems }: Props) {
                       {item.activa ? "Activa" : "Inactiva"}
                     </StatusBadge>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell
+                    className="text-right"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -463,6 +500,21 @@ export function UbicacionesClient({ initialItems }: Props) {
           </Pagination>
         </div>
       </section>
+      ) : (
+      <section className="overflow-hidden rounded-lg border bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+          <p className="text-sm font-medium text-slate-700">
+            {filteredItems.length}{" "}
+            {filteredItems.length === 1 ? "ubicación visible" : "ubicaciones visibles"}
+          </p>
+        </div>
+        <LeafletLocationsMap
+          items={filteredItems}
+          selectedId={selectedId}
+          onEdit={openEdit}
+        />
+      </section>
+      )}
 
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} direction="right">
         <DrawerContent className="h-full overflow-hidden p-0 sm:max-w-xl">
@@ -631,6 +683,51 @@ export function UbicacionesClient({ initialItems }: Props) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+/** Selector compacto Lista / Mapa para alternar la vista del catálogo. */
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: ViewMode;
+  onChange: (view: ViewMode) => void;
+}) {
+  const options: { value: ViewMode; label: string; icon: typeof List }[] = [
+    { value: "list", label: "Lista", icon: List },
+    { value: "map", label: "Mapa", icon: MapIcon },
+  ];
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Vista del catálogo"
+      className="inline-flex shrink-0 rounded-lg border bg-white p-0.5"
+    >
+      {options.map((option) => {
+        const Icon = option.icon;
+        const active = view === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition",
+              active
+                ? "bg-[#001C55] text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
