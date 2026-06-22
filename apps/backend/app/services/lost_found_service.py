@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import AuditModulo
 from app.core.config import settings
 from app.core.constants import EstadoCasoLF
 from app.repositories.auditoria_repository import AuditoriaRepository
@@ -475,7 +476,7 @@ class LostFoundService:
         return " ".join(str(data.get(k) or "") for k in ("titulo", "descripcion", "lugar_referencia", "color_principal", "marca", "subcategoria")).lower()
 
     async def _audit_lf(self, usuario_id: str | None, accion: str, entidad: str | None, entidad_id: str | None, detalle: dict[str, Any]) -> None:
-        await self._audit.create_registro(usuario_id=usuario_id, modulo="LOST_FOUND", accion=accion, entidad=entidad, entidad_id=entidad_id, detalle=detalle)
+        await self._audit.create_registro(usuario_id=usuario_id, modulo=AuditModulo.LOST_FOUND, accion=accion, entidad=entidad, entidad_id=entidad_id, detalle=detalle)
 
     @staticmethod
     def _mark_deletable(rows: list[dict[str, Any]], usuario_id: str) -> list[dict[str, Any]]:

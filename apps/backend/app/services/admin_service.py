@@ -4,14 +4,30 @@
 📦 Capa: Servicios
 """
 
+import base64
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import (
+    AuditAccion,
+    AuditEntidad,
+    AuditModulo,
+    AuditOrigen,
+    AuditResultado,
+)
 from app.repositories.admin_repository import AdminRepository
+from app.repositories.auditoria_repository import AuditoriaRepository
 from app.schemas.admin import (
     ActualizarPermisosInput,
+    AuditoriaAccionesResponse,
     AuditoriaListResponse,
     AuditoriaUsuarioOut,
+    AuditoriaUsuarioRef,
+    AuditoriaUsuariosResponse,
     CambiarEstadoInput,
     IntegracionesListResponse,
     ModulosResponse,
@@ -29,6 +45,35 @@ from app.schemas.admin import (
 class AdminService:
     def __init__(self, db: AsyncSession) -> None:
         self._repo = AdminRepository(db)
+        self._audit = AuditoriaRepository(db)
+
+    async def _audit_admin(
+        self,
+        *,
+        actor_id: str | None,
+        modulo: str,
+        accion: str,
+        entidad: str,
+        entidad_id: str | None,
+        detalle: dict,
+    ) -> None:
+        # Solo registramos auditoría cuando conocemos al actor (acciones desde la
+        # web admin). Se inyectan origen/resultado estándar para las columnas de
+        # la pantalla de auditoría.
+        if not actor_id:
+            return
+        await self._audit.create_registro(
+            usuario_id=actor_id,
+            modulo=modulo,
+            accion=accion,
+            entidad=entidad,
+            entidad_id=entidad_id,
+            detalle={
+                "origen": AuditOrigen.WEB.value,
+                "resultado": AuditResultado.EXITOSO.value,
+                **detalle,
+            },
+        )
 
     # -----------------------------------------------------------------------
     # Usuarios
@@ -44,7 +89,9 @@ class AdminService:
         items = [self._map_usuario(r) for r in usuarios_rows]
         return UsuariosListResponse(items=items, **counts)
 
-    async def crear_usuario(self, data: UsuarioCreateInput) -> UsuarioOut:
+    async def crear_usuario(
+        self, data: UsuarioCreateInput, actor_id: str | None = None
+    ) -> UsuarioOut:
         if await self._repo.get_usuario_by_email(data.email):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -60,6 +107,18 @@ class AdminService:
             }
         )
         await self._repo.assign_rol(usuario_id, data.rol_id)
+        await self._audit_admin(
+            actor_id=actor_id,
+            modulo=AuditModulo.USUARIOS,
+            accion=AuditAccion.CREAR,
+            entidad=AuditEntidad.USUARIO,
+            entidad_id=usuario_id,
+            detalle={
+                "codigo_entidad": data.email,
+                "resumen": f"Alta de usuario {data.nombre} {data.apellido}",
+                "rol_id": data.rol_id,
+            },
+        )
         rows = await self._repo.list_usuarios()
         row = next((r for r in rows if str(r["id"]) == usuario_id), None)
         if not row:
@@ -67,7 +126,7 @@ class AdminService:
         return self._map_usuario(row)
 
     async def actualizar_usuario(
-        self, usuario_id: str, data: UsuarioUpdateInput
+        self, usuario_id: str, data: UsuarioUpdateInput, actor_id: str | None = None
     ) -> UsuarioOut:
         await self._repo.update_usuario(
             usuario_id,
@@ -83,16 +142,29 @@ class AdminService:
         row = next((r for r in rows if str(r["id"]) == usuario_id), None)
         if not row:
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        await self._audit_admin(
+            actor_id=actor_id,
+            modulo=AuditModulo.USUARIOS,
+            accion=AuditAccion.EDITAR,
+            entidad=AuditEntidad.USUARIO,
+            entidad_id=usuario_id,
+            detalle={
+                "codigo_entidad": row.get("email"),
+                "resumen": f"Edición de usuario {data.nombre} {data.apellido}",
+                "rol_id": data.rol_id,
+            },
+        )
         return self._map_usuario(row)
 
     async def cambiar_estado(
-        self, usuario_id: str, data: CambiarEstadoInput
+        self, usuario_id: str, data: CambiarEstadoInput, actor_id: str | None = None
     ) -> dict[str, str]:
+        rows = await self._repo.list_usuarios()
+        usuario = next((r for r in rows if str(r["id"]) == usuario_id), None)
+        estado_anterior = usuario.get("estado") if usuario else None
         if data.estado == "SUSPENDIDO":
             count = await self._repo.count_admins_activos()
             # Check if the user being suspended is an admin and the only one
-            rows = await self._repo.list_usuarios()
-            usuario = next((r for r in rows if str(r["id"]) == usuario_id), None)
             if usuario:
                 roles = usuario.get("roles") or []
                 is_admin = any(
@@ -104,12 +176,30 @@ class AdminService:
                         detail="No se puede suspender al único administrador activo.",
                     )
         await self._repo.cambiar_estado(usuario_id, data.estado)
+        accion_map = {
+            "ACTIVO": AuditAccion.ACTIVAR,
+            "SUSPENDIDO": AuditAccion.SUSPENDER,
+            "INACTIVO": AuditAccion.DESACTIVAR,
+        }
+        await self._audit_admin(
+            actor_id=actor_id,
+            modulo=AuditModulo.USUARIOS,
+            accion=accion_map.get(data.estado, AuditAccion.CAMBIAR_ESTADO),
+            entidad=AuditEntidad.USUARIO,
+            entidad_id=usuario_id,
+            detalle={
+                "codigo_entidad": usuario.get("email") if usuario else None,
+                "before": {"estado": estado_anterior},
+                "after": {"estado": data.estado},
+            },
+        )
         return {"message": "Estado actualizado correctamente."}
 
     async def actualizar_perfil_usuario(
         self,
         usuario_id: str,
         data: UsuarioProfileUpdateInput,
+        actor_id: str | None = None,
     ) -> UsuarioOut:
         updated = await self._repo.update_usuario_profile(
             usuario_id,
@@ -127,6 +217,17 @@ class AdminService:
         row = next((item for item in rows if str(item["id"]) == usuario_id), None)
         if not row:
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        await self._audit_admin(
+            actor_id=actor_id,
+            modulo=AuditModulo.USUARIOS,
+            accion=AuditAccion.EDITAR,
+            entidad=AuditEntidad.USUARIO,
+            entidad_id=usuario_id,
+            detalle={
+                "codigo_entidad": row.get("email"),
+                "resumen": f"Edición de perfil de {data.nombre} {data.apellido}",
+            },
+        )
         return self._map_usuario(row)
 
     # -----------------------------------------------------------------------
@@ -157,9 +258,32 @@ class AdminService:
         return PermisosListResponse(items=[self._map_permiso(r) for r in rows])
 
     async def actualizar_permisos_rol(
-        self, rol_id: str, data: ActualizarPermisosInput
+        self, rol_id: str, data: ActualizarPermisosInput, actor_id: str | None = None
     ) -> dict[str, str]:
+        roles = await self._repo.list_roles()
+        rol = next((r for r in roles if str(r["id"]) == rol_id), None)
+        permisos_antes = []
+        if rol:
+            permisos_raw = rol.get("permisos") or []
+            if isinstance(permisos_raw, str):
+                import json
+
+                permisos_raw = json.loads(permisos_raw)
+            permisos_antes = [str(p["id"]) for p in permisos_raw]
         await self._repo.update_permisos_rol(rol_id, data.permiso_ids)
+        await self._audit_admin(
+            actor_id=actor_id,
+            modulo=AuditModulo.ROLES,
+            accion=AuditAccion.CAMBIAR_ROL,
+            entidad=AuditEntidad.ROL,
+            entidad_id=rol_id,
+            detalle={
+                "codigo_entidad": rol.get("nombre") if rol else None,
+                "resumen": "Actualización de permisos de rol",
+                "before": {"permiso_ids": permisos_antes},
+                "after": {"permiso_ids": data.permiso_ids},
+            },
+        )
         return {"message": "Permisos actualizados correctamente."}
 
     # -----------------------------------------------------------------------
@@ -168,21 +292,39 @@ class AdminService:
 
     async def listar_auditoria(
         self,
+        *,
         search: str | None = None,
-        modulo: str | None = None,
+        modulos: list[str] | None = None,
+        acciones: list[str] | None = None,
         usuario_id: str | None = None,
+        entidad: str | None = None,
+        resultados: list[str] | None = None,
         desde: str | None = None,
         hasta: str | None = None,
-        limit: int = 100,
+        cursor: str | None = None,
+        page_size: int = 25,
     ) -> AuditoriaListResponse:
+        decoded_cursor = self._decode_cursor(cursor)
+        # Pedimos page_size + 1 para detectar has_more sin contar el total.
         rows = await self._repo.list_auditoria(
             search=search,
-            modulo=modulo,
+            modulos=modulos,
+            acciones=acciones,
             usuario_id=usuario_id,
+            entidad=entidad,
+            resultados=resultados,
             desde=desde,
             hasta=hasta,
-            limit=limit,
+            cursor=decoded_cursor,
+            limit=page_size + 1,
         )
+        has_more = len(rows) > page_size
+        page_rows = rows[:page_size]
+        next_cursor = None
+        if has_more and page_rows:
+            last = page_rows[-1]
+            next_cursor = self._encode_cursor(last["fecha_registro"], last["id"])
+
         items = [
             RegistroAuditoriaOut(
                 id=str(r["id"]),
@@ -193,15 +335,71 @@ class AdminService:
                 entidad=r.get("entidad"),
                 entidad_id=str(r["entidad_id"]) if r.get("entidad_id") else None,
                 detalle=r.get("detalle"),
+                ip_origen=str(r["ip_origen"]) if r.get("ip_origen") else None,
+                dispositivo=r.get("dispositivo"),
+                origen=self._detalle_str(r.get("detalle"), "origen"),
+                resultado=self._detalle_str(r.get("detalle"), "resultado"),
                 fecha_registro=str(r["fecha_registro"]),
             )
-            for r in rows
+            for r in page_rows
         ]
-        return AuditoriaListResponse(items=items, total=len(items))
+        return AuditoriaListResponse(
+            items=items,
+            page_size=page_size,
+            has_more=has_more,
+            next_cursor=next_cursor,
+        )
 
     async def obtener_modulos_distintos(self) -> ModulosResponse:
         modulos = await self._repo.get_modulos_distintos()
         return ModulosResponse(modulos=modulos)
+
+    async def obtener_acciones_distintas(self) -> AuditoriaAccionesResponse:
+        acciones = await self._repo.get_acciones_distintas()
+        return AuditoriaAccionesResponse(acciones=acciones)
+
+    async def obtener_usuarios_auditoria(self) -> AuditoriaUsuariosResponse:
+        rows = await self._repo.get_usuarios_auditoria()
+        usuarios = [
+            AuditoriaUsuarioRef(
+                id=str(r["id"]),
+                nombre_completo=(
+                    f"{(r.get('nombre') or '').strip()} "
+                    f"{(r.get('apellido') or '').strip()}"
+                ).strip()
+                or "Usuario",
+                email=r.get("email"),
+            )
+            for r in rows
+        ]
+        return AuditoriaUsuariosResponse(usuarios=usuarios)
+
+    @staticmethod
+    def _detalle_str(detalle: Any, key: str) -> str | None:
+        if isinstance(detalle, dict):
+            value = detalle.get(key)
+            if isinstance(value, str):
+                return value
+        return None
+
+    @staticmethod
+    def _encode_cursor(fecha_registro: Any, registro_id: Any) -> str:
+        raw = f"{fecha_registro.isoformat()}|{registro_id}"
+        return base64.urlsafe_b64encode(raw.encode()).decode()
+
+    @staticmethod
+    def _decode_cursor(cursor: str | None) -> tuple[datetime, UUID] | None:
+        if not cursor:
+            return None
+        try:
+            raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+            fecha_str, id_str = raw.split("|", 1)
+            return datetime.fromisoformat(fecha_str), UUID(id_str)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cursor de paginación inválido.",
+            ) from exc
 
     # -----------------------------------------------------------------------
     # Integraciones

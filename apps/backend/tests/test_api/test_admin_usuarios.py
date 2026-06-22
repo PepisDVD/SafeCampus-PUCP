@@ -13,7 +13,7 @@ class FakeAdminService:
         self.profile_data = None
         self.statuses: list[str] = []
 
-    async def actualizar_perfil_usuario(self, usuario_id, data):
+    async def actualizar_perfil_usuario(self, usuario_id, data, actor_id=None):
         self.profile_data = (usuario_id, data)
         return UsuarioOut(
             id=usuario_id,
@@ -30,12 +30,12 @@ class FakeAdminService:
             roles=[{"id": ROLE_ID, "nombre": "operador"}],
         )
 
-    async def cambiar_estado(self, usuario_id, data):
+    async def cambiar_estado(self, usuario_id, data, actor_id=None):
         assert usuario_id == USER_ID
         self.statuses.append(data.estado)
         return {"message": "Estado actualizado correctamente."}
 
-    async def crear_usuario(self, data):
+    async def crear_usuario(self, data, actor_id=None):
         self.created = data
         return UsuarioOut(
             id=USER_ID,

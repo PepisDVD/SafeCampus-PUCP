@@ -19,13 +19,39 @@ export interface RegistroAuditoria {
   entidad: string | null;
   entidad_id: string | null;
   detalle: Record<string, unknown> | null;
+  ip_origen: string | null;
+  dispositivo: string | null;
+  /** Derived from `detalle.origen` (e.g. WEB, APP_MOVIL) when present. */
+  origen: string | null;
+  /** Derived from `detalle.resultado` (exitoso | fallido | denegado) when present. */
+  resultado: string | null;
 }
 
+/**
+ * Keyset-paginated response. No total count is returned; use `has_more` +
+ * `next_cursor` to page forward.
+ */
 export interface AuditoriaListResponse {
   items: RegistroAuditoria[];
-  total: number;
+  page_size: number;
+  has_more: boolean;
+  next_cursor: string | null;
 }
 
 export interface AuditoriaModulosResponse {
   modulos: string[];
+}
+
+export interface AuditoriaAccionesResponse {
+  acciones: string[];
+}
+
+export interface AuditoriaUsuarioRef {
+  id: string;
+  nombre_completo: string;
+  email: string | null;
+}
+
+export interface AuditoriaUsuariosResponse {
+  usuarios: AuditoriaUsuarioRef[];
 }

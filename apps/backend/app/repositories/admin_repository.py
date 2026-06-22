@@ -2,16 +2,43 @@
 Repository for the admin module using normalized SQLAlchemy schema models.
 """
 
+from datetime import datetime, time, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import String, cast, delete, func, literal_column, or_, select, update
+from sqlalchemy import (
+    String,
+    cast,
+    delete,
+    func,
+    literal_column,
+    or_,
+    select,
+    tuple_,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sc_auditoria import RegistroAuditoria
 from app.models.sc_dashboard import EstadoIntegracion
 from app.models.sc_users import Permiso, Rol, RolPermiso, Usuario, UsuarioRol
+
+
+def _parse_fecha(value: str, *, end_of_day: bool = False) -> datetime:
+    """Convierte un parámetro de fecha (``YYYY-MM-DD`` o ISO completo) a un
+    ``datetime`` tz-aware (UTC) para comparar contra una columna ``timestamptz``.
+
+    Si sólo se envía la fecha, ``end_of_day`` extiende ``hasta`` al final del día
+    para que el filtro sea inclusivo.
+    """
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        # Sólo fecha o datetime naive: asumimos UTC.
+        if end_of_day and parsed.time() == time(0, 0):
+            parsed = datetime.combine(parsed.date(), time.max)
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 class AdminRepository:
@@ -262,35 +289,79 @@ class AdminRepository:
 
     async def list_auditoria(
         self,
+        *,
         search: str | None = None,
-        modulo: str | None = None,
+        modulos: list[str] | None = None,
+        acciones: list[str] | None = None,
         usuario_id: str | None = None,
+        entidad: str | None = None,
+        resultados: list[str] | None = None,
         desde: str | None = None,
         hasta: str | None = None,
-        limit: int = 100,
+        cursor: tuple[datetime, UUID] | None = None,
+        limit: int = 25,
     ) -> list[dict[str, Any]]:
-        statement = select(
-            RegistroAuditoria.id,
-            RegistroAuditoria.usuario_id,
-            Usuario.nombre.label("usuario_nombre"),
-            Usuario.apellido.label("usuario_apellido"),
-            Usuario.email.label("usuario_email"),
-            Usuario.avatar_url.label("usuario_avatar_url"),
-            RegistroAuditoria.modulo,
-            RegistroAuditoria.accion,
-            RegistroAuditoria.entidad,
-            RegistroAuditoria.entidad_id,
-            RegistroAuditoria.detalle,
-            RegistroAuditoria.fecha_registro,
-        ).outerjoin(
-            Usuario,
-            Usuario.id == RegistroAuditoria.usuario_id,
-        ).order_by(RegistroAuditoria.fecha_registro.desc()).limit(limit)
+        """Listado por keyset paginado.
 
-        if modulo:
-            statement = statement.where(RegistroAuditoria.modulo == modulo)
+        Devuelve hasta ``limit`` filas ordenadas por ``fecha_registro DESC,
+        id DESC``. El llamador debe pedir ``limit + 1`` para detectar
+        ``has_more``. No realiza ``COUNT(*)`` del total.
+        """
+        resultado_expr = RegistroAuditoria.detalle["resultado"].astext
+
+        statement = (
+            select(
+                RegistroAuditoria.id,
+                RegistroAuditoria.usuario_id,
+                Usuario.nombre.label("usuario_nombre"),
+                Usuario.apellido.label("usuario_apellido"),
+                Usuario.email.label("usuario_email"),
+                Usuario.avatar_url.label("usuario_avatar_url"),
+                RegistroAuditoria.modulo,
+                RegistroAuditoria.accion,
+                RegistroAuditoria.entidad,
+                RegistroAuditoria.entidad_id,
+                RegistroAuditoria.detalle,
+                RegistroAuditoria.ip_origen,
+                RegistroAuditoria.dispositivo,
+                RegistroAuditoria.fecha_registro,
+            )
+            .outerjoin(Usuario, Usuario.id == RegistroAuditoria.usuario_id)
+            .order_by(
+                RegistroAuditoria.fecha_registro.desc(),
+                RegistroAuditoria.id.desc(),
+            )
+            .limit(limit)
+        )
+
+        if modulos:
+            statement = statement.where(RegistroAuditoria.modulo.in_(modulos))
+        if acciones:
+            statement = statement.where(RegistroAuditoria.accion.in_(acciones))
         if usuario_id:
             statement = statement.where(RegistroAuditoria.usuario_id == UUID(usuario_id))
+        if entidad:
+            statement = statement.where(
+                RegistroAuditoria.entidad.ilike(f"%{entidad}%")
+            )
+        if resultados:
+            statement = statement.where(resultado_expr.in_(resultados))
+        if desde:
+            statement = statement.where(
+                RegistroAuditoria.fecha_registro >= _parse_fecha(desde)
+            )
+        if hasta:
+            statement = statement.where(
+                RegistroAuditoria.fecha_registro <= _parse_fecha(hasta, end_of_day=True)
+            )
+        if cursor is not None:
+            statement = statement.where(
+                tuple_(
+                    RegistroAuditoria.fecha_registro,
+                    RegistroAuditoria.id,
+                )
+                < tuple_(cursor[0], cursor[1])
+            )
         if search:
             pattern = f"%{search}%"
             statement = statement.where(
@@ -299,15 +370,13 @@ class AdminRepository:
                     RegistroAuditoria.accion.ilike(pattern),
                     RegistroAuditoria.entidad.ilike(pattern),
                     cast(RegistroAuditoria.entidad_id, String).ilike(pattern),
+                    RegistroAuditoria.detalle["codigo_entidad"].astext.ilike(pattern),
+                    RegistroAuditoria.detalle["codigo"].astext.ilike(pattern),
                     Usuario.nombre.ilike(pattern),
                     Usuario.apellido.ilike(pattern),
                     Usuario.email.ilike(pattern),
                 )
             )
-        if desde:
-            statement = statement.where(RegistroAuditoria.fecha_registro >= desde)
-        if hasta:
-            statement = statement.where(RegistroAuditoria.fecha_registro <= hasta)
 
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
@@ -318,6 +387,29 @@ class AdminRepository:
         )
         result = await self.db.execute(statement)
         return [row[0] for row in result]
+
+    async def get_acciones_distintas(self) -> list[str]:
+        statement = select(RegistroAuditoria.accion).distinct().order_by(
+            RegistroAuditoria.accion
+        )
+        result = await self.db.execute(statement)
+        return [row[0] for row in result]
+
+    async def get_usuarios_auditoria(self) -> list[dict[str, Any]]:
+        """Usuarios distintos presentes en el log de auditoría (para el filtro)."""
+        statement = (
+            select(
+                Usuario.id,
+                Usuario.nombre,
+                Usuario.apellido,
+                Usuario.email,
+            )
+            .join(RegistroAuditoria, RegistroAuditoria.usuario_id == Usuario.id)
+            .distinct()
+            .order_by(Usuario.nombre, Usuario.apellido)
+        )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
 
     # -----------------------------------------------------------------------
     # Integraciones

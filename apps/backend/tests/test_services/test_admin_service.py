@@ -3,9 +3,27 @@ from uuid import uuid4
 
 import pytest
 
+from app.repositories.admin_repository import _parse_fecha
 from app.schemas.admin import CambiarEstadoInput, UsuarioProfileUpdateInput
 from app.services import admin_service
 from app.services.admin_service import AdminService
+
+
+def test_parse_fecha_solo_fecha_es_tz_aware_utc():
+    desde = _parse_fecha("2026-05-23")
+    assert desde.tzinfo is not None
+    assert desde.isoformat() == "2026-05-23T00:00:00+00:00"
+
+
+def test_parse_fecha_hasta_extiende_fin_de_dia():
+    hasta = _parse_fecha("2026-05-23", end_of_day=True)
+    assert hasta.year == 2026 and hasta.month == 5 and hasta.day == 23
+    assert hasta.hour == 23 and hasta.minute == 59 and hasta.tzinfo is not None
+
+
+def test_parse_fecha_iso_completo_se_respeta():
+    valor = _parse_fecha("2026-05-23T08:30:00+00:00")
+    assert valor.hour == 8 and valor.minute == 30
 
 
 class FakeAdminRepository:
@@ -66,14 +84,26 @@ class FakeAdminRepository:
         self.status_updates.append((usuario_id, estado))
 
 
+class FakeAuditoriaRepository:
+    created: list[dict] = []
+
+    def __init__(self, _db):
+        pass
+
+    async def create_registro(self, **data):
+        FakeAuditoriaRepository.created.append(data)
+
+
 @pytest.mark.anyio
 async def test_listar_auditoria_serializes_uuid_fields(monkeypatch):
     monkeypatch.setattr(admin_service, "AdminRepository", FakeAdminRepository)
 
-    response = await AdminService(db=None).listar_auditoria(limit=100)  # type: ignore[arg-type]
+    response = await AdminService(db=None).listar_auditoria(page_size=25)  # type: ignore[arg-type]
 
     item = response.items[0]
-    assert response.total == 1
+    assert response.has_more is False
+    assert response.next_cursor is None
+    assert len(response.items) == 1
     assert isinstance(item.id, str)
     assert isinstance(item.usuario_id, str)
     assert isinstance(item.entidad_id, str)
@@ -136,3 +166,41 @@ async def test_usuario_suspendido_puede_reactivarse(monkeypatch):
         (usuario_id, "SUSPENDIDO"),
         (usuario_id, "ACTIVO"),
     ]
+
+
+@pytest.mark.anyio
+async def test_cambiar_estado_registra_auditoria_con_actor(monkeypatch):
+    FakeAuditoriaRepository.created = []
+    monkeypatch.setattr(admin_service, "AdminRepository", FakeAdminRepository)
+    monkeypatch.setattr(admin_service, "AuditoriaRepository", FakeAuditoriaRepository)
+    service = AdminService(db=None)  # type: ignore[arg-type]
+    usuario_id = str(uuid4())
+    actor_id = str(uuid4())
+
+    await service.cambiar_estado(
+        usuario_id,
+        CambiarEstadoInput(estado="SUSPENDIDO"),
+        actor_id=actor_id,
+    )
+
+    assert len(FakeAuditoriaRepository.created) == 1
+    audit = FakeAuditoriaRepository.created[0]
+    assert audit["modulo"] == "usuarios"
+    assert audit["accion"] == "suspender"
+    assert audit["entidad"] == "usuario"
+    assert str(audit["usuario_id"]) == actor_id
+    assert audit["detalle"]["origen"] == "WEB"
+    assert audit["detalle"]["resultado"] == "exitoso"
+    assert audit["detalle"]["after"] == {"estado": "SUSPENDIDO"}
+
+
+@pytest.mark.anyio
+async def test_cambiar_estado_sin_actor_no_audita(monkeypatch):
+    FakeAuditoriaRepository.created = []
+    monkeypatch.setattr(admin_service, "AdminRepository", FakeAdminRepository)
+    monkeypatch.setattr(admin_service, "AuditoriaRepository", FakeAuditoriaRepository)
+    service = AdminService(db=None)  # type: ignore[arg-type]
+
+    await service.cambiar_estado(str(uuid4()), CambiarEstadoInput(estado="ACTIVO"))
+
+    assert FakeAuditoriaRepository.created == []

@@ -138,16 +138,36 @@ class RegistroAuditoriaOut(BaseModel):
     entidad: str | None
     entidad_id: str | None
     detalle: Any | None
+    ip_origen: str | None = None
+    dispositivo: str | None = None
+    origen: str | None = None
+    resultado: str | None = None
     fecha_registro: str
 
 
 class AuditoriaListResponse(BaseModel):
     items: list[RegistroAuditoriaOut]
-    total: int
+    page_size: int
+    has_more: bool
+    next_cursor: str | None = None
 
 
 class ModulosResponse(BaseModel):
     modulos: list[str]
+
+
+class AuditoriaAccionesResponse(BaseModel):
+    acciones: list[str]
+
+
+class AuditoriaUsuarioRef(BaseModel):
+    id: str
+    nombre_completo: str
+    email: EmailStr | None = None
+
+
+class AuditoriaUsuariosResponse(BaseModel):
+    usuarios: list[AuditoriaUsuarioRef]
 
 
 # ---------------------------------------------------------------------------
