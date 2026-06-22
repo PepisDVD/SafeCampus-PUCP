@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import AuditEntidad, AuditModulo, AuditOrigen, AuditResultado
 from app.core.config import settings
 from app.core.constants import CanalNotificacion, EstadoAlertaCampus
 from app.integrations.messaging.evolution_client import EvolutionApiClient
@@ -79,13 +80,11 @@ class AlertaService:
             },
             segmentos=[self._segmento_to_dict(item) for item in body.segmentos],
         )
-        await self._audit.create_registro(
-            usuario_id=actor_id,
-            modulo="alertas",
+        await self._audit_alerta(
+            actor_id=actor_id,
             accion="crear_alerta",
-            entidad="alerta",
-            entidad_id=str(row["id"]),
-            detalle={"codigo": row["codigo"], "estado": row["estado"]},
+            alerta_id=str(row["id"]),
+            detalle={"codigo_entidad": row["codigo"], "estado": row["estado"]},
         )
         return await self._hydrate_detail(row)
 
@@ -117,13 +116,11 @@ class AlertaService:
             actor_usuario_id=actor_id,
             detalle={"campos": sorted(data.keys())},
         )
-        await self._audit.create_registro(
-            usuario_id=actor_id,
-            modulo="alertas",
+        await self._audit_alerta(
+            actor_id=actor_id,
             accion="editar_alerta",
-            entidad="alerta",
-            entidad_id=alerta_id,
-            detalle={"codigo": row["codigo"]},
+            alerta_id=alerta_id,
+            detalle={"codigo_entidad": row["codigo"], "campos": sorted(data.keys())},
         )
         return await self._hydrate_detail(row)
 
@@ -178,13 +175,11 @@ class AlertaService:
                 "entregas_fallidas": failed,
             },
         )
-        await self._audit.create_registro(
-            usuario_id=actor_id,
-            modulo="alertas",
+        await self._audit_alerta(
+            actor_id=actor_id,
             accion="publicar_alerta",
-            entidad="alerta",
-            entidad_id=alerta_id,
-            detalle={"codigo": detail.codigo, "entregas": created, "fallidas": failed},
+            alerta_id=alerta_id,
+            detalle={"codigo_entidad": detail.codigo, "entregas": created, "fallidas": failed},
         )
         return AlertaPublishResponse(
             alerta=await self.obtener(alerta_id),
@@ -203,12 +198,10 @@ class AlertaService:
             actor_usuario_id=actor_id,
             detalle={"comentario": comentario},
         )
-        await self._audit.create_registro(
-            usuario_id=actor_id,
-            modulo="alertas",
+        await self._audit_alerta(
+            actor_id=actor_id,
             accion="cancelar_alerta",
-            entidad="alerta",
-            entidad_id=alerta_id,
+            alerta_id=alerta_id,
             detalle={"comentario": comentario},
         )
         return await self.obtener(alerta_id)
@@ -222,15 +215,35 @@ class AlertaService:
             actor_usuario_id=actor_id,
             detalle={"comentario": comentario},
         )
-        await self._audit.create_registro(
-            usuario_id=actor_id,
-            modulo="alertas",
+        await self._audit_alerta(
+            actor_id=actor_id,
             accion="finalizar_alerta",
-            entidad="alerta",
-            entidad_id=alerta_id,
+            alerta_id=alerta_id,
             detalle={"comentario": comentario},
         )
         return await self.obtener(alerta_id)
+
+    async def _audit_alerta(
+        self,
+        *,
+        actor_id: str,
+        accion: str,
+        alerta_id: str,
+        detalle: dict[str, Any],
+    ) -> None:
+        detalle_estandar = {
+            "origen": AuditOrigen.WEB.value,
+            "resultado": AuditResultado.EXITOSO.value,
+            **detalle,
+        }
+        await self._audit.create_registro(
+            usuario_id=actor_id,
+            modulo=AuditModulo.ALERTAS,
+            accion=accion,
+            entidad=AuditEntidad.ALERTA,
+            entidad_id=alerta_id,
+            detalle=detalle_estandar,
+        )
 
     async def stats(self) -> AlertasStatsResponse:
         raw = await self._repo.stats()

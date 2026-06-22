@@ -28,13 +28,12 @@ function SyncView({ lat, lng }: { lat: number | null; lng: number | null }) {
   const map = useMap();
 
   useEffect(() => {
-    const immediate = window.setTimeout(() => map.invalidateSize(), 0);
-    const delayed = window.setTimeout(() => map.invalidateSize(), 180);
-
-    return () => {
-      window.clearTimeout(immediate);
-      window.clearTimeout(delayed);
-    };
+    // Varias pasadas: el mapa vive dentro de un Dialog animado y debe
+    // recalcular su tamaño cuando el contenedor termina de estabilizarse.
+    const timers = [0, 180, 400, 800].map((delay) =>
+      window.setTimeout(() => map.invalidateSize(), delay),
+    );
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [map]);
 
   useEffect(() => {
@@ -66,7 +65,10 @@ export function LeafletCoordinatePicker({
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxZoom={19}
             maxNativeZoom={19}
+            keepBuffer={6}
+            updateWhenZooming={false}
           />
           <SyncView lat={lat} lng={lng} />
           <ClickCapture onPick={onChange} />

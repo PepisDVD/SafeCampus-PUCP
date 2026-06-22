@@ -22,7 +22,7 @@ import {
   ShieldCheck,
   UserCircle2,
 } from "lucide-react";
-import { Badge, Card } from "@safecampus/ui-kit";
+import { Badge, Card, formatRoleLabel } from "@safecampus/ui-kit";
 
 type ComunidadProfileProps = {
   perfil: {
@@ -41,17 +41,9 @@ type ComunidadProfileProps = {
   };
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  comunidad: "Usuario comunidad",
-  estudiante: "Estudiante",
-  operador: "Operador",
-  supervisor: "Supervisor",
-  administrador: "Administrador",
-};
-
 function formatRole(role: string | undefined): string {
   if (!role) return "Usuario comunidad";
-  return ROLE_LABELS[role.toLowerCase()] ?? role;
+  return formatRoleLabel(role);
 }
 
 function getCommunityRole(roles: string[]): string {
@@ -128,7 +120,7 @@ export function ComunidadProfile({ perfil, stats }: ComunidadProfileProps) {
   return (
     <div className="space-y-6 px-4 py-5">
       {/* Header card */}
-      <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-[#001C55] to-[#032E84] p-5 text-white shadow-lg">
+      <Card className="relative overflow-hidden border-0 bg-linear-to-br from-[#001C55] to-[#032E84] p-5 text-white shadow-lg">
         <div className="flex items-center gap-4">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-xl font-bold">
             {initials}

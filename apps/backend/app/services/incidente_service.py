@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import AuditEntidad, AuditModulo, AuditOrigen, AuditResultado
 from app.core.config import settings
 from app.core.constants import CanalNotificacion, NivelSeveridad, OrigenAlerta, TipoSegmentoAlerta
 from app.repositories.auditoria_repository import AuditoriaRepository
@@ -484,7 +485,9 @@ class IncidenteService:
                 incidente_id=incidente_id,
                 detalle={
                     "codigo": result["codigo"],
-                    "resultado": resultado_cierre,
+                    # `resultado` se reserva para exitoso/fallido/denegado; el
+                    # resultado de cierre del expediente se guarda aparte.
+                    "resultado_cierre": resultado_cierre,
                 },
             )
         participantes = await self._repo.get_participantes(incidente_id)
@@ -963,13 +966,20 @@ class IncidenteService:
         incidente_id: str,
         detalle: dict[str, Any],
     ) -> None:
+        # Poblamos origen/resultado estándar para las columnas de la pantalla de
+        # auditoría sin sobrescribir valores explícitos provistos por el llamador.
+        detalle_estandar = {
+            "origen": AuditOrigen.WEB.value,
+            "resultado": AuditResultado.EXITOSO.value,
+            **detalle,
+        }
         await self._auditoria.create_registro(
             usuario_id=usuario_id,
-            modulo="incidentes",
+            modulo=AuditModulo.INCIDENTES,
             accion=accion,
-            entidad="incidente",
+            entidad=AuditEntidad.INCIDENTE,
             entidad_id=incidente_id,
-            detalle=detalle,
+            detalle=detalle_estandar,
         )
 
     @staticmethod

@@ -1,21 +1,25 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   Button,
-  Badge,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  FilterBar,
+  MultiSelectFilter,
+  RoleBadge,
+  SearchInput,
+  Skeleton,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
+  TablePaginationBar,
   Card,
   CardContent,
   AlertDialog,
@@ -26,21 +30,26 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  formatRoleLabel,
 } from "@safecampus/ui-kit";
 import {
   Users,
   UserCheck,
   UserX,
   UserMinus,
-  Search,
+  Eye,
   Plus,
-  Pencil,
   Ban,
   RotateCcw,
 } from "lucide-react";
-import { cambiarEstadoUsuario } from "../../actions/usuario.actions";
+import { toast } from "sonner";
+import {
+  actualizarPerfilUsuario,
+  cambiarEstadoUsuario,
+} from "../../actions/usuario.actions";
 import { UsuarioEstadoBadge } from "./usuario-estado-badge";
 import { UsuarioForm } from "./usuario-form";
+import { ProfilePageClient } from "@/features/profile/components/profile-page-client";
 import type { UsuarioConRoles } from "../../services/usuario.service";
 import type { RolConPermisos } from "../../services/rol.service";
 
@@ -57,29 +66,38 @@ type UsuariosClientProps = {
   stats: StatsData;
 };
 
+const PER_PAGE = 10;
+
 export function UsuariosClient({
   initialUsuarios,
   roles,
   stats,
 }: UsuariosClientProps) {
+  const [usuarios, setUsuarios] = useState(initialUsuarios);
   const [search, setSearch] = useState("");
-  const [estadoFilter, setEstadoFilter] = useState<string>("todos");
-  const [rolFilter, setRolFilter] = useState<string>("todos");
+  const [estadoFilters, setEstadoFilters] = useState<string[]>([]);
+  const [rolFilters, setRolFilters] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<UsuarioConRoles | undefined>();
   const [suspendTarget, setSuspendTarget] = useState<UsuarioConRoles | null>(
     null,
   );
   const [activarTarget, setActivarTarget] = useState<UsuarioConRoles | null>(
     null,
   );
+  const [profileTarget, setProfileTarget] = useState<UsuarioConRoles | null>(null);
+  // Id de la fila cuyo estado se está actualizando (muestra skeleton de carga).
+  const [pendingRowId, setPendingRowId] = useState<string | null>(null);
 
   const [isPending, startTransition] = useTransition();
-  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setUsuarios(initialUsuarios);
+  }, [initialUsuarios]);
 
   const filtered = useMemo(() => {
-    return initialUsuarios.filter((u) => {
+    return usuarios.filter((u) => {
       const term = search.toLowerCase();
       const matchesSearch =
         !term ||
@@ -88,48 +106,96 @@ export function UsuariosClient({
         u.email.toLowerCase().includes(term);
 
       const matchesEstado =
-        estadoFilter === "todos" || u.estado === estadoFilter;
+        estadoFilters.length === 0 || estadoFilters.includes(u.estado);
 
       const matchesRol =
-        rolFilter === "todos" || u.roles.some((r) => r.id === rolFilter);
+        rolFilters.length === 0 || u.roles.some((r) => rolFilters.includes(r.id));
 
       return matchesSearch && matchesEstado && matchesRol;
     });
-  }, [initialUsuarios, search, estadoFilter, rolFilter]);
+  }, [usuarios, search, estadoFilters, rolFilters]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+
+  // Mantener la página dentro de rango cuando cambian filtros o resultados.
+  useEffect(() => {
+    setPage(1);
+  }, [search, estadoFilters, rolFilters]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE),
+    [filtered, page],
+  );
 
   const handleSuspender = () => {
     if (!suspendTarget) return;
-    setActionError(null);
+    const targetId = suspendTarget.id;
+    setPendingRowId(targetId);
+    setSuspendTarget(null);
     startTransition(async () => {
-      const result = await cambiarEstadoUsuario(
-        suspendTarget.id,
-        "SUSPENDIDO",
-      );
+      const result = await cambiarEstadoUsuario(targetId, "SUSPENDIDO");
       if (result.error) {
-        setActionError(result.error);
+        toast.error(result.error);
+      } else {
+        setUsuarios((current) =>
+          current.map((usuario) =>
+            usuario.id === targetId
+              ? { ...usuario, estado: "SUSPENDIDO" }
+              : usuario,
+          ),
+        );
+        setProfileTarget((current) =>
+          current && current.id === targetId
+            ? { ...current, estado: "SUSPENDIDO" }
+            : current,
+        );
+        toast.success("Usuario suspendido correctamente.");
       }
-      setSuspendTarget(null);
+      setPendingRowId(null);
     });
   };
 
   const handleActivar = () => {
     if (!activarTarget) return;
-    setActionError(null);
+    const targetId = activarTarget.id;
+    setPendingRowId(targetId);
+    setActivarTarget(null);
     startTransition(async () => {
-      const result = await cambiarEstadoUsuario(activarTarget.id, "ACTIVO");
+      const result = await cambiarEstadoUsuario(targetId, "ACTIVO");
       if (result.error) {
-        setActionError(result.error);
+        toast.error(result.error);
+      } else {
+        setUsuarios((current) =>
+          current.map((usuario) =>
+            usuario.id === targetId
+              ? { ...usuario, estado: "ACTIVO" }
+              : usuario,
+          ),
+        );
+        setProfileTarget((current) =>
+          current && current.id === targetId
+            ? { ...current, estado: "ACTIVO" }
+            : current,
+        );
+        toast.success("Usuario reactivado correctamente.");
       }
-      setActivarTarget(null);
+      setPendingRowId(null);
     });
   };
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString("es-PE", {
+    return new Date(dateStr).toLocaleString("es-PE", {
       day: "2-digit",
       month: "short",
       year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
     });
   };
 
@@ -146,7 +212,6 @@ export function UsuariosClient({
         </div>
         <Button
           onClick={() => {
-            setEditTarget(undefined);
             setModalOpen(true);
           }}
           className="bg-[#001C55] hover:bg-[#001C55]/90"
@@ -197,47 +262,36 @@ export function UsuariosClient({
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre, apellido o correo..."
-            className="pl-9"
-          />
-        </div>
-        <Select value={estadoFilter} onValueChange={setEstadoFilter}>
-          <SelectTrigger className="w-full sm:w-40">
-            <SelectValue placeholder="Estado" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos los estados</SelectItem>
-            <SelectItem value="ACTIVO">Activo</SelectItem>
-            <SelectItem value="INACTIVO">Inactivo</SelectItem>
-            <SelectItem value="SUSPENDIDO">Suspendido</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={rolFilter} onValueChange={setRolFilter}>
-          <SelectTrigger className="w-full sm:w-44">
-            <SelectValue placeholder="Rol" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos los roles</SelectItem>
-            {roles.map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {r.nombre}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <FilterBar className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <SearchInput
+          containerClassName="flex-1"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nombre, apellido o correo..."
+        />
+        <MultiSelectFilter
+          className="w-full sm:w-44"
+          placeholder="Todos los estados"
+          options={[
+            { value: "ACTIVO", label: "Activos" },
+            { value: "INACTIVO", label: "Inactivos" },
+            { value: "SUSPENDIDO", label: "Suspendidos" },
+          ]}
+          selected={estadoFilters}
+          onChange={setEstadoFilters}
+        />
+        <MultiSelectFilter
+          className="w-full sm:w-48"
+          placeholder="Todos los roles"
+          options={roles.map((rol) => ({
+            value: rol.id,
+            label: formatRoleLabel(rol.nombre),
+          }))}
+          selected={rolFilters}
+          onChange={setRolFilters}
+        />
+      </FilterBar>
 
-      {actionError && (
-        <p className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm text-destructive">
-          {actionError}
-        </p>
-      )}
 
       {/* Table */}
       <div className="rounded-lg border bg-white overflow-hidden">
@@ -264,7 +318,10 @@ export function UsuariosClient({
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((u) => (
+              paginated.map((u) =>
+                u.id === pendingRowId ? (
+                  <UsuarioRowSkeleton key={u.id} />
+                ) : (
                 <TableRow key={u.id}>
                   <TableCell>
                     <div>
@@ -284,13 +341,7 @@ export function UsuariosClient({
                     <div className="flex flex-wrap gap-1">
                       {u.roles.length > 0 ? (
                         u.roles.map((r) => (
-                          <Badge
-                            key={r.id}
-                            variant="secondary"
-                            className="text-xs"
-                          >
-                            {r.nombre}
-                          </Badge>
+                          <RoleBadge key={r.id} role={r.nombre} className="text-xs" />
                         ))
                       ) : (
                         <span className="text-xs text-muted-foreground">
@@ -306,47 +357,33 @@ export function UsuariosClient({
                     {formatDate(u.ultimo_acceso)}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="Editar"
-                        onClick={() => {
-                          setEditTarget(u);
-                          setModalOpen(true);
-                        }}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      {u.estado !== "SUSPENDIDO" ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          title="Suspender"
-                          onClick={() => setSuspendTarget(u)}
-                        >
-                          <Ban className="h-3.5 w-3.5" />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                          title="Reactivar"
-                          onClick={() => setActivarTarget(u)}
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={`Ver detalle de ${u.nombre} ${u.apellido}`}
+                      onClick={() => setProfileTarget(u)}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
-              ))
+                ),
+              )
             )}
           </TableBody>
         </Table>
+        {filtered.length > 0 && (
+          <TablePaginationBar
+            page={page}
+            totalPages={totalPages}
+            total={filtered.length}
+            perPage={PER_PAGE}
+            entityLabel="usuarios"
+            onPrev={() => setPage((p) => Math.max(1, p - 1))}
+            onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+          />
+        )}
       </div>
 
       {/* Create/Edit modal */}
@@ -354,8 +391,88 @@ export function UsuariosClient({
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         roles={roles}
-        usuario={editTarget}
       />
+
+      <Dialog open={Boolean(profileTarget)} onOpenChange={(open) => !open && setProfileTarget(null)}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto p-0 sm:max-w-6xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Perfil de usuario</DialogTitle>
+            <DialogDescription>Información registrada del usuario seleccionado.</DialogDescription>
+          </DialogHeader>
+          {profileTarget && (
+            <ProfilePageClient
+              readOnly
+              headerActions={
+                profileTarget.estado !== "SUSPENDIDO" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                    disabled={isPending}
+                    onClick={() => setSuspendTarget(profileTarget)}
+                  >
+                    <Ban className="h-4 w-4" />
+                    Suspender
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isPending}
+                    onClick={() => setActivarTarget(profileTarget)}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reactivar
+                  </Button>
+                )
+              }
+              onSave={async (values) => {
+                const result = await actualizarPerfilUsuario({
+                  id: profileTarget.id,
+                  ...values,
+                });
+                if (!result.error) {
+                  setUsuarios((current) =>
+                    current.map((usuario) =>
+                      usuario.id === profileTarget.id
+                        ? {
+                            ...usuario,
+                            nombre: values.nombre,
+                            apellido: values.apellido,
+                            telefono: values.telefono || null,
+                            departamento: values.departamento || null,
+                          }
+                        : usuario,
+                    ),
+                  );
+                  setProfileTarget((current) =>
+                    current
+                      ? {
+                          ...current,
+                          nombre: values.nombre,
+                          apellido: values.apellido,
+                          telefono: values.telefono || null,
+                          departamento: values.departamento || null,
+                        }
+                      : current,
+                  );
+                }
+                return result;
+              }}
+              profile={{
+                id: profileTarget.id,
+                nombre: profileTarget.nombre,
+                apellido: profileTarget.apellido,
+                email: profileTarget.email,
+                codigoInstitucional: profileTarget.codigo_institucional,
+                telefono: profileTarget.telefono,
+                departamento: profileTarget.departamento,
+                roles: profileTarget.roles.map((role) => role.nombre),
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Suspend confirmation */}
       <AlertDialog
@@ -415,5 +532,36 @@ export function UsuariosClient({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+function UsuarioRowSkeleton() {
+  return (
+    <TableRow aria-busy="true" className="animate-pulse">
+      <TableCell>
+        <div className="space-y-1.5">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-40" />
+        </div>
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-20" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-24" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-5 w-20 rounded-full" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-28" />
+      </TableCell>
+      <TableCell className="text-right">
+        <Skeleton className="ml-auto h-8 w-8 rounded-md" />
+      </TableCell>
+    </TableRow>
   );
 }

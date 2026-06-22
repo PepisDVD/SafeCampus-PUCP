@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,8 +27,8 @@ class RegistroAuditoria(Base):
         ForeignKey("sc_users.usuario.id"),
     )
     modulo: Mapped[str] = mapped_column(String(50), nullable=False)
-    accion: Mapped[str] = mapped_column(String(50), nullable=False)
-    entidad: Mapped[str | None] = mapped_column(String(100))
+    accion: Mapped[str] = mapped_column(String(100), nullable=False)
+    entidad: Mapped[str | None] = mapped_column(String(50))
     entidad_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     detalle: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     ip_origen: Mapped[str | None] = mapped_column(INET)

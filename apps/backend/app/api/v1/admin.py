@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_session, require_roles
 from app.schemas.admin import (
     ActualizarPermisosInput,
+    AuditoriaAccionesResponse,
     AuditoriaListResponse,
+    AuditoriaUsuariosResponse,
     CambiarEstadoInput,
     IntegracionesListResponse,
     LlmUsageListResponse,
@@ -20,14 +22,24 @@ from app.schemas.admin import (
     RolesListResponse,
     UsuarioCreateInput,
     UsuarioOut,
-    UsuarioUpdateInput,
+    UsuarioProfileUpdateInput,
     UsuariosListResponse,
+    UsuarioUpdateInput,
 )
+from app.schemas.auth import AuthUserResponse
 from app.schemas.common import MessageResponse
 from app.services.admin_service import AdminService
 from app.services.llm_audit_service import LlmAuditService
 
-router = APIRouter(dependencies=[Depends(require_roles({"administrador"}))])
+require_admin = require_roles({"administrador"})
+router = APIRouter(dependencies=[Depends(require_admin)])
+
+
+def _split_csv(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    return items or None
 
 
 def get_service(db: AsyncSession = Depends(get_session)) -> AdminService:
@@ -51,8 +63,9 @@ async def listar_usuarios(
 async def crear_usuario(
     body: UsuarioCreateInput,
     service: AdminService = Depends(get_service),
+    current_user: AuthUserResponse = Depends(require_admin),
 ):
-    return await service.crear_usuario(body)
+    return await service.crear_usuario(body, actor_id=current_user.id)
 
 
 @router.put("/usuarios/{usuario_id}", response_model=UsuarioOut, tags=["Admin - Usuarios"])
@@ -60,8 +73,25 @@ async def actualizar_usuario(
     usuario_id: str,
     body: UsuarioUpdateInput,
     service: AdminService = Depends(get_service),
+    current_user: AuthUserResponse = Depends(require_admin),
 ):
-    return await service.actualizar_usuario(usuario_id, body)
+    return await service.actualizar_usuario(usuario_id, body, actor_id=current_user.id)
+
+
+@router.patch(
+    "/usuarios/{usuario_id}/perfil",
+    response_model=UsuarioOut,
+    tags=["Admin - Usuarios"],
+)
+async def actualizar_perfil_usuario(
+    usuario_id: str,
+    body: UsuarioProfileUpdateInput,
+    service: AdminService = Depends(get_service),
+    current_user: AuthUserResponse = Depends(require_admin),
+):
+    return await service.actualizar_perfil_usuario(
+        usuario_id, body, actor_id=current_user.id
+    )
 
 
 @router.patch(
@@ -73,8 +103,9 @@ async def cambiar_estado_usuario(
     usuario_id: str,
     body: CambiarEstadoInput,
     service: AdminService = Depends(get_service),
+    current_user: AuthUserResponse = Depends(require_admin),
 ):
-    result = await service.cambiar_estado(usuario_id, body)
+    result = await service.cambiar_estado(usuario_id, body, actor_id=current_user.id)
     return MessageResponse(message=result["message"])
 
 
@@ -101,8 +132,11 @@ async def actualizar_permisos_rol(
     rol_id: str,
     body: ActualizarPermisosInput,
     service: AdminService = Depends(get_service),
+    current_user: AuthUserResponse = Depends(require_admin),
 ):
-    result = await service.actualizar_permisos_rol(rol_id, body)
+    result = await service.actualizar_permisos_rol(
+        rol_id, body, actor_id=current_user.id
+    )
     return MessageResponse(message=result["message"])
 
 
@@ -113,20 +147,28 @@ async def actualizar_permisos_rol(
 @router.get("/auditoria", response_model=AuditoriaListResponse, tags=["Admin - Auditoría"])
 async def listar_auditoria(
     search: str | None = Query(default=None),
-    modulo: str | None = Query(default=None),
+    modulo: str | None = Query(default=None, description="CSV de módulos"),
+    accion: str | None = Query(default=None, description="CSV de acciones"),
     usuario_id: str | None = Query(default=None),
+    entidad: str | None = Query(default=None),
+    resultado: str | None = Query(default=None, description="CSV de resultados"),
     desde: str | None = Query(default=None),
     hasta: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
+    cursor: str | None = Query(default=None),
+    page_size: int = Query(default=25, ge=1, le=100),
     service: AdminService = Depends(get_service),
 ):
     return await service.listar_auditoria(
         search=search,
-        modulo=modulo,
+        modulos=_split_csv(modulo),
+        acciones=_split_csv(accion),
         usuario_id=usuario_id,
+        entidad=entidad,
+        resultados=_split_csv(resultado),
         desde=desde,
         hasta=hasta,
-        limit=limit,
+        cursor=cursor,
+        page_size=page_size,
     )
 
 
@@ -137,6 +179,24 @@ async def listar_auditoria(
 )
 async def obtener_modulos(service: AdminService = Depends(get_service)):
     return await service.obtener_modulos_distintos()
+
+
+@router.get(
+    "/auditoria/acciones",
+    response_model=AuditoriaAccionesResponse,
+    tags=["Admin - Auditoría"],
+)
+async def obtener_acciones(service: AdminService = Depends(get_service)):
+    return await service.obtener_acciones_distintas()
+
+
+@router.get(
+    "/auditoria/usuarios",
+    response_model=AuditoriaUsuariosResponse,
+    tags=["Admin - Auditoría"],
+)
+async def obtener_usuarios_auditoria(service: AdminService = Depends(get_service)):
+    return await service.obtener_usuarios_auditoria()
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +251,9 @@ async def listar_llm_usage(
         page=page,
         page_size=page_size,
         conversacion_id=conversacion_id,
-        provider=provider,
+        providers=[item.strip() for item in provider.split(",") if item.strip()]
+        if provider
+        else None,
         desde=desde,
         hasta=hasta,
     )

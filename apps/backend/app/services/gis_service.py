@@ -7,7 +7,6 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.gis_repository import GisRepository
 from app.schemas.alerta import (
     GisHeatmapPoint,
@@ -21,7 +20,6 @@ from app.schemas.alerta import (
 class GisService:
     def __init__(self, db: AsyncSession) -> None:
         self._repo = GisRepository(db)
-        self._audit = AuditoriaRepository(db)
 
     async def proximidad(
         self,
@@ -37,13 +35,6 @@ class GisService:
             longitud=longitud,
             radio_metros=max(1, min(radio_metros, 5000)),
             limit=max(1, min(limit, 100)),
-        )
-        await self._audit.create_registro(
-            usuario_id=actor_id,
-            modulo="gis",
-            accion="consultar_proximidad",
-            entidad="consulta_gis",
-            detalle={"latitud": latitud, "longitud": longitud, "radio_metros": radio_metros},
         )
         return GisNearbyResponse(
             items=[
@@ -66,13 +57,6 @@ class GisService:
     async def heatmap(self, *, tipo: str, limit: int, actor_id: str) -> GisHeatmapResponse:
         tipo_norm = tipo if tipo in {"incidentes", "alertas"} else "incidentes"
         rows = await self._repo.heatmap(tipo=tipo_norm, limit=max(1, min(limit, 1000)))
-        await self._audit.create_registro(
-            usuario_id=actor_id,
-            modulo="gis",
-            accion="consultar_heatmap",
-            entidad="consulta_gis",
-            detalle={"tipo": tipo_norm},
-        )
         return GisHeatmapResponse(
             points=[
                 GisHeatmapPoint(
@@ -93,14 +77,6 @@ class GisService:
         row = await self._repo.route_between_locations(origen_id=origen_id, destino_id=destino_id)
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ruta no encontrada.")
-        await self._audit.create_registro(
-            usuario_id=actor_id,
-            modulo="gis",
-            accion="calcular_ruta",
-            entidad="ubicacion_maestra",
-            entidad_id=origen_id,
-            detalle={"destino_id": destino_id, "distancia_metros": row["distancia_metros"]},
-        )
         return GisRouteResponse(
             origen_id=row["origen_id"],
             destino_id=row["destino_id"],

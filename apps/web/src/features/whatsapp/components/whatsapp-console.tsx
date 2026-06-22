@@ -8,7 +8,9 @@ import {
   Badge,
   Button,
   Input,
+  MultiSelectFilter,
   ScrollArea,
+  SearchInput,
   Select,
   SelectContent,
   SelectItem,
@@ -29,7 +31,6 @@ import {
   MessageCircleMore,
   RefreshCw,
   RotateCcw,
-  Search,
   Send,
   ShieldCheck,
   UserCheck,
@@ -93,8 +94,6 @@ type OperatorOption = {
   rol: string;
   online?: boolean;
 };
-
-type FilterValue = "all" | ConversationState;
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("es-PE", {
@@ -240,7 +239,7 @@ export function WhatsAppConsole() {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [stateFilter, setStateFilter] = useState<FilterValue>("all");
+  const [stateFilters, setStateFilters] = useState<ConversationState[]>([]);
   const [draft, setDraft] = useState("");
   const [operatorId, setOperatorId] = useState("");
   const [operators, setOperators] = useState<OperatorOption[]>([]);
@@ -263,16 +262,15 @@ export function WhatsAppConsole() {
   }, [conversations]);
 
   const filteredConversations = useMemo(() => {
-    const filtered =
-      stateFilter === "all"
-        ? conversations
-        : conversations.filter((item) => item.estado === stateFilter);
+    const filtered = stateFilters.length
+      ? conversations.filter((item) => stateFilters.includes(item.estado))
+      : conversations;
     return [...filtered].sort((a, b) => {
       const priority = PRIORITY_RANK[b.prioridad] - PRIORITY_RANK[a.prioridad];
       if (priority !== 0) return priority;
       return new Date(b.ultimo_mensaje_at).getTime() - new Date(a.ultimo_mensaje_at).getTime();
     });
-  }, [conversations, stateFilter]);
+  }, [conversations, stateFilters]);
 
   const selectedConversation = useMemo(
     () =>
@@ -435,7 +433,7 @@ export function WhatsAppConsole() {
 
   async function closeConversation() {
     if (!selectedConversation) return;
-    const confirmed = window.confirm("Cerrar esta conversacion? Podras reabrirla si es necesario.");
+    const confirmed = window.confirm("¿Cerrar esta conversación? Podrás reabrirla si es necesario.");
     if (!confirmed) return;
     await runConversationAction(() =>
       api.post(`/omnicanal/conversaciones/${selectedConversation.id}/cerrar`, {
@@ -453,7 +451,7 @@ export function WhatsAppConsole() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Bandeja operativa WhatsApp</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {counts.all} {counts.all === 1 ? "conversacion registrada" : "conversaciones registradas"}
+              {counts.all} {counts.all === 1 ? "conversación registrada" : "conversaciones registradas"}
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -475,16 +473,13 @@ export function WhatsAppConsole() {
       <main className="mt-5 grid min-h-0 flex-1 grid-cols-[390px_minmax(0,1fr)_360px] overflow-hidden rounded-xl border bg-white">
         <aside className="flex min-h-0 flex-col border-r bg-white">
           <div className="space-y-3 border-b p-4">
-            <div className="relative">
-              <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar contacto o mensaje"
-                className="rounded-full border-0 bg-slate-100 pl-9"
-              />
-            </div>
-            <ConversationFilter value={stateFilter} onChange={setStateFilter} counts={counts} />
+            <SearchInput
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar contacto o mensaje"
+              className="border-0 bg-slate-100"
+            />
+            <ConversationFilter value={stateFilters} onChange={setStateFilters} counts={counts} />
           </div>
 
           <ConversationList
@@ -771,36 +766,24 @@ function ConversationFilter({
   onChange,
   counts,
 }: {
-  value: FilterValue;
-  onChange: (value: FilterValue) => void;
+  value: ConversationState[];
+  onChange: (value: ConversationState[]) => void;
   counts: { all: number; queue: number; human: number; bot: number; closed: number };
 }) {
-  const options: Array<{ value: FilterValue; label: string; count: number }> = [
-    { value: "all", label: "Todas", count: counts.all },
-    { value: "EN_COLA", label: "En cola", count: counts.queue },
-    { value: "EN_ATENCION", label: "Atencion", count: counts.human },
-    { value: "EN_BOT", label: "Bot", count: counts.bot },
-    { value: "CERRADA", label: "Cerradas", count: counts.closed },
+  const options: Array<{ value: ConversationState; label: string }> = [
+    { value: "EN_COLA", label: `En cola (${counts.queue})` },
+    { value: "EN_ATENCION", label: `En atención (${counts.human})` },
+    { value: "EN_BOT", label: `Bot (${counts.bot})` },
+    { value: "CERRADA", label: `Cerradas (${counts.closed})` },
   ];
 
   return (
-    <Select value={value} onValueChange={(next) => onChange(next as FilterValue)}>
-      <SelectTrigger className="rounded-full bg-white">
-        <SelectValue placeholder="Filtrar conversaciones" />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            <span className="flex w-full items-center justify-between gap-3">
-              {option.label}
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                {option.count}
-              </span>
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <MultiSelectFilter
+      placeholder={`Todas las conversaciones (${counts.all})`}
+      options={options}
+      selected={value}
+      onChange={onChange}
+    />
   );
 }
 
@@ -1049,7 +1032,7 @@ function AiClassificationPanel({
         Clasificacion IA
       </div>
       <div className="mt-3 grid gap-3 text-sm">
-        <InfoRow label="Categoria sugerida" value={classification.category} />
+        <InfoRow label="Categoría sugerida" value={classification.category} />
         <div className="flex items-center justify-between gap-2">
           <span className="text-slate-500">Severidad</span>
           <Badge className={cn("border font-semibold", priorityTone(conversation.prioridad))}>
@@ -1184,7 +1167,7 @@ function ChatbotPanel({
                 onChange={(event) =>
                   setDraftForm((prev) => ({ ...prev, categoria: event.target.value }))
                 }
-                placeholder="Categoria"
+                placeholder="Categoría"
                 className="bg-white"
               />
               <Select
@@ -1210,7 +1193,7 @@ function ChatbotPanel({
               onChange={(event) =>
                 setDraftForm((prev) => ({ ...prev, lugar_referencia: event.target.value }))
               }
-              placeholder="Ubicacion o referencia"
+              placeholder="Ubicación o referencia"
               className="bg-white"
             />
             <div className="grid grid-cols-2 gap-2">

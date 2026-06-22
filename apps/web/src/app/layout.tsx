@@ -28,7 +28,7 @@ export default function RootLayout({
       <body className="min-h-full">
         <PwaRegister />
         {children}
-        <Toaster richColors position="top-center" />
+        <Toaster theme="light" richColors position="top-center" />
       </body>
     </html>
   );

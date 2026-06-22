@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { serverApi } from "@/lib/api/server";
+import { EMAIL_DOMAIN_ERROR, isValidInstitutionalEmail } from "@/lib/email";
 
 export type CreateUsuarioInput = {
   nombre: string;
@@ -12,18 +13,20 @@ export type CreateUsuarioInput = {
   rolId: string;
 };
 
-export type UpdateUsuarioInput = {
+export type UpdateUsuarioProfileInput = {
   id: string;
   nombre: string;
   apellido: string;
-  codigo_institucional: string;
+  telefono: string;
   departamento: string;
-  rolId: string;
 };
 
 export async function crearUsuario(
   input: CreateUsuarioInput,
 ): Promise<{ error?: string }> {
+  if (!isValidInstitutionalEmail(input.email)) {
+    return { error: EMAIL_DOMAIN_ERROR };
+  }
   try {
     await serverApi.post("/admin/usuarios", {
       nombre: input.nombre.trim(),
@@ -40,24 +43,6 @@ export async function crearUsuario(
   }
 }
 
-export async function actualizarUsuario(
-  input: UpdateUsuarioInput,
-): Promise<{ error?: string }> {
-  try {
-    await serverApi.put(`/admin/usuarios/${input.id}`, {
-      nombre: input.nombre.trim(),
-      apellido: input.apellido.trim(),
-      codigo_institucional: input.codigo_institucional.trim() || null,
-      departamento: input.departamento.trim() || null,
-      rol_id: input.rolId,
-    });
-    revalidatePath("/usuarios");
-    return {};
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "No se pudo actualizar el usuario." };
-  }
-}
-
 export async function cambiarEstadoUsuario(
   id: string,
   estado: string,
@@ -68,5 +53,24 @@ export async function cambiarEstadoUsuario(
     return {};
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo cambiar el estado." };
+  }
+}
+
+export async function actualizarPerfilUsuario(
+  input: UpdateUsuarioProfileInput,
+): Promise<{ error?: string }> {
+  try {
+    await serverApi.patch(`/admin/usuarios/${input.id}/perfil`, {
+      nombre: input.nombre.trim(),
+      apellido: input.apellido.trim(),
+      telefono: input.telefono.trim() || null,
+      departamento: input.departamento.trim() || null,
+    });
+    revalidatePath("/usuarios");
+    return {};
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "No se pudo actualizar el perfil.",
+    };
   }
 }

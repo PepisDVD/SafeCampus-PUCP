@@ -68,8 +68,9 @@ SESSION_COOKIE_DOMAIN=
 ```
 
 Optional integration values are also declared in `.env.example`:
-`OPENAI_API_KEY`, `OPENAI_MODEL`, `GOOGLE_MAPS_API_KEY`, `WHATSAPP_TOKEN`,
-`WHATSAPP_PHONE_ID`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET`.
+`OPENAI_API_KEY`, `OPENAI_MODEL`, `GEMINI_API_KEY`, `WHATSAPP_TOKEN`,
+`WHATSAPP_PHONE_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and the Resend
+email keys (`EMAIL_ENABLED`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`).
 
 Para el chatbot omnicanal tambien debes configurar:
 

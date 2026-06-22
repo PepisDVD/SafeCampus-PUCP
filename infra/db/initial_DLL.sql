@@ -503,7 +503,7 @@ CREATE INDEX idx_reporte_generado_por ON sc_dashboard.reporte_exportado (generad
 -- 8.3 estado_integracion
 CREATE TABLE sc_dashboard.estado_integracion (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    servicio         VARCHAR(100)   NOT NULL,   -- 'openai', 'whatsapp', 'google_maps', 'gmail'
+    servicio         VARCHAR(100)   NOT NULL,   -- 'openai', 'gemini', 'resend', 'whatsapp_evolution', 'whatsapp_meta', 'leaflet'
     estado           estado_servicio NOT NULL DEFAULT 'DESCONOCIDO',
     ultimo_check     TIMESTAMPTZ,
     tiempo_respuesta_ms INTEGER,
@@ -711,11 +711,12 @@ INSERT INTO sc_lost_found.categoria_objeto (nombre, descripcion) VALUES
 
 -- Servicios monitoreados
 INSERT INTO sc_dashboard.estado_integracion (servicio, estado) VALUES
-    ('openai_api',         'DESCONOCIDO'),
-    ('whatsapp_gateway',   'DESCONOCIDO'),
-    ('google_maps',        'DESCONOCIDO'),
-    ('gmail_oauth',        'DESCONOCIDO'),
-    ('push_notifications', 'DESCONOCIDO');
+    ('openai',             'DESCONOCIDO'),   -- LLM OpenAI (clasificación de incidentes)
+    ('gemini',             'DESCONOCIDO'),   -- LLM Google Gemini (Mensajes / Incidentes)
+    ('resend',             'DESCONOCIDO'),   -- Envío de correos / notificaciones
+    ('whatsapp_evolution', 'DESCONOCIDO'),   -- WhatsApp vía EvolutionAPI (dev, Docker)
+    ('whatsapp_meta',      'DESCONOCIDO'),   -- WhatsApp Business vía Meta Cloud API (prod)
+    ('leaflet',            'DESCONOCIDO');   -- Mapas Leaflet / tiles OpenStreetMap
 
 -- Permisos base del sistema
 INSERT INTO sc_users.permiso (modulo, accion, descripcion) VALUES

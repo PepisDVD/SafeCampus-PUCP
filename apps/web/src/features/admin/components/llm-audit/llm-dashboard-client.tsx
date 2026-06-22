@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   Badge,
   Button,
+  FilterBar,
   Input,
   Table,
   TableBody,
@@ -134,7 +135,7 @@ export function LlmDashboardClient({
   return (
     <div className={`space-y-6 transition-opacity ${isPending ? "opacity-60" : ""}`}>
       {/* Date range filter */}
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4">
+      <FilterBar className="flex flex-wrap items-end gap-3">
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">
             Desde
@@ -171,7 +172,7 @@ export function LlmDashboardClient({
             Limpiar
           </Button>
         )}
-      </div>
+      </FilterBar>
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">

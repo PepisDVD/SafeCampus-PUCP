@@ -10,6 +10,7 @@ export type UsuarioConRoles = {
   apellido: string;
   email: string;
   codigo_institucional: string | null;
+  telefono: string | null;
   departamento: string | null;
   estado: EstadoUsuario;
   avatar_url: string | null;

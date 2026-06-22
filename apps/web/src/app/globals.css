@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
+@import "leaflet.markercluster/dist/MarkerCluster.css";
+@import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 @import "@safecampus/config/tailwind/theme.css";
 
 @source "../../node_modules/@safecampus/ui-kit/src/**/*.{js,ts,jsx,tsx}";

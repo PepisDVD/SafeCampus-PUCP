@@ -14,11 +14,8 @@ import {
   Badge,
   Button,
   Card,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  FilterBar,
+  MultiSelectFilter,
   Switch,
   cn,
 } from "@safecampus/ui-kit";
@@ -33,8 +30,6 @@ import {
 type MapaTacticoIncidentesProps = {
   data: IncidenteMapaResponse;
 };
-
-const ALL = "ALL";
 
 const LeafletIncidentesMap = dynamic(
   () =>
@@ -89,8 +84,8 @@ function formatFecha(iso: string | null): string {
 export function MapaTacticoIncidentes({
   data,
 }: MapaTacticoIncidentesProps) {
-  const [estado, setEstado] = useState<string>(ALL);
-  const [severidad, setSeveridad] = useState<string>(ALL);
+  const [estados, setEstados] = useState<EstadoIncidente[]>([]);
+  const [severidades, setSeveridades] = useState<NivelSeveridad[]>([]);
   const [soloActivos, setSoloActivos] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(
     data.items.find(hasCoords)?.id ?? null,
@@ -98,8 +93,13 @@ export function MapaTacticoIncidentes({
 
   const filtered = useMemo(() => {
     return data.items.filter((item) => {
-      if (estado !== ALL && item.estado !== estado) return false;
-      if (severidad !== ALL && item.severidad !== severidad) return false;
+      if (estados.length && !estados.includes(item.estado)) return false;
+      if (
+        severidades.length &&
+        (!item.severidad || !severidades.includes(item.severidad))
+      ) {
+        return false;
+      }
       if (
         soloActivos &&
         [EstadoIncidente.RESUELTO, EstadoIncidente.CERRADO].includes(item.estado)
@@ -108,7 +108,7 @@ export function MapaTacticoIncidentes({
       }
       return true;
     });
-  }, [data.items, estado, severidad, soloActivos]);
+  }, [data.items, estados, severidades, soloActivos]);
 
   const georef = filtered.filter(hasCoords);
   const sinCoords = filtered.filter((item) => !hasCoords(item));
@@ -120,10 +120,10 @@ export function MapaTacticoIncidentes({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
-            Mapa tactico de incidentes
+            Mapa táctico de incidentes
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Visualizacion operativa por ubicacion, severidad y estado.
+            Visualización operativa por ubicación, severidad y estado.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
@@ -142,44 +142,32 @@ export function MapaTacticoIncidentes({
         </div>
       </div>
 
-      <Card className="p-4">
+      <FilterBar>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
             <Filter className="h-4 w-4 text-[#001C55]" />
             Filtros
           </div>
-          <Select value={estado} onValueChange={setEstado}>
-            <SelectTrigger className="w-[190px]">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos los estados</SelectItem>
-              {ESTADOS.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {ESTADO_STYLE[item].label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={severidad} onValueChange={setSeveridad}>
-            <SelectTrigger className="w-[190px]">
-              <SelectValue placeholder="Severidad" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todas las severidades</SelectItem>
-              {SEVERIDADES.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {SEVERIDAD_LABEL[item]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSelectFilter
+            className="w-full sm:w-[190px]"
+            placeholder="Todos los estados"
+            options={ESTADOS.map((item) => ({ value: item, label: ESTADO_STYLE[item].label }))}
+            selected={estados}
+            onChange={setEstados}
+          />
+          <MultiSelectFilter
+            className="w-full sm:w-[190px]"
+            placeholder="Todas las severidades"
+            options={SEVERIDADES.map((item) => ({ value: item, label: SEVERIDAD_LABEL[item] }))}
+            selected={severidades}
+            onChange={setSeveridades}
+          />
           <label className="ml-auto flex items-center gap-2 text-sm text-slate-600">
             <Switch checked={soloActivos} onCheckedChange={setSoloActivos} />
             Solo activos
           </label>
         </div>
-      </Card>
+      </FilterBar>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_420px]">
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -266,7 +254,7 @@ export function MapaTacticoIncidentes({
 
           <Card className="p-4">
             <h2 className="text-sm font-semibold text-slate-900">
-              Incidentes sin ubicacion precisa
+              Incidentes sin ubicación precisa
             </h2>
             <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
               {sinCoords.length === 0 ? (

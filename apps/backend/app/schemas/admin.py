@@ -6,7 +6,20 @@
 
 from typing import Any
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
+
+# Dominios permitidos para registrar usuarios en el sistema.
+ALLOWED_EMAIL_DOMAINS: tuple[str, ...] = ("gmail.com", "pucp.edu.pe")
+
+
+def _validar_dominio_email(value: str) -> str:
+    dominio = value.rsplit("@", 1)[-1].lower()
+    if dominio not in ALLOWED_EMAIL_DOMAINS:
+        permitidos = " o ".join(f"@{d}" for d in ALLOWED_EMAIL_DOMAINS)
+        raise ValueError(
+            f"El correo debe pertenecer a un dominio válido ({permitidos})."
+        )
+    return value.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +37,7 @@ class UsuarioOut(BaseModel):
     apellido: str
     email: str
     codigo_institucional: str | None
+    telefono: str | None
     departamento: str | None
     estado: str
     avatar_url: str | None
@@ -48,6 +62,11 @@ class UsuarioCreateInput(BaseModel):
     departamento: str | None = None
     rol_id: str
 
+    @field_validator("email")
+    @classmethod
+    def _email_dominio_permitido(cls, value: str) -> str:
+        return _validar_dominio_email(value)
+
 
 class UsuarioUpdateInput(BaseModel):
     nombre: str
@@ -55,6 +74,13 @@ class UsuarioUpdateInput(BaseModel):
     codigo_institucional: str | None = None
     departamento: str | None = None
     rol_id: str
+
+
+class UsuarioProfileUpdateInput(BaseModel):
+    nombre: str
+    apellido: str
+    telefono: str | None = None
+    departamento: str | None = None
 
 
 class CambiarEstadoInput(BaseModel):
@@ -112,16 +138,36 @@ class RegistroAuditoriaOut(BaseModel):
     entidad: str | None
     entidad_id: str | None
     detalle: Any | None
+    ip_origen: str | None = None
+    dispositivo: str | None = None
+    origen: str | None = None
+    resultado: str | None = None
     fecha_registro: str
 
 
 class AuditoriaListResponse(BaseModel):
     items: list[RegistroAuditoriaOut]
-    total: int
+    page_size: int
+    has_more: bool
+    next_cursor: str | None = None
 
 
 class ModulosResponse(BaseModel):
     modulos: list[str]
+
+
+class AuditoriaAccionesResponse(BaseModel):
+    acciones: list[str]
+
+
+class AuditoriaUsuarioRef(BaseModel):
+    id: str
+    nombre_completo: str
+    email: EmailStr | None = None
+
+
+class AuditoriaUsuariosResponse(BaseModel):
+    usuarios: list[AuditoriaUsuarioRef]
 
 
 # ---------------------------------------------------------------------------
