@@ -10,10 +10,10 @@ function LoginFallback() {
   );
 }
 
-export default function LoginPage() {
+export default function CredencialesPage() {
   return (
     <Suspense fallback={<LoginFallback />}>
-      <LoginScreen initialMode="sso" />
+      <LoginScreen initialMode="credentials" />
     </Suspense>
   );
 }

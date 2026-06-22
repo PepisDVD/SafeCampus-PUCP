@@ -1,5 +1,6 @@
 """Email / notification integration (Resend)."""
 
+from app.integrations.email import templates
 from app.integrations.email.exceptions import (
     EmailDeliveryError,
     EmailError,
@@ -15,4 +16,5 @@ __all__ = [
     "EmailError",
     "EmailNotConfiguredError",
     "EmailDeliveryError",
+    "templates",
 ]

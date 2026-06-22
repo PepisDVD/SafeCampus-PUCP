@@ -80,12 +80,12 @@ export const LOGIN_ACCESS_CARDS: MarketingAccessCard[] = [
   },
   {
     icon: Tablet,
-    label: "App Movil Operador",
-    desc: "Gestion tactica de campo",
+    label: "App Móvil Operador",
+    desc: "Gestión táctica de campo",
   },
   {
     icon: Monitor,
     label: "Web Operativa",
-    desc: "Supervision y administracion",
+    desc: "Supervisión y administración",
   },
 ];

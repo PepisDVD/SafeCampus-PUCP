@@ -13,8 +13,8 @@ from app.core.config import settings
 from app.schemas.auth import (
     AuthProfileUpdateInput,
     AuthUserResponse,
+    CredentialsLoginInput,
     MobileAuthResponse,
-    OperatorLoginInput,
     SupabaseAccessTokenInput,
 )
 from app.services.auth_service import AuthService
@@ -55,12 +55,19 @@ def web_login_error_url(code: str) -> str:
 
 @router.get("/google/login", tags=["Auth"])
 async def google_login(
-    email: str = Query(...),
+    email: str | None = Query(default=None),
     next_path: str = Query(default="/dashboard", alias="next"),
+    institutional: bool = Query(default=True),
     service: AuthService = Depends(get_service),
 ) -> RedirectResponse:
+    # institutional=True  → SSO exclusivo @pucp.edu.pe (auto-provisiona comunidad).
+    # institutional=False → cuentas externas (Gmail) ya provisionadas por el admin.
     return RedirectResponse(
-        service.build_google_login_url(email=email, next_path=next_path),
+        service.build_google_login_url(
+            email=email,
+            next_path=next_path,
+            institutional=institutional,
+        ),
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -76,9 +83,21 @@ async def google_callback(
             code,
             oauth_state,
         )
-    except HTTPException:
+    except HTTPException as exc:
+        detail = str(exc.detail or "").lower()
+        if exc.status_code == status.HTTP_403_FORBIDDEN:
+            # 403 cubre varios casos: cuenta externa no registrada, desajuste de
+            # dominio (SSO vs credenciales) y cuenta válida sin rol de canal web.
+            if "registrada" in detail:
+                error_code = "cuenta_no_registrada"
+            elif "institucional" in detail or "autorizado" in detail or "sso" in detail:
+                error_code = "correo_no_autorizado"
+            else:
+                error_code = "acceso_denegado"
+        else:
+            error_code = "oauth_exchange_failed"
         return RedirectResponse(
-            web_login_error_url("oauth_exchange_failed"),
+            web_login_error_url(error_code),
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -110,7 +129,7 @@ async def me(
 
 @router.post("/mobile/operator/login", response_model=MobileAuthResponse, tags=["Auth"])
 async def mobile_operator_login(
-    body: OperatorLoginInput,
+    body: CredentialsLoginInput,
     service: AuthService = Depends(get_service),
 ) -> MobileAuthResponse:
     user, access_token = await service.login_operator_with_password(
@@ -118,6 +137,20 @@ async def mobile_operator_login(
         password=body.password,
     )
     return MobileAuthResponse(access_token=access_token, user=user)
+
+
+@router.post("/web/credentials/login", response_model=AuthUserResponse, tags=["Auth"])
+async def web_credentials_login(
+    body: CredentialsLoginInput,
+    response: Response,
+    service: AuthService = Depends(get_service),
+) -> AuthUserResponse:
+    user, session_token = await service.login_web_with_credentials(
+        email=str(body.email),
+        password=body.password,
+    )
+    set_session_cookie(response, session_token)
+    return user
 
 
 @router.post("/mobile/supabase-session", response_model=MobileAuthResponse, tags=["Auth"])

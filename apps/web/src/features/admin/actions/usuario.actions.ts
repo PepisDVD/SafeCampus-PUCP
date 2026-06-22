@@ -11,6 +11,10 @@ export type CreateUsuarioInput = {
   codigo_institucional: string;
   departamento: string;
   rolId: string;
+  /** Contraseña manual (solo cuentas no institucionales). */
+  password?: string | null;
+  /** Solicita una contraseña autogenerada (solo cuentas no institucionales). */
+  generarPassword?: boolean;
 };
 
 export type UpdateUsuarioProfileInput = {
@@ -23,21 +27,26 @@ export type UpdateUsuarioProfileInput = {
 
 export async function crearUsuario(
   input: CreateUsuarioInput,
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; passwordGenerada?: string }> {
   if (!isValidInstitutionalEmail(input.email)) {
     return { error: EMAIL_DOMAIN_ERROR };
   }
   try {
-    await serverApi.post("/admin/usuarios", {
-      nombre: input.nombre.trim(),
-      apellido: input.apellido.trim(),
-      email: input.email.trim().toLowerCase(),
-      codigo_institucional: input.codigo_institucional.trim() || null,
-      departamento: input.departamento.trim() || null,
-      rol_id: input.rolId,
-    });
+    const created = await serverApi.post<{ password_generada?: string | null }>(
+      "/admin/usuarios",
+      {
+        nombre: input.nombre.trim(),
+        apellido: input.apellido.trim(),
+        email: input.email.trim().toLowerCase(),
+        codigo_institucional: input.codigo_institucional.trim() || null,
+        departamento: input.departamento.trim() || null,
+        rol_id: input.rolId,
+        password: input.password?.trim() || null,
+        generar_password: Boolean(input.generarPassword),
+      },
+    );
     revalidatePath("/usuarios");
-    return {};
+    return { passwordGenerada: created?.password_generada ?? undefined };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "No se pudo crear el usuario." };
   }

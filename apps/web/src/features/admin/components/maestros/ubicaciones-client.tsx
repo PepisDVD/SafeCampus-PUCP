@@ -56,7 +56,7 @@ import {
   TableRow,
 } from "@safecampus/ui-kit";
 import { Ban, List, Map as MapIcon, MoreHorizontal, Pencil, Plus, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 
 import { api } from "@/lib/api/client";
 import {

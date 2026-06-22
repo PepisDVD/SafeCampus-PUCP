@@ -28,7 +28,8 @@ const LAYOUT_GUARDED_PREFIXES = [
 ];
 
 function isPublicPath(pathname: string): boolean {
-  if (pathname === "/login") return true;
+  // Toda la zona de login (incluida la pantalla de credenciales) es pública.
+  if (pathname === "/login" || pathname.startsWith("/login/")) return true;
   return false;
 }
 
@@ -91,6 +92,8 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Excluye assets estáticos y archivos PWA (manifest.webmanifest, sw.js, etc.)
+    // para que el guard de sesión no los redirija a /login y rompa su parseo.
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest|js|json|txt|woff|woff2|ttf)$).*)",
   ],
 };

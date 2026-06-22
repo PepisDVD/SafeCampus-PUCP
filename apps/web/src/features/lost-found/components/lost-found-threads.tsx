@@ -50,7 +50,7 @@ import {
   ToggleGroupItem,
 } from "@safecampus/ui-kit";
 import { Eye, Grid2X2, List, MapPin, MessageSquare, PackageSearch, Plus, Search, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
 import type { CasoLfListItem, CategoriaLf, UbicacionMaestra } from "../types";
