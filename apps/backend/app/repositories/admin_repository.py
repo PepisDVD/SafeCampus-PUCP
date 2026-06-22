@@ -428,12 +428,30 @@ class AdminRepository:
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
-    async def verificar_integracion(self, integracion_id: str) -> bool:
+    async def get_integracion(self, integracion_id: str) -> dict[str, Any] | None:
+        statement = select(
+            EstadoIntegracion.id,
+            EstadoIntegracion.servicio,
+        ).where(EstadoIntegracion.id == UUID(integracion_id))
+        result = await self.db.execute(statement)
+        row = result.mappings().first()
+        return dict(row) if row else None
+
+    async def guardar_resultado_check(
+        self,
+        integracion_id: str,
+        *,
+        estado: str,
+        tiempo_respuesta_ms: int | None,
+        detalle: dict[str, Any] | None,
+    ) -> bool:
         statement = (
             update(EstadoIntegracion)
             .where(EstadoIntegracion.id == UUID(integracion_id))
             .values(
-                estado="DESCONOCIDO",
+                estado=estado,
+                tiempo_respuesta_ms=tiempo_respuesta_ms,
+                detalle=detalle,
                 ultimo_check=func.now(),
                 updated_at=func.now(),
             )

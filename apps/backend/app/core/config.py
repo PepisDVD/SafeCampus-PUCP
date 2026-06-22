@@ -52,7 +52,6 @@ class Settings(BaseSettings):
     CHATBOT_ENABLED: bool = True
     CHATBOT_AUTO_CREATE_INCIDENTS: bool = True
     CHATBOT_SYSTEM_USER_ID: str = ""
-    GOOGLE_MAPS_API_KEY: str = ""
     WHATSAPP_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_PROVIDER: str = "evolution"
@@ -67,9 +66,15 @@ class Settings(BaseSettings):
     META_WHATSAPP_VERIFY_TOKEN: str = ""
     META_WHATSAPP_APP_SECRET: str = ""
 
-    # --- Gmail OAuth2 ---
+    # --- Google OAuth (login vía Supabase Auth) ---
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
+
+    # --- Correo / Notificaciones (Resend) ---
+    EMAIL_ENABLED: bool = False
+    RESEND_API_KEY: str = ""
+    RESEND_FROM_EMAIL: str = ""
+    RESEND_FROM_NAME: str = "SafeCampus PUCP"
 
     # --- Supabase Auth / User Sync ---
     SUPABASE_URL: str

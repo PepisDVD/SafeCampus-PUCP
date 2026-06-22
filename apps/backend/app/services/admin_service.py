@@ -19,6 +19,7 @@ from app.core.audit import (
     AuditOrigen,
     AuditResultado,
 )
+from app.integrations.health import HealthCheckService
 from app.repositories.admin_repository import AdminRepository
 from app.repositories.auditoria_repository import AuditoriaRepository
 from app.schemas.admin import (
@@ -43,9 +44,14 @@ from app.schemas.admin import (
 
 
 class AdminService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        health: HealthCheckService | None = None,
+    ) -> None:
         self._repo = AdminRepository(db)
         self._audit = AuditoriaRepository(db)
+        self._health = health or HealthCheckService()
 
     async def _audit_admin(
         self,
@@ -422,10 +428,18 @@ class AdminService:
         return IntegracionesListResponse(items=items)  # type: ignore[arg-type]
 
     async def verificar_integracion(self, integracion_id: str) -> dict[str, str]:
-        found = await self._repo.verificar_integracion(integracion_id)
-        if not found:
+        integracion = await self._repo.get_integracion(integracion_id)
+        if not integracion:
             raise HTTPException(status_code=404, detail="Integración no encontrada.")
-        return {"message": "Verificación iniciada."}
+
+        resultado = await self._health.check(integracion["servicio"])
+        await self._repo.guardar_resultado_check(
+            integracion_id,
+            estado=resultado.estado,
+            tiempo_respuesta_ms=resultado.tiempo_respuesta_ms,
+            detalle=resultado.detalle or None,
+        )
+        return {"message": f"Verificación completada: {resultado.estado}."}
 
     # -----------------------------------------------------------------------
     # Helpers
