@@ -284,7 +284,7 @@ export function IntegracionesClient({
                                 <TooltipTrigger asChild>
                                   <Info className="h-3.5 w-3.5 text-slate-400" />
                                 </TooltipTrigger>
-                                <TooltipContent className="max-w-[220px] text-xs">
+                                <TooltipContent className="max-w-55 text-xs">
                                   {detalleMsg}
                                 </TooltipContent>
                               </Tooltip>

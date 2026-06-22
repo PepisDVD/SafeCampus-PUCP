@@ -8,7 +8,7 @@ import { LOGIN_ACCESS_CARDS } from "../login.config";
 export function LoginHeroPanel() {
   return (
     <section className="relative hidden w-[42%] max-w-lg flex-col justify-between overflow-hidden p-8 text-white lg:flex xl:p-10">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#001C55]/70 via-[#001C55]/25 to-transparent" />
+      <div className="pointer-events-none absolute inset-0 bg-linear-to-r from-[#001C55]/70 via-[#001C55]/25 to-transparent" />
 
       <div className="relative z-10 max-w-sm">
         <div className="mb-8">
