@@ -42,7 +42,7 @@ import {
   Ban,
   RotateCcw,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 import {
   actualizarPerfilUsuario,
   cambiarEstadoUsuario,

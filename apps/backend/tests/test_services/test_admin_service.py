@@ -3,8 +3,14 @@ from uuid import uuid4
 
 import pytest
 
+from fastapi import HTTPException
+
 from app.repositories.admin_repository import _parse_fecha
-from app.schemas.admin import CambiarEstadoInput, UsuarioProfileUpdateInput
+from app.schemas.admin import (
+    CambiarEstadoInput,
+    UsuarioCreateInput,
+    UsuarioProfileUpdateInput,
+)
 from app.services import admin_service
 from app.services.admin_service import AdminService
 
@@ -204,3 +210,109 @@ async def test_cambiar_estado_sin_actor_no_audita(monkeypatch):
     await service.cambiar_estado(str(uuid4()), CambiarEstadoInput(estado="ACTIVO"))
 
     assert FakeAuditoriaRepository.created == []
+
+
+# ---------------------------------------------------------------------------
+# Provisión de contraseñas (admin) — solo cuentas NO institucionales
+# ---------------------------------------------------------------------------
+
+class FakeCrearUsuarioRepository:
+    last_create_data: dict | None = None
+
+    def __init__(self, _db):
+        self._id = str(uuid4())
+
+    async def get_usuario_by_email(self, _email):
+        return None
+
+    async def create_usuario(self, data):
+        FakeCrearUsuarioRepository.last_create_data = data
+        return self._id
+
+    async def assign_rol(self, _usuario_id, _rol_id):
+        return None
+
+    async def list_usuarios(self, **_filters):
+        return [
+            {
+                "id": self._id,
+                "nombre": "Nueva",
+                "apellido": "Cuenta",
+                "email": "nueva@gmail.com",
+                "codigo_institucional": None,
+                "telefono": None,
+                "departamento": None,
+                "estado": "ACTIVO",
+                "avatar_url": None,
+                "ultimo_acceso": None,
+                "created_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+                "roles": [{"id": uuid4(), "nombre": "comunidad"}],
+            }
+        ]
+
+
+def _crear_input(email: str, **extra) -> UsuarioCreateInput:
+    return UsuarioCreateInput(
+        nombre="Nueva",
+        apellido="Cuenta",
+        email=email,
+        rol_id=str(uuid4()),
+        **extra,
+    )
+
+
+@pytest.mark.anyio
+async def test_crear_usuario_institucional_rechaza_password(monkeypatch):
+    monkeypatch.setattr(admin_service, "AdminRepository", FakeCrearUsuarioRepository)
+    service = AdminService(db=None)  # type: ignore[arg-type]
+
+    with pytest.raises(HTTPException) as exc:
+        await service.crear_usuario(
+            _crear_input("docente@pucp.edu.pe", generar_password=True)
+        )
+
+    assert exc.value.status_code == 400
+    assert "SSO" in exc.value.detail
+
+
+@pytest.mark.anyio
+async def test_crear_usuario_no_institucional_password_autogenerada(monkeypatch):
+    FakeCrearUsuarioRepository.last_create_data = None
+    monkeypatch.setattr(admin_service, "AdminRepository", FakeCrearUsuarioRepository)
+    service = AdminService(db=None)  # type: ignore[arg-type]
+
+    result = await service.crear_usuario(
+        _crear_input("nueva@gmail.com", generar_password=True)
+    )
+
+    assert result.password_generada
+    stored = FakeCrearUsuarioRepository.last_create_data
+    assert stored is not None and str(stored["password_hash"]).startswith("$2b$")
+
+
+@pytest.mark.anyio
+async def test_crear_usuario_no_institucional_password_manual(monkeypatch):
+    FakeCrearUsuarioRepository.last_create_data = None
+    monkeypatch.setattr(admin_service, "AdminRepository", FakeCrearUsuarioRepository)
+    service = AdminService(db=None)  # type: ignore[arg-type]
+
+    result = await service.crear_usuario(
+        _crear_input("nueva@gmail.com", password="ClaveSegura2026!")
+    )
+
+    # Las contraseñas manuales no se devuelven al admin (ya las conoce).
+    assert result.password_generada is None
+    stored = FakeCrearUsuarioRepository.last_create_data
+    assert stored is not None and str(stored["password_hash"]).startswith("$2b$")
+
+
+@pytest.mark.anyio
+async def test_crear_usuario_sin_credenciales_no_pone_password(monkeypatch):
+    FakeCrearUsuarioRepository.last_create_data = None
+    monkeypatch.setattr(admin_service, "AdminRepository", FakeCrearUsuarioRepository)
+    service = AdminService(db=None)  # type: ignore[arg-type]
+
+    await service.crear_usuario(_crear_input("nueva@gmail.com"))
+
+    stored = FakeCrearUsuarioRepository.last_create_data
+    assert stored is not None and stored["password_hash"] is None

@@ -25,7 +25,7 @@ import {
   TooltipTrigger,
 } from "@safecampus/ui-kit";
 import { Activity, AlertTriangle, CheckCircle2, Copy, Eye, HelpCircle, MessageSquare, MoreHorizontal, PackageCheck, RefreshCw, ShieldCheck, TrendingUp, type LucideIcon } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
 import type { CasoLfListItem, CustodiaLf, KpisLf } from "../types";

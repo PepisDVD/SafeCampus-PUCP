@@ -33,7 +33,7 @@ import {
   Textarea,
 } from "@safecampus/ui-kit";
 import { CheckCircle2, Edit3, Eye, PackageCheck, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
 import { estadoLabel, estadoLfTone } from "../presentation";
 import type { CasoLfDetail, CasoLfListItem, CustodiaLf, ListResponse } from "../types";

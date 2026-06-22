@@ -21,6 +21,7 @@ from app.schemas.admin import (
     PermisosListResponse,
     RolesListResponse,
     UsuarioCreateInput,
+    UsuarioCreateResponse,
     UsuarioOut,
     UsuarioProfileUpdateInput,
     UsuariosListResponse,
@@ -59,7 +60,12 @@ async def listar_usuarios(
     return await service.listar_usuarios(search=search, estado=estado)
 
 
-@router.post("/usuarios", response_model=UsuarioOut, status_code=201, tags=["Admin - Usuarios"])
+@router.post(
+    "/usuarios",
+    response_model=UsuarioCreateResponse,
+    status_code=201,
+    tags=["Admin - Usuarios"],
+)
 async def crear_usuario(
     body: UsuarioCreateInput,
     service: AdminService = Depends(get_service),

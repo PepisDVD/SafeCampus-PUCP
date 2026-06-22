@@ -142,6 +142,7 @@ class AdminRepository:
                 email=data["email"],
                 codigo_institucional=data.get("codigo_institucional"),
                 departamento=data.get("departamento"),
+                password_hash=data.get("password_hash"),
                 estado="ACTIVO",
             )
             .returning(Usuario.id)

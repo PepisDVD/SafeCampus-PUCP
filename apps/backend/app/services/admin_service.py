@@ -19,6 +19,8 @@ from app.core.audit import (
     AuditOrigen,
     AuditResultado,
 )
+from app.core.config import settings
+from app.core.security import generate_password, get_password_hash
 from app.integrations.health import HealthCheckService
 from app.repositories.admin_repository import AdminRepository
 from app.repositories.auditoria_repository import AuditoriaRepository
@@ -36,6 +38,7 @@ from app.schemas.admin import (
     RegistroAuditoriaOut,
     RolesListResponse,
     UsuarioCreateInput,
+    UsuarioCreateResponse,
     UsuarioOut,
     UsuarioProfileUpdateInput,
     UsuariosListResponse,
@@ -97,12 +100,34 @@ class AdminService:
 
     async def crear_usuario(
         self, data: UsuarioCreateInput, actor_id: str | None = None
-    ) -> UsuarioOut:
+    ) -> UsuarioCreateResponse:
         if await self._repo.get_usuario_by_email(data.email):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Ya existe un usuario con ese email.",
             )
+
+        # Provisión de contraseña: SOLO cuentas NO institucionales. Las cuentas
+        # @pucp.edu.pe se autentican por SSO y nunca reciben password_hash.
+        quiere_password = bool(data.password) or data.generar_password
+        password_plana: str | None = None
+        password_hash: str | None = None
+        if quiere_password:
+            if data.email.lower().endswith(
+                f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}"
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Las cuentas institucionales se autentican por SSO "
+                        "y no admiten contraseña."
+                    ),
+                )
+            password_plana = (
+                generate_password() if data.generar_password else data.password
+            )
+            password_hash = get_password_hash(str(password_plana))
+
         usuario_id = await self._repo.create_usuario(
             {
                 "nombre": data.nombre,
@@ -110,6 +135,7 @@ class AdminService:
                 "email": data.email,
                 "codigo_institucional": data.codigo_institucional,
                 "departamento": data.departamento,
+                "password_hash": password_hash,
             }
         )
         await self._repo.assign_rol(usuario_id, data.rol_id)
@@ -123,13 +149,19 @@ class AdminService:
                 "codigo_entidad": data.email,
                 "resumen": f"Alta de usuario {data.nombre} {data.apellido}",
                 "rol_id": data.rol_id,
+                "credenciales_asignadas": quiere_password,
             },
         )
         rows = await self._repo.list_usuarios()
         row = next((r for r in rows if str(r["id"]) == usuario_id), None)
         if not row:
             raise HTTPException(status_code=500, detail="Error al recuperar usuario creado.")
-        return self._map_usuario(row)
+        base = self._map_usuario(row)
+        return UsuarioCreateResponse(
+            **base.model_dump(),
+            # Solo se revela cuando fue autogenerada; las manuales ya las conoce el admin.
+            password_generada=password_plana if data.generar_password else None,
+        )
 
     async def actualizar_usuario(
         self, usuario_id: str, data: UsuarioUpdateInput, actor_id: str | None = None

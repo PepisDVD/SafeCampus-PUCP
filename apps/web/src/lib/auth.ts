@@ -3,9 +3,31 @@ import {
   isAllowedLoginEmail,
 } from "@/features/auth/auth.policy";
 
+/**
+ * Extrae un mensaje legible del cuerpo de error de FastAPI. `detail` puede ser
+ * un string (HTTPException) o un arreglo de errores de validación (422); este
+ * helper evita el clásico "[object Object]" al serializar un arreglo/objeto.
+ */
+function extractApiErrorMessage(payload: unknown, fallback: string): string {
+  if (payload && typeof payload === "object" && "detail" in payload) {
+    const detail = (payload as { detail: unknown }).detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+      const first = detail[0] as { msg?: unknown };
+      if (first && typeof first.msg === "string") return first.msg;
+    }
+  }
+  return fallback;
+}
+
 type SignInWithPucpSsoOptions = {
-  email: string;
+  email?: string;
   nextPath: string;
+};
+
+type SignInWithWebCredentialsOptions = {
+  email: string;
+  password: string;
 };
 
 export type UpdateCurrentProfileInput = {
@@ -18,23 +40,85 @@ export type UpdateCurrentProfileInput = {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
-export async function signInWithPucpSso({
-  email,
+function startGoogleOauth({
   nextPath,
-}: SignInWithPucpSsoOptions): Promise<void> {
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!isAllowedLoginEmail(normalizedEmail)) {
-    throw new Error("Correo no autorizado para iniciar sesión.");
-  }
-
+  institutional,
+  email,
+}: {
+  nextPath: string;
+  institutional: boolean;
+  email?: string;
+}): void {
   const safeNextPath =
     nextPath.startsWith("/") && !nextPath.startsWith("//")
       ? nextPath
       : "/dashboard";
   const loginUrl = new URL(`${API_BASE_URL.replace(/\/$/, "")}/auth/google/login`);
-  loginUrl.searchParams.set("email", normalizedEmail);
+  if (email) {
+    loginUrl.searchParams.set("email", email);
+  }
   loginUrl.searchParams.set("next", safeNextPath);
+  if (!institutional) {
+    loginUrl.searchParams.set("institutional", "false");
+  }
   window.location.assign(loginUrl.toString());
+}
+
+export async function signInWithPucpSso({
+  email,
+  nextPath,
+}: SignInWithPucpSsoOptions): Promise<void> {
+  // El correo es opcional: el SSO institucional se inicia directamente desde el
+  // botón. Si se provee uno, se valida en cliente como feedback inmediato; el
+  // backend es la fuente de verdad y vuelve a validarlo en el callback.
+  const normalizedEmail = email?.trim().toLowerCase();
+  if (normalizedEmail && !isAllowedLoginEmail(normalizedEmail)) {
+    throw new Error("Correo no autorizado para iniciar sesión.");
+  }
+  startGoogleOauth({ nextPath, institutional: true, email: normalizedEmail });
+}
+
+/**
+ * Login con Google para cuentas EXTERNAS (no @pucp.edu.pe), desde la pantalla
+ * de credenciales. El backend rechaza correos institucionales y no auto-registra
+ * cuentas: deben existir y tener rol asignado por el administrador.
+ */
+export async function signInWithGoogleExternalAccount({
+  nextPath,
+}: {
+  nextPath: string;
+}): Promise<void> {
+  startGoogleOauth({ nextPath, institutional: false });
+}
+
+/**
+ * Login web por credenciales (cuentas no institucionales provisionadas por el
+ * admin). El backend valida la política rol↔canal (canal=web) y, si procede,
+ * establece la cookie HTTP-only `safecampus_session`.
+ */
+export async function signInWithWebCredentials({
+  email,
+  password,
+}: SignInWithWebCredentialsOptions): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL.replace(/\/$/, "")}/auth/web/credentials/login`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+    },
+  );
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(
+      extractApiErrorMessage(
+        payload,
+        "No se pudo iniciar sesión con credenciales.",
+      ),
+    );
+  }
 }
 
 export async function signOut(): Promise<void> {

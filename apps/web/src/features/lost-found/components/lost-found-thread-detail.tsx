@@ -34,7 +34,7 @@ import {
   Textarea,
 } from "@safecampus/ui-kit";
 import { Archive, CheckCircle2, GitCompareArrows, History, ImageIcon, MapPin, MessageSquare, XCircle } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
 import type { CasoLfDetail, MatchLf } from "../types";

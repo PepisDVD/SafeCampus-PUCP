@@ -4,6 +4,7 @@ Business logic for backend-owned Google/Supabase authentication.
 
 import base64
 import hashlib
+import logging
 import secrets
 from datetime import timedelta
 from typing import Any
@@ -13,23 +14,46 @@ import httpx
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth_policy import AuthChannel, evaluate_channel_access
 from app.core.config import settings
 from app.core.security import create_access_token, decode_access_token, verify_password
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import AuthProfileUpdateInput, AuthUserResponse
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
     def __init__(self, db: AsyncSession) -> None:
         self._repo = AuthRepository(db)
 
-    def build_google_login_url(self, email: str, next_path: str) -> str:
-        normalized_email = email.strip().lower()
-        if not self._is_allowed_login_email(normalized_email):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Correo no autorizado para iniciar sesión.",
-            )
+    def build_google_login_url(
+        self,
+        email: str | None,
+        next_path: str,
+        *,
+        institutional: bool = True,
+    ) -> str:
+        # institutional=True  → SSO exclusivo @pucp.edu.pe (chooser restringido con
+        #                       `hd`); el callback vuelve a validar el dominio.
+        # institutional=False → cuentas externas (Gmail); NO @pucp.edu.pe. No se
+        #                       fija `hd` para permitir elegir la cuenta de Gmail.
+        normalized_email = (email or "").strip().lower()
+        if normalized_email:
+            is_institutional = self._is_institutional_email(normalized_email)
+            if institutional and not is_institutional:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "El acceso por SSO es exclusivo para cuentas "
+                        "institucionales @pucp.edu.pe."
+                    ),
+                )
+            if not institutional and is_institutional:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Las cuentas institucionales @pucp.edu.pe ingresan por SSO.",
+                )
 
         safe_next_path = self._sanitize_next_path(next_path)
         code_verifier = secrets.token_urlsafe(64)
@@ -40,6 +64,7 @@ class AuthService:
                 "email": normalized_email,
                 "next": safe_next_path,
                 "code_verifier": code_verifier,
+                "institutional": institutional,
             },
             expires_delta=timedelta(minutes=10),
         )
@@ -51,13 +76,12 @@ class AuthService:
             "code_challenge": code_challenge,
             "code_challenge_method": "s256",
             "prompt": "select_account",
-            "login_hint": normalized_email,
         }
-        # Solo restringir el chooser de Google al dominio institucional cuando
-        # NO se trata de un correo en la dev allowlist (los gmail dev fallarían
-        # con `hd=pucp.edu.pe`).
-        if normalized_email not in settings.dev_allowed_emails_set:
+        if institutional:
+            # Restringe el selector de Google al dominio institucional.
             params["hd"] = settings.ALLOWED_INSTITUTIONAL_DOMAIN
+        if normalized_email:
+            params["login_hint"] = normalized_email
         return f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/authorize?{urlencode(params)}"
 
     async def complete_google_callback(
@@ -74,9 +98,20 @@ class AuthService:
 
         code_verifier = str(state_payload.get("code_verifier") or "")
         next_path = self._sanitize_next_path(str(state_payload.get("next") or "/dashboard"))
+        institutional = bool(state_payload.get("institutional", True))
         supabase_session = await self._exchange_code_for_session(code, code_verifier)
-        user = await self.sync_supabase_user_data(supabase_session["user"])
-        session_token = self._create_user_session_token(user)
+        user = await self.sync_supabase_user_data(
+            supabase_session["user"],
+            institutional=institutional,
+        )
+        effective_roles = self._enforce_channel_access(
+            user_id=user.id,
+            email=user.email,
+            roles=user.roles,
+            channel=AuthChannel.WEB,
+        )
+        user = user.model_copy(update={"roles": effective_roles})
+        session_token = self._create_user_session_token(user, AuthChannel.WEB)
         return user, session_token, next_path
 
     async def login_operator_with_password(
@@ -85,7 +120,40 @@ class AuthService:
         email: str,
         password: str,
     ) -> tuple[AuthUserResponse, str]:
+        return await self._login_with_credentials(
+            email=email,
+            password=password,
+            channel=AuthChannel.MOBILE,
+        )
+
+    async def login_web_with_credentials(
+        self,
+        *,
+        email: str,
+        password: str,
+    ) -> tuple[AuthUserResponse, str]:
+        return await self._login_with_credentials(
+            email=email,
+            password=password,
+            channel=AuthChannel.WEB,
+        )
+
+    async def _login_with_credentials(
+        self,
+        *,
+        email: str,
+        password: str,
+        channel: AuthChannel,
+    ) -> tuple[AuthUserResponse, str]:
         normalized_email = email.strip().lower()
+        # El login por credenciales es EXCLUSIVO para cuentas NO institucionales.
+        # Las cuentas @pucp.edu.pe se autentican por SSO y nunca tienen contraseña.
+        if self._is_institutional_email(normalized_email):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Las cuentas institucionales (@pucp.edu.pe) ingresan con SSO.",
+            )
+
         profile = await self._repo.get_user_credentials_by_email(normalized_email)
         if (
             not profile
@@ -95,47 +163,93 @@ class AuthService:
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Credenciales invalidas.",
+                detail="Credenciales inválidas.",
             )
 
         roles = await self._repo.list_role_names(str(profile["id"]))
-        if not {"operador", "supervisor", "administrador"}.intersection(roles):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="La app movil esta habilitada para personal operativo.",
-            )
-
-        user = self._build_auth_user_response(profile, roles)
-        return user, self._create_user_session_token(user)
+        effective_roles = self._enforce_channel_access(
+            user_id=str(profile["id"]),
+            email=str(profile["email"]),
+            roles=roles,
+            channel=channel,
+        )
+        user = self._build_auth_user_response(profile, effective_roles)
+        return user, self._create_user_session_token(user, channel)
 
     async def login_mobile_with_supabase_access_token(
         self,
         access_token: str,
     ) -> tuple[AuthUserResponse, str]:
         supabase_user = await self._get_supabase_user(access_token)
-        user = await self.sync_supabase_user_data(
-            supabase_user,
-            assign_default_admin=False,
+        user = await self.sync_supabase_user_data(supabase_user)
+        effective_roles = self._enforce_channel_access(
+            user_id=user.id,
+            email=user.email,
+            roles=user.roles,
+            channel=AuthChannel.MOBILE,
         )
-        if not {"operador", "supervisor", "administrador"}.intersection(user.roles):
+        user = user.model_copy(update={"roles": effective_roles})
+        return user, self._create_user_session_token(user, AuthChannel.MOBILE)
+
+    def _enforce_channel_access(
+        self,
+        *,
+        user_id: str,
+        email: str,
+        roles: list[str],
+        channel: AuthChannel,
+    ) -> list[str]:
+        """Aplica la política rol↔canal. Única y compartida por SSO y credenciales."""
+        result = evaluate_channel_access(roles, channel)
+        if result.is_anomalous:
+            # No se deniega la cuenta entera por tener roles de ambos canales: se
+            # permite el ingreso por el canal correspondiente y se registra la
+            # combinación anómala para revisión del administrador.
+            logger.warning(
+                "Combinación de roles anómala: user=%s email=%s roles=%s canal=%s",
+                user_id,
+                email,
+                roles,
+                channel.value,
+            )
+        if not result.allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="La app movil esta habilitada para personal operativo.",
+                detail=result.denied_message,
             )
-        return user, self._create_user_session_token(user)
+        return result.effective_roles
 
     async def sync_supabase_user_data(
         self,
         supabase_user: dict[str, Any],
         *,
-        assign_default_admin: bool = True,
+        institutional: bool = True,
     ) -> AuthUserResponse:
         email = str(supabase_user.get("email", "")).strip().lower()
-        if not self._is_allowed_login_email(email):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Correo no autorizado para iniciar sesión.",
-            )
+        if institutional:
+            # El SSO es exclusivo del dominio institucional: cualquier otro correo
+            # (p. ej. una cuenta de Gmail) se rechaza, aunque exista en el sistema.
+            if not self._is_institutional_email(email):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        "El acceso por SSO es exclusivo para cuentas "
+                        "institucionales @pucp.edu.pe."
+                    ),
+                )
+        else:
+            # Flujo Google para cuentas externas: NO institucional y SIN
+            # auto-registro (la cuenta debe existir, provisión del admin).
+            if self._is_institutional_email(email):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Las cuentas institucionales @pucp.edu.pe ingresan por SSO.",
+                )
+            if not await self._repo.get_user_credentials_by_email(email):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Cuenta no registrada; contacte al administrador.",
+                )
 
         metadata = supabase_user.get("user_metadata") or {}
         nombre, apellido = self._resolve_names(email, metadata)
@@ -154,11 +268,15 @@ class AuthService:
         )
 
         roles = await self._repo.list_role_names(str(usuario["id"]))
-        if not roles and assign_default_admin:
-            role_id = await self._repo.get_role_id_by_name("administrador")
-            if role_id:
-                await self._repo.assign_role(str(usuario["id"]), role_id)
-                roles = await self._repo.list_role_names(str(usuario["id"]))
+        # Política de mínimo privilegio: un SSO institucional nuevo recibe el rol
+        # comunidad. Las cuentas externas NO se auto-provisionan (sin rol → la
+        # política de canal las deniega).
+        if institutional and not roles:
+            await self._repo.assign_role(
+                str(usuario["id"]),
+                settings.DEFAULT_COMMUNITY_ROLE_ID,
+            )
+            roles = await self._repo.list_role_names(str(usuario["id"]))
 
         return self._build_auth_user_response(usuario, roles)
 
@@ -184,6 +302,17 @@ class AuthService:
             )
 
         roles = await self._repo.list_role_names(str(profile["id"]))
+        # Re-evaluación por canal en cada request (denegación por defecto
+        # persistente): los roles del otro canal no aplican en esta sesión.
+        channel = payload.get("channel")
+        if channel in (AuthChannel.WEB.value, AuthChannel.MOBILE.value):
+            result = evaluate_channel_access(roles, AuthChannel(channel))
+            if not result.allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=result.denied_message,
+                )
+            roles = result.effective_roles
         return self._build_auth_user_response(profile, roles)
 
     async def update_current_user_profile(
@@ -269,11 +398,10 @@ class AuthService:
         return response.json()
 
     @staticmethod
-    def _is_allowed_login_email(email: str) -> bool:
-        normalized = email.strip().lower()
-        if normalized.endswith(f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}"):
-            return True
-        return normalized in settings.dev_allowed_emails_set
+    def _is_institutional_email(email: str) -> bool:
+        return email.strip().lower().endswith(
+            f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}"
+        )
 
     @staticmethod
     def _resolve_names(email: str, metadata: dict[str, Any]) -> tuple[str, str]:
@@ -309,13 +437,16 @@ class AuthService:
         return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 
     @staticmethod
-    def _create_user_session_token(user: AuthUserResponse) -> str:
+    def _create_user_session_token(
+        user: AuthUserResponse, channel: AuthChannel
+    ) -> str:
         return create_access_token(
             {
                 "kind": "user_session",
                 "sub": user.id,
                 "email": user.email,
                 "roles": user.roles,
+                "channel": channel.value,
             }
         )
 

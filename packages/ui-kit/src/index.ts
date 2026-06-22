@@ -206,6 +206,10 @@ export {
   TooltipProvider,
 } from "./components/ui/tooltip";
 export { Toaster } from "./components/ui/sonner";
+// Se re-exporta `toast` desde aquí para garantizar que las apps usen la MISMA
+// instancia de sonner que el <Toaster>; importarlo por separado desde "sonner"
+// puede resolver a otra copia del paquete y los toasts no se renderizarían.
+export { toast } from "sonner";
 export {
   ChartContainer,
   ChartTooltip,

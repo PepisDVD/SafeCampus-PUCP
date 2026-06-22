@@ -14,7 +14,7 @@ import {
   RoleBadge,
 } from "@safecampus/ui-kit";
 import { Building2, IdCard, Lock, Mail, Pencil, Phone, Save, UserCircle2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 
 import { updateCurrentProfile } from "@/lib/auth";
 import { isPucpEmail } from "@/lib/email";

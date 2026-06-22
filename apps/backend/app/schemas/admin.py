@@ -61,11 +61,19 @@ class UsuarioCreateInput(BaseModel):
     codigo_institucional: str | None = None
     departamento: str | None = None
     rol_id: str
+    # Credenciales (solo cuentas NO institucionales; ver AdminService.crear_usuario).
+    password: str | None = None
+    generar_password: bool = False
 
     @field_validator("email")
     @classmethod
     def _email_dominio_permitido(cls, value: str) -> str:
         return _validar_dominio_email(value)
+
+
+class UsuarioCreateResponse(UsuarioOut):
+    # Contraseña autogenerada, devuelta UNA sola vez al admin. None si no aplica.
+    password_generada: str | None = None
 
 
 class UsuarioUpdateInput(BaseModel):

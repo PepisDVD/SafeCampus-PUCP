@@ -4,6 +4,7 @@
 📦 Capa: Core / Infraestructura
 """
 
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -12,6 +13,15 @@ from jose import JWTError, jwt
 from app.core.config import settings
 
 BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
+def generate_password(length: int = 16) -> str:
+    """Genera una contraseña aleatoria segura (<72 bytes para bcrypt).
+
+    Se devuelve UNA sola vez al administrador para que la comparta con el
+    titular de la cuenta; nunca se almacena en claro.
+    """
+    return secrets.token_urlsafe(length)[:length]
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

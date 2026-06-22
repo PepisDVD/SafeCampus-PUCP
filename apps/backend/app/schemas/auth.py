@@ -24,8 +24,11 @@ class AuthProfileUpdateInput(BaseModel):
     departamento: str | None = None
 
 
-class OperatorLoginInput(BaseModel):
-    email: EmailStr
+class CredentialsLoginInput(BaseModel):
+    # `str` (no `EmailStr`) a propósito: un correo mal formado debe responder
+    # 401 "Credenciales inválidas." (uniforme, sin enumeración de cuentas) en
+    # lugar de un 422 de validación. El service normaliza y valida el dominio.
+    email: str
     password: str
 
 
