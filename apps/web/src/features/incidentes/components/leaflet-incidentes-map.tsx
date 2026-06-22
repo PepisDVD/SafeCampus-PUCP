@@ -15,6 +15,7 @@ import {
   SEVERIDAD_LABEL,
   formatCategoria,
 } from "@/features/incidentes/presentation";
+import { formatFechaLima } from "@/features/incidentes/format-fecha";
 
 type LeafletIncidentesMapProps = {
   incidents: IncidenteMapaItem[];
@@ -39,20 +40,6 @@ function markerColor(item: IncidenteMapaItem) {
   return item.severidad ? SEVERIDAD_HEX[item.severidad] : "#64748b";
 }
 
-function formatFecha(iso: string | null): string {
-  if (!iso) return "Sin fecha";
-  try {
-    return new Date(iso).toLocaleString("es-PE", {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
-
 export function LeafletIncidentesMap({
   incidents,
   selectedId,
@@ -66,7 +53,7 @@ export function LeafletIncidentesMap({
       maxZoom={19}
       maxBounds={PUCP_BOUNDS}
       scrollWheelZoom
-      className="h-full min-h-130 w-full"
+      className="isolate h-full min-h-130 w-full"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -128,7 +115,7 @@ export function LeafletIncidentesMap({
                   {item.lugar_referencia ?? "Sin referencia textual"}
                 </p>
                 <p className="text-xs text-slate-500">
-                  Reportado: {formatFecha(item.created_at)}
+                  Reportado: {formatFechaLima(item.created_at)}
                 </p>
                 <Button asChild size="sm" className="w-full gap-1.5 bg-[#001C55] hover:bg-[#032E84]">
                   <Link href={`/incidentes/${item.id}`}>

@@ -9,9 +9,10 @@ import {
   RefreshCcw,
   UserRound,
 } from "lucide-react";
-import type {
-  IncidenteDetail,
-  OperadorListItem,
+import {
+  EstadoIncidente,
+  type IncidenteDetail,
+  type OperadorListItem,
 } from "@safecampus/shared-types";
 import {
   Button,
@@ -142,12 +143,18 @@ export function IncidenteAccionesDialogs({
   variant,
 }: Props) {
   const isHeader = variant === "header";
+  const canChangeStatus =
+    detalle.estado !== EstadoIncidente.RESUELTO &&
+    detalle.estado !== EstadoIncidente.CERRADO;
 
   return (
     <div
       className={
         isHeader
-          ? "grid gap-3 sm:grid-cols-3 xl:min-w-[640px]"
+          ? cn(
+              "grid gap-3 xl:min-w-[640px]",
+              canChangeStatus ? "sm:grid-cols-3" : "sm:grid-cols-2",
+            )
           : "space-y-2"
       }
     >
@@ -160,14 +167,16 @@ export function IncidenteAccionesDialogs({
         variant={variant}
       />
 
-      <ActionDialog
-        detalle={detalle}
-        operadores={operadores}
-        mode="estado"
-        title="Cambiar estado"
-        description="Actualiza el estado del caso y registra el contexto del cambio."
-        variant={variant}
-      />
+      {canChangeStatus && (
+        <ActionDialog
+          detalle={detalle}
+          operadores={operadores}
+          mode="estado"
+          title="Cambiar estado"
+          description="Actualiza el estado del caso y registra el contexto del cambio."
+          variant={variant}
+        />
+      )}
 
       {isHeader ? (
         <Link

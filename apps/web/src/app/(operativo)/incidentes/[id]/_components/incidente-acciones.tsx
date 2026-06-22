@@ -82,6 +82,9 @@ export function IncidenteAcciones({
   const [savingAsignacion, setSavingAsignacion] = useState(false);
   const [feedbackAsignacion, setFeedbackAsignacion] = useState<Feedback | null>(null);
 
+  const estadoFinal =
+    detalle.estado === EstadoIncidente.RESUELTO ||
+    detalle.estado === EstadoIncidente.CERRADO;
   const sinCambioEstado =
     nuevoEstado === detalle.estado && !comentarioEstado.trim();
   const cerrandoIncidente =
@@ -94,7 +97,7 @@ export function IncidenteAcciones({
     operadorSeleccionado === detalle.operador_asignado?.id;
 
   const onCambiarEstado = async () => {
-    if (savingEstado || nuevoEstado === detalle.estado) return;
+    if (estadoFinal || savingEstado || nuevoEstado === detalle.estado) return;
     setSavingEstado(true);
     setFeedbackEstado(null);
     try {
@@ -184,7 +187,7 @@ export function IncidenteAcciones({
 
   return (
     <div id="acciones-incidente" className="space-y-4 scroll-mt-24">
-      {mode !== "asignacion" && (
+      {mode !== "asignacion" && !estadoFinal && (
         <section className="rounded-lg border border-slate-200 bg-white p-5">
         <div className="mb-3 flex items-center gap-2">
           <ArrowRightCircle className="h-4 w-4 text-[#001C55]" />

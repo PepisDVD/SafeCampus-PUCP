@@ -4,6 +4,7 @@
 📦 Capa: Servicios
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -47,6 +48,9 @@ from app.schemas.alerta import AlertaCreateInput, AlertaSegmentoInput
 from app.services.alerta_service import AlertaService
 from app.services.gemini_service import GeminiService
 from app.services.storage_service import StorageService
+
+# Uvicorn configura este logger en nivel INFO y lo dirige a la consola del backend.
+logger = logging.getLogger("uvicorn.error")
 
 # Targets de SLA — constantes operativas.
 FRT_TARGET_MIN = 5.0
@@ -835,9 +839,22 @@ class IncidenteService:
             "canal_origen": "WEB",
         }
         try:
-            return await self._gemini.priorizar_incidente(contexto=contexto)
-        except Exception:
+            priorizacion = await self._gemini.priorizar_incidente(contexto=contexto)
+            logger.info(
+                "Gemini priorizo incidente: severidad=%s categoria=%s confianza=%s",
+                priorizacion.severidad.value,
+                priorizacion.categoria_sugerida or "SIN_CATEGORIA",
+                priorizacion.confianza,
+            )
+            return priorizacion
+        except Exception as exc:
             fallback = data.severidad or NivelSeveridad.MEDIO
+            logger.warning(
+                "Gemini no pudo priorizar incidente; aplicando fallback: "
+                "severidad=%s error=%s",
+                fallback.value,
+                type(exc).__name__,
+            )
             return IncidentePriorizacionAi(
                 severidad=fallback,
                 categoria_sugerida=data.categoria.strip() if data.categoria else None,

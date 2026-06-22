@@ -268,28 +268,33 @@ async def test_asignar_operador_registra_auditoria(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_crear_incidente_prioriza_con_ia_y_descripcion_opcional(monkeypatch):
+async def test_crear_incidente_prioriza_con_ia_y_descripcion_opcional(monkeypatch, caplog):
     FakeAuditoriaRepository.created = []
     monkeypatch.setattr(incidente_service, "IncidenteRepository", FakeIncidenteRepository)
     monkeypatch.setattr(incidente_service, "AuditoriaRepository", FakeAuditoriaRepository)
     monkeypatch.setattr(incidente_service, "NotificacionRepository", FakeNotificacionRepository)
     monkeypatch.setattr(incidente_service, "GeminiService", FakeGeminiService)
 
-    service = IncidenteService(db=None)  # type: ignore[arg-type]
-    response = await service.crear_incidente(
-        reportante_id="22222222-2222-2222-2222-222222222222",
-        data=IncidenteCreateInput(
-            titulo="Robo o hurto reportado",
-            descripcion=None,
-            severidad=None,
-            categoria="robo",
-            lugar_referencia="Biblioteca Central",
-        ),
-    )
+    with caplog.at_level("INFO", logger="uvicorn.error"):
+        service = IncidenteService(db=None)  # type: ignore[arg-type]
+        response = await service.crear_incidente(
+            reportante_id="22222222-2222-2222-2222-222222222222",
+            data=IncidenteCreateInput(
+                titulo="Robo o hurto reportado",
+                descripcion=None,
+                severidad=None,
+                categoria="robo",
+                lugar_referencia="Biblioteca Central",
+            ),
+        )
 
     assert response.codigo == "INC-20260513-0001"
     assert service._repo.created_incidente["descripcion"] is None
     assert service._repo.created_incidente["severidad"] == "ALTO"
     assert service._repo.created_clasificacion["severidad_sugerida"] == "ALTO"
+    assert (
+        "Gemini priorizo incidente: severidad=ALTO categoria=robo confianza=0.82"
+        in caplog.messages
+    )
     acciones = [registro["accion"] for registro in FakeAuditoriaRepository.created]
     assert "priorizar_incidente_ia" in acciones

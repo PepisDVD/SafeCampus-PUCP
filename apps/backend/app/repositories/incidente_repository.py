@@ -635,7 +635,7 @@ class IncidenteRepository:
                 Incidente.created_at >= start,
                 Incidente.created_at < end,
             )
-            .group_by(func.coalesce(Incidente.categoria, "otro"))
+            .group_by(Incidente.categoria)
             .order_by(desc(total))
         )
         result = await self.db.execute(statement)
