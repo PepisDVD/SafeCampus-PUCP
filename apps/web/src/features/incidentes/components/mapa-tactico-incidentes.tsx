@@ -26,6 +26,7 @@ import {
   SEVERIDAD_LABEL,
   formatCategoria,
 } from "@/features/incidentes/presentation";
+import { formatFechaLima } from "@/features/incidentes/format-fecha";
 
 type MapaTacticoIncidentesProps = {
   data: IncidenteMapaResponse;
@@ -65,20 +66,6 @@ const SEVERIDADES: NivelSeveridad[] = [
 
 function hasCoords(item: IncidenteMapaItem) {
   return item.latitud !== null && item.longitud !== null;
-}
-
-function formatFecha(iso: string | null): string {
-  if (!iso) return "Sin fecha";
-  try {
-    return new Date(iso).toLocaleString("es-PE", {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
 }
 
 export function MapaTacticoIncidentes({
@@ -230,7 +217,7 @@ export function MapaTacticoIncidentes({
                 </div>
                 <div className="space-y-2 text-sm text-slate-600">
                   <p>{selected.lugar_referencia ?? "Sin referencia textual"}</p>
-                  <p>Reportado: {formatFecha(selected.created_at)}</p>
+                  <p>Reportado: {formatFechaLima(selected.created_at)}</p>
                   {hasCoords(selected) && (
                     <p className="font-mono text-xs">
                       {selected.latitud?.toFixed(6)},{" "}
