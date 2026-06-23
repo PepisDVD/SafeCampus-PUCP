@@ -47,6 +47,8 @@ from app.schemas.lost_found import (
     MatchingConfigUpdateInput,
     MatchLfItem,
     MatchLfResponderInput,
+    MotivoCierreLfCreate,
+    MotivoCierreLfItem,
     ParticipacionLfInput,
 )
 from app.services.storage_service import StorageService
@@ -98,6 +100,28 @@ class LostFoundService:
 
     async def listar_categorias(self, include_inactive: bool = False) -> list[CategoriaLfItem]:
         return [CategoriaLfItem(**row) for row in await self._repo.list_categorias(include_inactive)]
+
+    async def listar_motivos_cierre(self, include_inactive: bool = False) -> list[MotivoCierreLfItem]:
+        return [MotivoCierreLfItem(**row) for row in await self._repo.list_motivos_cierre(include_inactive)]
+
+    async def crear_motivo_cierre(self, data: MotivoCierreLfCreate, actor_id: str) -> MotivoCierreLfItem:
+        row = await self._repo.create_motivo_cierre(data.model_dump())
+        await self._audit_lf(actor_id, "LF_MOTIVO_CIERRE_CREADO", "motivo_cierre_lf", row["id"], {"after": row})
+        return MotivoCierreLfItem(**row)
+
+    async def actualizar_motivo_cierre(self, motivo_id: str, data: MotivoCierreLfCreate, actor_id: str) -> MotivoCierreLfItem:
+        before = await self._repo.get_motivo_cierre(motivo_id)
+        if not before:
+            raise HTTPException(status_code=404, detail="Motivo de cierre no encontrado.")
+        if data.codigo != before["codigo"]:
+            raise HTTPException(
+                status_code=422,
+                detail="El codigo no puede cambiar despues de crear el motivo de cierre.",
+            )
+        row = await self._repo.update_motivo_cierre(motivo_id, data.model_dump())
+        accion = "LF_MOTIVO_CIERRE_DESACTIVADO" if before["activo"] and not row["activo"] else "LF_MOTIVO_CIERRE_ACTUALIZADO"
+        await self._audit_lf(actor_id, accion, "motivo_cierre_lf", motivo_id, {"before": before, "after": row})
+        return MotivoCierreLfItem(**row)
 
     async def crear_categoria(self, data: CategoriaLfCreate, actor_id: str) -> CategoriaLfItem:
         payload = data.model_dump()
@@ -222,17 +246,21 @@ class LostFoundService:
         if not actual:
             raise HTTPException(status_code=404, detail="Caso no encontrado.")
         self._ensure_transition(str(actual["estado"]), data.estado.value)
+        motivo = None
+        if data.estado in {EstadoCasoLF.CERRADO, EstadoCasoLF.DEVUELTO, EstadoCasoLF.DESCARTADO}:
+            motivo = await self._validar_motivo_cierre(data.motivo_cierre_id, data.observaciones_cierre)
         result = await self._repo.update_estado(
             caso_id=caso_id,
             estado=data.estado.value,
             ejecutor_id=actor_id,
             comentario=data.comentario,
             motivo_cierre=data.motivo_cierre.value if data.motivo_cierre else None,
+            motivo_cierre_id=motivo["id"] if motivo else None,
             observaciones_cierre=data.observaciones_cierre,
         )
         await self._audit_lf(actor_id, "LF_ESTADO_CAMBIADO", "caso_lost_found", caso_id, {"estado_anterior": result["estado_anterior"], "estado_nuevo": result["estado_nuevo"], "motivo": data.motivo_cierre})
         if data.estado in {EstadoCasoLF.DEVUELTO, EstadoCasoLF.DESCARTADO}:
-            await self._repo.update_estado(caso_id=caso_id, estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico post resolucion", motivo_cierre=(data.motivo_cierre.value if data.motivo_cierre else data.estado.value), observaciones_cierre=data.observaciones_cierre)
+            await self._repo.update_estado(caso_id=caso_id, estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico post resolucion", motivo_cierre=(data.motivo_cierre.value if data.motivo_cierre else None), motivo_cierre_id=motivo["id"], observaciones_cierre=data.observaciones_cierre)
         return await self.obtener_detalle(caso_id, actor_id, ["administrador"])
 
     async def cancelar_caso(self, caso_id: str, usuario_id: str, data: CancelarCasoLfInput) -> CasoLfDetail:
@@ -241,7 +269,8 @@ class LostFoundService:
             raise HTTPException(status_code=404, detail="Caso propio no encontrado.")
         if actual["estado"] == "CERRADO":
             raise HTTPException(status_code=422, detail="El caso ya esta cerrado.")
-        await self._repo.update_estado(caso_id=caso_id, estado="CERRADO", ejecutor_id=usuario_id, comentario=data.observaciones, motivo_cierre="CANCELADO_USUARIO", observaciones_cierre=data.observaciones)
+        motivo = await self._validar_motivo_cierre("CIERRE_ADMINISTRATIVO", data.observaciones)
+        await self._repo.update_estado(caso_id=caso_id, estado="CERRADO", ejecutor_id=usuario_id, comentario=data.observaciones, motivo_cierre="CANCELADO_USUARIO", motivo_cierre_id=motivo["id"], observaciones_cierre=data.observaciones)
         await self._audit_lf(usuario_id, "LF_CASO_CERRADO", "caso_lost_found", caso_id, {"motivo_cierre": "CANCELADO_USUARIO"})
         return await self.obtener_detalle(caso_id, usuario_id, ["comunidad"])
 
@@ -537,8 +566,9 @@ class LostFoundService:
         if not custodia:
             raise HTTPException(status_code=404, detail="Custodia no encontrada.")
         await self._repo.update_custodia(custodia_id, {"estado": "DEVUELTA", "reclamante_id": UUID(data.reclamante_id), "entregado_por_id": UUID(actor_id), "metodo_verificacion": data.metodo_verificacion, "observaciones": data.observaciones})
-        await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="DEVUELTO", ejecutor_id=actor_id, comentario=data.observaciones, motivo_cierre="DEVUELTO", observaciones_cierre=data.observaciones)
-        await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico por devolucion", motivo_cierre="DEVUELTO", observaciones_cierre=data.observaciones)
+        motivo = await self._validar_motivo_cierre("DEVUELTO_AL_PROPIETARIO", data.observaciones, validacion_entrega=bool(data.metodo_verificacion))
+        await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="DEVUELTO", ejecutor_id=actor_id, comentario=data.observaciones, motivo_cierre="DEVUELTO", motivo_cierre_id=motivo["id"], observaciones_cierre=data.observaciones)
+        await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico por devolucion", motivo_cierre="DEVUELTO", motivo_cierre_id=motivo["id"], observaciones_cierre=data.observaciones)
         await self._audit_lf(actor_id, "LF_DEVOLUCION_REALIZADA", "custodia_objeto", custodia_id, {"reclamante_id": data.reclamante_id, "metodo_verificacion": data.metodo_verificacion})
 
     async def registrar_descarte(self, custodia_id: str, actor_id: str, data: DescarteLfInput) -> None:
@@ -546,8 +576,10 @@ class LostFoundService:
         if not custodia:
             raise HTTPException(status_code=404, detail="Custodia no encontrada.")
         await self._repo.update_custodia(custodia_id, {"estado": "DESCARTADA", "destino_descarte": data.destino_descarte, "motivo_descarte": data.motivo})
-        await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="DESCARTADO", ejecutor_id=actor_id, comentario=data.observaciones or data.motivo, motivo_cierre="DESCARTADO", observaciones_cierre=data.observaciones or data.motivo)
-        await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico por descarte", motivo_cierre="DESCARTADO", observaciones_cierre=data.observaciones or data.motivo)
+        observacion = data.observaciones or data.motivo
+        motivo = await self._validar_motivo_cierre("OBJETO_DESCARTADO", observacion)
+        await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="DESCARTADO", ejecutor_id=actor_id, comentario=observacion, motivo_cierre="DESCARTADO", motivo_cierre_id=motivo["id"], observaciones_cierre=observacion)
+        await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico por descarte", motivo_cierre="DESCARTADO", motivo_cierre_id=motivo["id"], observaciones_cierre=observacion)
         await self._audit_lf(actor_id, "LF_DESCARTE_EJECUTADO", "custodia_objeto", custodia_id, {"motivo": data.motivo, "destino": data.destino_descarte})
 
     async def obtener_kpis(self) -> KpisLfResponse:
@@ -642,6 +674,18 @@ class LostFoundService:
     def _ensure_transition(from_estado: str, to_estado: str) -> None:
         if to_estado not in TRANSITIONS.get(from_estado, set()):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Transicion invalida: {from_estado} -> {to_estado}.")
+
+    async def _validar_motivo_cierre(self, motivo_ref: str | None, observaciones: str | None, *, validacion_entrega: bool = False) -> dict[str, Any]:
+        if not motivo_ref:
+            raise HTTPException(status_code=422, detail="Debe seleccionar un motivo de cierre activo.")
+        motivo = await self._repo.get_motivo_cierre(motivo_ref)
+        if not motivo or not motivo["activo"]:
+            raise HTTPException(status_code=422, detail="El motivo de cierre no existe o esta inactivo.")
+        if motivo["requiere_observacion"] and not (observaciones or "").strip():
+            raise HTTPException(status_code=422, detail="Las observaciones de cierre son obligatorias para este motivo.")
+        if motivo["clase_cierre"] == "DEVOLUCION" and motivo["requiere_validacion_entrega"] and not validacion_entrega:
+            raise HTTPException(status_code=422, detail="Este motivo requiere la verificacion de entrega del flujo de devolucion.")
+        return motivo
 
     @staticmethod
     def _build_search(data: dict[str, Any]) -> str:
@@ -740,6 +784,7 @@ class LostFoundService:
             foto_adicional_urls=row.get("foto_adicional_urls") or [],
             etiquetas=row.get("etiquetas") or [],
             motivo_cierre=row.get("motivo_cierre"),
+            motivo_cierre_id=str(row["motivo_cierre_id"]) if row.get("motivo_cierre_id") else None,
             observaciones_cierre=row.get("observaciones_cierre"),
             latitud=row.get("latitud"),
             longitud=row.get("longitud"),

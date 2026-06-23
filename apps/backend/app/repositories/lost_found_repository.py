@@ -16,6 +16,7 @@ from app.models.sc_lost_found import (
     CustodiaObjeto,
     HistorialCasoLf,
     MatchSugerido,
+    MotivoCierreLf,
     ParticipanteHiloLf,
     RecordatorioCustodiaLf,
 )
@@ -122,6 +123,47 @@ class LostFoundRepository:
         if not row:
             return None
         return self._categoria_dict(row)
+
+    @staticmethod
+    def _motivo_dict(row: MotivoCierreLf, codigo_bloqueado: bool = False) -> dict[str, Any]:
+        return {
+            "id": str(row.id), "codigo": row.codigo, "nombre": row.nombre,
+            "descripcion": row.descripcion, "clase_cierre": row.clase_cierre,
+            "requiere_observacion": row.requiere_observacion,
+            "requiere_validacion_entrega": row.requiere_validacion_entrega,
+            "activo": row.activo, "orden_visual": row.orden_visual,
+            "codigo_bloqueado": codigo_bloqueado,
+        }
+
+    async def list_motivos_cierre(self, include_inactive: bool = False) -> list[dict[str, Any]]:
+        referencias = select(func.count(CasoLostFound.id)).where(CasoLostFound.motivo_cierre_id == MotivoCierreLf.id).correlate(MotivoCierreLf).scalar_subquery()
+        statement = select(MotivoCierreLf, referencias.label("referencias")).order_by(MotivoCierreLf.orden_visual, MotivoCierreLf.nombre)
+        if not include_inactive:
+            statement = statement.where(MotivoCierreLf.activo.is_(True))
+        result = await self.db.execute(statement)
+        return [self._motivo_dict(row, bool(count)) for row, count in result.all()]
+
+    async def get_motivo_cierre(self, ref: str) -> dict[str, Any] | None:
+        try:
+            condition = MotivoCierreLf.id == UUID(ref)
+        except ValueError:
+            condition = MotivoCierreLf.codigo == ref
+        referencias = select(func.count(CasoLostFound.id)).where(CasoLostFound.motivo_cierre_id == MotivoCierreLf.id).correlate(MotivoCierreLf).scalar_subquery()
+        result = await self.db.execute(select(MotivoCierreLf, referencias).where(condition))
+        row = result.one_or_none()
+        return self._motivo_dict(row[0], bool(row[1])) if row else None
+
+    async def create_motivo_cierre(self, data: dict[str, Any]) -> dict[str, Any]:
+        motivo = MotivoCierreLf(**data)
+        self.db.add(motivo)
+        await self.db.flush()
+        await self.db.refresh(motivo)
+        return self._motivo_dict(motivo)
+
+    async def update_motivo_cierre(self, motivo_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        result = await self.db.execute(update(MotivoCierreLf).where(MotivoCierreLf.id == UUID(motivo_id)).values(**data).returning(MotivoCierreLf))
+        row = result.scalar_one_or_none()
+        return self._motivo_dict(row, (await self.get_motivo_cierre(motivo_id) or {}).get("codigo_bloqueado", False)) if row else None
 
     async def list_feed(
         self,
@@ -271,7 +313,7 @@ class LostFoundRepository:
                 "id", "codigo", "tipo", "estado", "titulo", "descripcion", "categoria_id",
                 "subcategoria", "lugar_referencia", "fecha_evento", "foto_url",
                 "color_principal", "marca", "conteo_comentarios", "contacto_info",
-                "foto_adicional_urls", "etiquetas", "metadatos", "motivo_cierre", "observaciones_cierre",
+                "foto_adicional_urls", "etiquetas", "metadatos", "motivo_cierre", "motivo_cierre_id", "observaciones_cierre",
                 "created_at", "updated_at",
             )},
             "categoria_nombre": row["categoria_nombre"],
@@ -297,6 +339,7 @@ class LostFoundRepository:
         ejecutor_id: str,
         comentario: str | None,
         motivo_cierre: str | None = None,
+        motivo_cierre_id: str | None = None,
         observaciones_cierre: str | None = None,
     ) -> dict[str, Any] | None:
         actual = await self.get_estado(caso_id)
@@ -305,6 +348,8 @@ class LostFoundRepository:
         values: dict[str, Any] = {"estado": estado, "updated_at": datetime.now(timezone.utc)}
         if motivo_cierre:
             values["motivo_cierre"] = motivo_cierre
+        if motivo_cierre_id:
+            values["motivo_cierre_id"] = UUID(motivo_cierre_id)
         if observaciones_cierre:
             values["observaciones_cierre"] = observaciones_cierre
         if estado == "CERRADO":

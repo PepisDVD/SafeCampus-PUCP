@@ -14,6 +14,7 @@ import {
   BarChart3,
   BotMessageSquare,
   ClipboardList,
+  Cog,
   LayoutDashboard,
   Megaphone,
   MapPinned,
@@ -95,8 +96,8 @@ const ADMIN_NAV: NavItem[] = [
       },
       {
         href: "/lost-found-admin",
-        label: "Configuracion",
-        icon: ClipboardList,
+        label: "Configuración",
+        icon: Cog,
       },
     ],
   },

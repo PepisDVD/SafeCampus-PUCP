@@ -8,6 +8,7 @@ export type {
   KpisLf,
   MatchLf,
   MatchingConfigLf,
+  MotivoCierreLf,
   MetadatoCampoLf,
   MetadatosSchemaLf,
   MetadatoTipoLf,
@@ -24,6 +25,8 @@ export type CategoriaLfWritePayload = {
   orden_visual?: number;
   metadatos_schema?: import("@safecampus/shared-types").MetadatosSchemaLf | null;
 };
+
+export type MotivoCierreLfWritePayload = Omit<import("@safecampus/shared-types").MotivoCierreLf, "id" | "codigo_bloqueado">;
 
 export type ListResponse<T> = {
   items: T[];

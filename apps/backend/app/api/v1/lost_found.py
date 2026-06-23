@@ -36,6 +36,8 @@ from app.schemas.lost_found import (
     MatchingConfigUpdateInput,
     MatchLfItem,
     MatchLfResponderInput,
+    MotivoCierreLfCreate,
+    MotivoCierreLfItem,
     ParticipacionLfInput,
 )
 from app.services.lost_found_service import LostFoundService
@@ -105,6 +107,34 @@ async def actualizar_categoria(
     service: LostFoundService = Depends(get_service),
 ):
     return await service.actualizar_categoria(categoria_id, body, current_user.id)
+
+
+@router.get("/motivos-cierre", response_model=list[MotivoCierreLfItem])
+async def listar_motivos_cierre(
+    include_inactive: bool = Query(default=False),
+    _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    return await service.listar_motivos_cierre(include_inactive)
+
+
+@router.post("/motivos-cierre", response_model=MotivoCierreLfItem, status_code=status.HTTP_201_CREATED)
+async def crear_motivo_cierre(
+    body: MotivoCierreLfCreate,
+    current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    return await service.crear_motivo_cierre(body, current_user.id)
+
+
+@router.patch("/motivos-cierre/{motivo_id}", response_model=MotivoCierreLfItem)
+async def actualizar_motivo_cierre(
+    motivo_id: str,
+    body: MotivoCierreLfCreate,
+    current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    return await service.actualizar_motivo_cierre(motivo_id, body, current_user.id)
 
 
 @router.post("/casos", response_model=CasoLfCreated, status_code=status.HTTP_201_CREATED)

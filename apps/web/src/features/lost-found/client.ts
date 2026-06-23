@@ -1,5 +1,5 @@
 import { api } from "@/lib/api/client";
-import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CategoriaLfWritePayload, ComentarioLf, CustodiaLf, CustodiaPoliticaLf, ListResponse, MatchingConfigLf, MatchLf } from "./types";
+import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CategoriaLfWritePayload, ComentarioLf, CustodiaLf, CustodiaPoliticaLf, ListResponse, MatchingConfigLf, MatchLf, MotivoCierreLf, MotivoCierreLfWritePayload } from "./types";
 
 export type CasoLfCreatePayload = {
   tipo: "PERDIDO" | "ENCONTRADO";
@@ -64,6 +64,8 @@ export const lostFoundClient = {
   crearCategoria: (body: CategoriaLfWritePayload) => api.post<CategoriaLf>("/lost-found/categorias", body),
   actualizarCategoria: (id: string, body: CategoriaLfWritePayload) =>
     api.patch<CategoriaLf>(`/lost-found/categorias/${id}`, body),
+  crearMotivoCierre: (body: MotivoCierreLfWritePayload) => api.post<MotivoCierreLf>("/lost-found/motivos-cierre", body),
+  actualizarMotivoCierre: (id: string, body: MotivoCierreLfWritePayload) => api.patch<MotivoCierreLf>(`/lost-found/motivos-cierre/${id}`, body),
   matchingConfig: () => api.get<MatchingConfigLf>("/lost-found/matching/configuracion"),
   actualizarMatchingConfig: (umbral: number) =>
     api.put<MatchingConfigLf>("/lost-found/matching/configuracion", { umbral }),

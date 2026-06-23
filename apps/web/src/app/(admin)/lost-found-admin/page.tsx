@@ -4,10 +4,10 @@ import { LostFoundAdmin } from "@/features/lost-found/components/lost-found-admi
 import { getLostFoundAdmin } from "@/features/lost-found/service";
 
 export default async function LostFoundAdminPage() {
-  const { categorias, matchingConfig, politicaCustodia } = await getLostFoundAdmin();
+  const { categorias, matchingConfig, politicaCustodia, motivosCierre } = await getLostFoundAdmin();
   return (
     <Suspense>
-      <LostFoundAdmin categorias={categorias} matchingConfig={matchingConfig} politicaCustodia={politicaCustodia} />
+      <LostFoundAdmin categorias={categorias} matchingConfig={matchingConfig} politicaCustodia={politicaCustodia} motivosCierre={motivosCierre} />
     </Suspense>
   );
 }

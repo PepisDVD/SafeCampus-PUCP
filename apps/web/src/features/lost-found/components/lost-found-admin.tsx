@@ -31,6 +31,12 @@ import {
   Spinner,
   StatusBadge,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   Tabs,
   TabsContent,
   TabsList,
@@ -41,14 +47,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@safecampus/ui-kit";
-import { Archive, Clock, Layers, PackageSearch, Plus, Settings, ShieldCheck, Trash2, type LucideIcon } from "lucide-react";
+import { Archive, Ban, Layers, PackageSearch, Pencil, Plus, RotateCcw, Settings, ShieldCheck, Trash2, type LucideIcon } from "lucide-react";
 import { lostFoundClient } from "../client";
-import type { CategoriaLf, CategoriaLfWritePayload, CustodiaPoliticaLf, MatchingConfigLf, MetadatoCampoLf, MetadatoTipoLf } from "../types";
+import type { CategoriaLf, CategoriaLfWritePayload, CustodiaPoliticaLf, MatchingConfigLf, MetadatoCampoLf, MetadatoTipoLf, MotivoCierreLf, MotivoCierreLfWritePayload } from "../types";
 
 const TABS = [
   { value: "categorias", label: "Categorías", icon: Layers },
-  { value: "matching", label: "Matching", icon: Settings },
-  { value: "ciclo-vida", label: "Ciclo de vida", icon: Clock },
+  { value: "reglas-operativas", label: "Reglas operativas", icon: Settings },
   { value: "custodia", label: "Custodia", icon: ShieldCheck },
 ] as const;
 
@@ -57,18 +62,47 @@ const VALID_TABS = new Set<string>(TABS.map((t) => t.value));
 const DEFAULT_TAB: TabValue = "categorias";
 
 type SortValue = "nombre_asc" | "nombre_desc" | "orden_visual";
+type MotivoSortValue = "nombre_asc" | "nombre_desc" | "orden_visual";
 
 type Props = {
   categorias: CategoriaLf[];
   matchingConfig: MatchingConfigLf;
   politicaCustodia: CustodiaPoliticaLf;
+  motivosCierre: MotivoCierreLf[];
 };
 
-export function LostFoundAdmin({ categorias, matchingConfig, politicaCustodia }: Props) {
+function TooltipSubtitle({
+  title,
+  description,
+  prominent = false,
+}: {
+  title: string;
+  description: string;
+  prominent?: boolean;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <h2
+          tabIndex={0}
+          className={`${prominent ? "text-base" : "text-sm"} w-fit cursor-help font-semibold text-slate-950 underline decoration-dotted decoration-slate-300 underline-offset-4 outline-none transition-colors hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2`}
+        >
+          {title}
+        </h2>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={6} className="max-w-xs leading-relaxed">
+        {description}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function LostFoundAdmin({ categorias, matchingConfig, politicaCustodia, motivosCierre }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const rawTab = searchParams.get("tab");
+  const requestedTab = searchParams.get("tab");
+  const rawTab = requestedTab === "matching" || requestedTab === "ciclo-vida" ? "reglas-operativas" : requestedTab;
   const tab: TabValue = VALID_TABS.has(rawTab ?? "") ? (rawTab as TabValue) : DEFAULT_TAB;
 
   const setTab = (value: string) => {
@@ -97,11 +131,8 @@ export function LostFoundAdmin({ categorias, matchingConfig, politicaCustodia }:
         <TabsContent value="categorias">
           <CategoriasTab categorias={categorias} />
         </TabsContent>
-        <TabsContent value="matching">
-          <MatchingTab config={matchingConfig} />
-        </TabsContent>
-        <TabsContent value="ciclo-vida">
-          <CicloVidaTab politica={politicaCustodia} />
+        <TabsContent value="reglas-operativas">
+          <ReglasOperativasTab config={matchingConfig} politica={politicaCustodia} motivos={motivosCierre} />
         </TabsContent>
         <TabsContent value="custodia">
           <Placeholder
@@ -274,6 +305,33 @@ function CategoriasTab({ categorias: initial }: { categorias: CategoriaLf[] }) {
   );
 }
 
+// ───────────────────────────── Reglas operativas ─────────────────────────────
+
+function ReglasOperativasTab({
+  config,
+  politica,
+  motivos,
+}: {
+  config: MatchingConfigLf;
+  politica: CustodiaPoliticaLf;
+  motivos: MotivoCierreLf[];
+}) {
+  return (
+    <div className="space-y-6">
+      <TooltipSubtitle
+        title="Reglas operativas"
+        description="Configura el matching, los plazos del ciclo de vida y los motivos habilitados para cerrar casos."
+        prominent
+      />
+      <div className="grid gap-6 xl:grid-cols-2">
+        <MatchingTab config={config} />
+        <PoliticaCicloVida politica={politica} />
+      </div>
+      <MotivosCierre motivos={motivos} />
+    </div>
+  );
+}
+
 // ───────────────────────────── Matching ─────────────────────────────
 
 function MatchingTab({ config }: { config: MatchingConfigLf }) {
@@ -303,14 +361,12 @@ function MatchingTab({ config }: { config: MatchingConfigLf }) {
   };
 
   return (
-    <Card className="max-w-md">
-      <CardContent className="space-y-5 p-5">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-950">Matching</h2>
-          <p className="text-sm text-slate-500">
-            Define cuándo se sugiere una coincidencia entre casos perdidos y encontrados.
-          </p>
-        </div>
+    <Card className="h-full">
+      <CardContent className="flex h-full flex-col gap-5 p-5">
+        <TooltipSubtitle
+          title="Matching"
+          description="Define cuándo se sugiere una coincidencia entre casos perdidos y encontrados."
+        />
 
         <div className="space-y-2">
           <Label htmlFor="umbral-matching">Umbral de sugerencia</Label>
@@ -331,7 +387,7 @@ function MatchingTab({ config }: { config: MatchingConfigLf }) {
           {invalid && <p className="text-xs text-rose-600">Ingresa un valor entre 0.00 y 1.00.</p>}
         </div>
 
-        <Button type="button" onClick={submit} disabled={isPending || invalid || !dirty}>
+        <Button type="button" className="mt-auto w-fit" onClick={submit} disabled={isPending || invalid || !dirty}>
           {isPending ? <Spinner className="mr-2 h-4 w-4" /> : null}
           Guardar cambios
         </Button>
@@ -344,20 +400,30 @@ function MatchingTab({ config }: { config: MatchingConfigLf }) {
 
 type PoliticaForm = Omit<CustodiaPoliticaLf, "version">;
 
+const POLITICA_LIMITS = {
+  dias_maximos_custodia: { min: 1, max: 365 },
+  dias_alerta_vencimiento: { min: 0, max: 90 },
+  dias_recordatorio_previo: { min: 0, max: 90 },
+  horas_maximas_perecibles: { min: 1, max: 168 },
+  horas_alerta_perecible: { min: 0, max: 72 },
+} as const satisfies Record<keyof PoliticaForm, { min: number; max: number }>;
+
 function validarPolitica(p: PoliticaForm): string | null {
   const vals = Object.values(p);
   if (vals.some((v) => Number.isNaN(v))) return "Completa todos los campos con números válidos.";
-  if (p.dias_maximos_custodia <= 0) return "Los días máximos de custodia deben ser mayores a 0.";
-  if (p.dias_alerta_vencimiento < 0 || p.dias_recordatorio_previo < 0) return "Los días no pueden ser negativos.";
+  const limites = POLITICA_LIMITS;
+  if (p.dias_maximos_custodia < limites.dias_maximos_custodia.min || p.dias_maximos_custodia > limites.dias_maximos_custodia.max) return `Los días máximos de custodia deben estar entre ${limites.dias_maximos_custodia.min} y ${limites.dias_maximos_custodia.max}.`;
+  if (p.dias_alerta_vencimiento < limites.dias_alerta_vencimiento.min || p.dias_alerta_vencimiento > limites.dias_alerta_vencimiento.max) return `La alerta de vencimiento debe estar entre ${limites.dias_alerta_vencimiento.min} y ${limites.dias_alerta_vencimiento.max} días.`;
+  if (p.dias_recordatorio_previo < limites.dias_recordatorio_previo.min || p.dias_recordatorio_previo > limites.dias_recordatorio_previo.max) return `El recordatorio previo debe estar entre ${limites.dias_recordatorio_previo.min} y ${limites.dias_recordatorio_previo.max} días.`;
   if (p.dias_alerta_vencimiento >= p.dias_maximos_custodia) return "Los días para marcar 'Por vencer' deben ser menores a los días máximos.";
   if (p.dias_recordatorio_previo >= p.dias_maximos_custodia) return "Los días previos de recordatorio deben ser menores a los días máximos.";
-  if (p.horas_maximas_perecibles <= 0) return "Las horas máximas de perecibles deben ser mayores a 0.";
-  if (p.horas_alerta_perecible < 0) return "Las horas de alerta no pueden ser negativas.";
+  if (p.horas_maximas_perecibles < limites.horas_maximas_perecibles.min || p.horas_maximas_perecibles > limites.horas_maximas_perecibles.max) return `Las horas máximas para perecibles deben estar entre ${limites.horas_maximas_perecibles.min} y ${limites.horas_maximas_perecibles.max}.`;
+  if (p.horas_alerta_perecible < limites.horas_alerta_perecible.min || p.horas_alerta_perecible > limites.horas_alerta_perecible.max) return `La alerta de perecibles debe estar entre ${limites.horas_alerta_perecible.min} y ${limites.horas_alerta_perecible.max} horas.`;
   if (p.horas_alerta_perecible >= p.horas_maximas_perecibles) return "Las horas de alerta deben ser menores a las horas máximas de perecibles.";
   return null;
 }
 
-function CicloVidaTab({ politica }: { politica: CustodiaPoliticaLf }) {
+function PoliticaCicloVida({ politica }: { politica: CustodiaPoliticaLf }) {
   const toForm = (p: CustodiaPoliticaLf): Record<keyof PoliticaForm, string> => ({
     dias_maximos_custodia: String(p.dias_maximos_custodia),
     dias_alerta_vencimiento: String(p.dias_alerta_vencimiento),
@@ -400,26 +466,24 @@ function CicloVidaTab({ politica }: { politica: CustodiaPoliticaLf }) {
   };
 
   return (
-    <Card className="max-w-xl">
+    <Card className="h-full">
       <CardContent className="space-y-5 p-5">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-950">Política de custodia</h2>
-          <p className="text-sm text-slate-500">
-            Plazos de vencimiento y recordatorios. No afecta custodias ya registradas.
-          </p>
-        </div>
+        <TooltipSubtitle
+          title="Política de custodia"
+          description="Plazos de vencimiento y recordatorios. No afecta custodias ya registradas."
+        />
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <NumberField label="Días máximos de custodia" value={form.dias_maximos_custodia} min="1" onChange={(v) => set("dias_maximos_custodia", v)} />
-          <NumberField label="Días para marcar “Por vencer”" value={form.dias_alerta_vencimiento} min="0" onChange={(v) => set("dias_alerta_vencimiento", v)} />
-          <NumberField label="Días previos para recordatorio" value={form.dias_recordatorio_previo} min="0" onChange={(v) => set("dias_recordatorio_previo", v)} />
+          <NumberField label="Días máximos de custodia" value={form.dias_maximos_custodia} {...POLITICA_LIMITS.dias_maximos_custodia} onChange={(v) => set("dias_maximos_custodia", v)} />
+          <NumberField label="Días para marcar “Por vencer”" value={form.dias_alerta_vencimiento} {...POLITICA_LIMITS.dias_alerta_vencimiento} onChange={(v) => set("dias_alerta_vencimiento", v)} />
+          <NumberField label="Días previos para recordatorio" value={form.dias_recordatorio_previo} {...POLITICA_LIMITS.dias_recordatorio_previo} onChange={(v) => set("dias_recordatorio_previo", v)} />
         </div>
 
         <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
           <h3 className="text-sm font-semibold text-slate-900">Objetos perecibles</h3>
           <div className="grid gap-4 sm:grid-cols-2">
-            <NumberField label="Horas máximas de custodia" value={form.horas_maximas_perecibles} min="1" onChange={(v) => set("horas_maximas_perecibles", v)} />
-            <NumberField label="Horas previas para alerta" value={form.horas_alerta_perecible} min="0" onChange={(v) => set("horas_alerta_perecible", v)} />
+            <NumberField label="Horas máximas de custodia" value={form.horas_maximas_perecibles} {...POLITICA_LIMITS.horas_maximas_perecibles} onChange={(v) => set("horas_maximas_perecibles", v)} />
+            <NumberField label="Horas previas para alerta" value={form.horas_alerta_perecible} {...POLITICA_LIMITS.horas_alerta_perecible} onChange={(v) => set("horas_alerta_perecible", v)} />
           </div>
         </div>
 
@@ -434,14 +498,184 @@ function CicloVidaTab({ politica }: { politica: CustodiaPoliticaLf }) {
   );
 }
 
-function NumberField({ label, value, onChange, min }: { label: string; value: string; onChange: (value: string) => void; min: string }) {
+function NumberField({ label, value, onChange, min, max }: { label: string; value: string; onChange: (value: string) => void; min: number; max: number }) {
   return (
     <div className="space-y-1.5">
       <Label className="text-xs">{label}</Label>
-      <Input type="number" min={min} value={value} onChange={(e) => onChange(e.target.value)} className="w-full" />
+      <Input type="number" min={min} max={max} value={value} onChange={(e) => onChange(e.target.value)} className="w-full" />
+      <p className="text-[11px] text-slate-400">Rango permitido: {min}–{max}</p>
     </div>
   );
 }
+
+function MotivosCierre({ motivos: initial }: { motivos: MotivoCierreLf[] }) {
+  const [motivos, setMotivos] = useState(initial);
+  const [editing, setEditing] = useState<MotivoCierreLf | null>(null);
+  const [open, setOpen] = useState(false);
+  const [sort, setSort] = useState<MotivoSortValue>("nombre_asc");
+  const [pending, startTransition] = useTransition();
+  const motivosOrdenados = useMemo(
+    () => [...motivos].sort((a, b) => {
+      if (sort === "orden_visual") return a.orden_visual - b.orden_visual || a.nombre.localeCompare(b.nombre);
+      return sort === "nombre_asc" ? a.nombre.localeCompare(b.nombre) : b.nombre.localeCompare(a.nombre);
+    }),
+    [motivos, sort],
+  );
+  const upsert = (saved: MotivoCierreLf) => setMotivos((items) => items.some((x) => x.id === saved.id) ? items.map((x) => x.id === saved.id ? saved : x) : [...items, saved]);
+  const toggle = (motivo: MotivoCierreLf) => startTransition(async () => {
+    try {
+      const saved = await lostFoundClient.actualizarMotivoCierre(motivo.id, motivoPayload({ ...motivo, activo: !motivo.activo }));
+      upsert(saved);
+      toast.success(saved.activo ? "Motivo reactivado" : "Motivo desactivado");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo actualizar el motivo"); }
+  });
+  return <Card><CardContent className="space-y-4 p-5">
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <TooltipSubtitle
+        title="Motivos de cierre"
+        description="Catálogo controlado para nuevos cierres. Los motivos usados solo pueden desactivarse."
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={sort} onValueChange={(value) => setSort(value as MotivoSortValue)}>
+          <SelectTrigger className="w-48" aria-label="Ordenar motivos de cierre"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="nombre_asc">Nombre (A → Z)</SelectItem>
+            <SelectItem value="nombre_desc">Nombre (Z → A)</SelectItem>
+            <SelectItem value="orden_visual">Orden visual</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="mr-2 h-4 w-4" />Nuevo motivo</Button>
+      </div>
+    </div>
+    <div className="overflow-x-auto rounded-lg border"><Table><TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Nombre</TableHead><TableHead>Clase</TableHead><TableHead>Requiere observación</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader><TableBody>
+      {motivosOrdenados.map((m) => <TableRow key={m.id} className={m.activo ? "" : "opacity-60"}><TableCell className="font-mono text-xs">{m.codigo}</TableCell><TableCell>{m.nombre}</TableCell><TableCell><Badge variant="outline">{m.clase_cierre}</Badge></TableCell><TableCell>{m.requiere_observacion ? "Sí" : "No"}</TableCell><TableCell><StatusBadge tone={m.activo ? "success" : "neutral"}>{m.activo ? "Activo" : "Inactivo"}</StatusBadge></TableCell><TableCell><div className="flex justify-end gap-1">
+        <Tooltip><TooltipTrigger asChild><Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label={`Editar ${m.nombre}`} onClick={() => { setEditing(m); setOpen(true); }}><Pencil className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Editar</TooltipContent></Tooltip>
+        <Tooltip><TooltipTrigger asChild><Button type="button" size="icon" variant="ghost" className={m.activo ? "h-8 w-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700" : "h-8 w-8 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"} aria-label={`${m.activo ? "Desactivar" : "Reactivar"} ${m.nombre}`} disabled={pending} onClick={() => toggle(m)}>{m.activo ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}</Button></TooltipTrigger><TooltipContent>{m.activo ? "Desactivar" : "Reactivar"}</TooltipContent></Tooltip>
+      </div></TableCell></TableRow>)}
+    </TableBody></Table></div>
+    <MotivoCierreDrawer key={editing?.id ?? "nuevo-motivo"} open={open} motivo={editing} onClose={() => setOpen(false)} onSaved={(saved) => { upsert(saved); setOpen(false); }} />
+  </CardContent></Card>;
+}
+
+type MotivoFormErrors = Partial<Record<"codigo" | "nombre" | "descripcion" | "orden", string>>;
+
+function validateMotivoForm(codigo: string, nombre: string, descripcion: string, orden: number): MotivoFormErrors {
+  const errors: MotivoFormErrors = {};
+  const codigoLimpio = codigo.trim();
+  const nombreLimpio = nombre.trim();
+  if (codigoLimpio.length < 2 || codigoLimpio.length > 80) errors.codigo = "Debe tener entre 2 y 80 caracteres.";
+  else if (!/^[A-Z][A-Z0-9_]*$/.test(codigoLimpio)) errors.codigo = "Usa mayúsculas, números y guiones bajos; debe iniciar con una letra.";
+  if (nombreLimpio.length < 2 || nombreLimpio.length > 120) errors.nombre = "Debe tener entre 2 y 120 caracteres.";
+  if (descripcion.trim().length > 1000) errors.descripcion = "No puede superar los 1000 caracteres.";
+  if (!Number.isInteger(orden) || orden < 0 || orden > 9999) errors.orden = "Debe ser un entero entre 0 y 9999.";
+  return errors;
+}
+
+function MotivoCierreDrawer({ open, motivo, onClose, onSaved }: { open: boolean; motivo: MotivoCierreLf | null; onClose: () => void; onSaved: (value: MotivoCierreLf) => void }) {
+  const [codigo, setCodigo] = useState(motivo?.codigo ?? "");
+  const [nombre, setNombre] = useState(motivo?.nombre ?? "");
+  const [descripcion, setDescripcion] = useState(motivo?.descripcion ?? "");
+  const [clase, setClase] = useState<MotivoCierreLf["clase_cierre"]>(motivo?.clase_cierre ?? "ADMINISTRATIVO");
+  const [observacion, setObservacion] = useState(motivo?.requiere_observacion ?? false);
+  const [validacion, setValidacion] = useState(motivo?.requiere_validacion_entrega ?? false);
+  const [orden, setOrden] = useState(motivo?.orden_visual ?? 0);
+  const [errors, setErrors] = useState<MotivoFormErrors>({});
+  const [pending, startTransition] = useTransition();
+
+  const clearError = (field: keyof MotivoFormErrors) => setErrors((current) => ({ ...current, [field]: undefined }));
+  const submit = () => {
+    const nextErrors = validateMotivoForm(codigo, nombre, descripcion, orden);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      toast.error("Revisa los campos marcados antes de guardar.");
+      return;
+    }
+    const body: MotivoCierreLfWritePayload = {
+      codigo: codigo.trim(),
+      nombre: nombre.trim(),
+      descripcion: descripcion.trim() || null,
+      clase_cierre: clase,
+      requiere_observacion: observacion,
+      requiere_validacion_entrega: clase === "DEVOLUCION" && validacion,
+      activo: motivo?.activo ?? true,
+      orden_visual: orden,
+    };
+    startTransition(async () => {
+      try {
+        const saved = motivo
+          ? await lostFoundClient.actualizarMotivoCierre(motivo.id, body)
+          : await lostFoundClient.crearMotivoCierre(body);
+        onSaved(saved);
+        toast.success(motivo ? "Motivo actualizado" : "Motivo creado");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo guardar el motivo");
+      }
+    });
+  };
+
+  return (
+    <Drawer open={open} onOpenChange={(next) => !next && onClose()} direction="right">
+      <DrawerContent className="h-full p-0 sm:max-w-lg">
+        <div className="flex min-h-full flex-col">
+          <DrawerHeader className="border-b px-6 py-5 text-left">
+            <DrawerTitle>{motivo ? "Editar motivo" : "Nuevo motivo"}</DrawerTitle>
+            <DrawerDescription>Configura las validaciones aplicables al cierre.</DrawerDescription>
+          </DrawerHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+            <Field label="Código">
+              <Input
+                value={codigo}
+                maxLength={80}
+                disabled={Boolean(motivo)}
+                aria-invalid={Boolean(errors.codigo)}
+                onChange={(e) => { setCodigo(e.target.value.toUpperCase()); clearError("codigo"); }}
+              />
+            </Field>
+            {errors.codigo && <FormFieldError>{errors.codigo}</FormFieldError>}
+            {motivo && <p className="text-xs text-slate-500">El código queda bloqueado después de crear el motivo.</p>}
+            <Field label="Nombre">
+              <Input value={nombre} maxLength={120} aria-invalid={Boolean(errors.nombre)} onChange={(e) => { setNombre(e.target.value); clearError("nombre"); }} />
+            </Field>
+            {errors.nombre && <FormFieldError>{errors.nombre}</FormFieldError>}
+            <Field label="Descripción">
+              <Textarea
+                value={descripcion}
+                rows={4}
+                maxLength={1000}
+                className="min-h-28 resize-y"
+                aria-invalid={Boolean(errors.descripcion)}
+                onChange={(e) => { setDescripcion(e.target.value); clearError("descripcion"); }}
+              />
+            </Field>
+            <div className="flex justify-between text-[11px] text-slate-400"><span className={errors.descripcion ? "text-rose-600" : undefined}>{errors.descripcion ?? "Campo opcional"}</span><span>{descripcion.length}/1000</span></div>
+            <Field label="Clase">
+              <Select value={clase} onValueChange={(value) => { setClase(value as MotivoCierreLf["clase_cierre"]); if (value !== "DEVOLUCION") setValidacion(false); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="DEVOLUCION">Devolución</SelectItem><SelectItem value="DESCARTE">Descarte</SelectItem><SelectItem value="ADMINISTRATIVO">Administrativo</SelectItem></SelectContent>
+              </Select>
+            </Field>
+            <ToggleField label="Requiere observación" checked={observacion} onCheckedChange={setObservacion} />
+            {clase === "DEVOLUCION" && <ToggleField label="Requiere validación de entrega" checked={validacion} onCheckedChange={setValidacion} />}
+            <Field label="Orden visual">
+              <Input type="number" min={0} max={9999} step={1} value={orden} aria-invalid={Boolean(errors.orden)} onChange={(e) => { setOrden(Number(e.target.value)); clearError("orden"); }} />
+            </Field>
+            {errors.orden && <FormFieldError>{errors.orden}</FormFieldError>}
+          </div>
+          <DrawerFooter className="border-t px-6 py-4">
+            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button type="button" disabled={pending} onClick={submit}>{pending && <Spinner className="mr-2 h-4 w-4" />}Guardar</Button>
+          </DrawerFooter>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function FormFieldError({ children }: { children: ReactNode }) {
+  return <p className="text-xs text-rose-600">{children}</p>;
+}
+
+function motivoPayload(m: MotivoCierreLf): MotivoCierreLfWritePayload { return { codigo: m.codigo, nombre: m.nombre, descripcion: m.descripcion ?? null, clase_cierre: m.clase_cierre, requiere_observacion: m.requiere_observacion, requiere_validacion_entrega: m.requiere_validacion_entrega, activo: m.activo, orden_visual: m.orden_visual }; }
 
 // ───────────────────────────── Drawer ─────────────────────────────
 
@@ -573,7 +807,14 @@ function CategoryDrawer({
               <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Electrónicos" required />
             </Field>
             <Field label="Descripción">
-              <Textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Descripción breve de la categoría" />
+              <Textarea
+                value={descripcion}
+                rows={4}
+                maxLength={1000}
+                className="min-h-28 resize-y"
+                onChange={(e) => setDescripcion(e.target.value)}
+                placeholder="Descripción breve de la categoría"
+              />
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
               <ToggleField label="Activa" checked={activa} onCheckedChange={setActiva} />

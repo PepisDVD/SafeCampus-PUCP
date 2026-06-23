@@ -34,6 +34,19 @@ export type CustodiaPoliticaLf = {
   version: number;
 };
 
+export type MotivoCierreLf = {
+  id: string;
+  codigo: string;
+  nombre: string;
+  descripcion?: string | null;
+  clase_cierre: "DEVOLUCION" | "DESCARTE" | "ADMINISTRATIVO";
+  requiere_observacion: boolean;
+  requiere_validacion_entrega: boolean;
+  activo: boolean;
+  orden_visual: number;
+  codigo_bloqueado: boolean;
+};
+
 export type CategoriaLf = {
   id: string;
   codigo: string;
@@ -94,6 +107,7 @@ export type CasoLfDetail = CasoLfListItem & {
   contacto_info?: string | null;
   foto_adicional_urls: string[];
   etiquetas: string[];
+  motivo_cierre_id?: string | null;
   latitud?: number | null;
   longitud?: number | null;
   updated_at: string;

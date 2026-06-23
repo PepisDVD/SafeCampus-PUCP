@@ -1,10 +1,54 @@
 from datetime import datetime, time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.constants import EstadoCasoLF, EstadoCustodia, EstadoMatchLF, MotivoCierreLF, TipoCasoLF
 from app.schemas.incidente import UsuarioMini, ZonaCount
+
+
+class MotivoCierreLfItem(BaseModel):
+    id: str
+    codigo: str
+    nombre: str
+    descripcion: str | None = None
+    clase_cierre: str
+    requiere_observacion: bool = False
+    requiere_validacion_entrega: bool = False
+    activo: bool = True
+    orden_visual: int = 0
+    codigo_bloqueado: bool = False
+
+
+class MotivoCierreLfCreate(BaseModel):
+    codigo: str = Field(min_length=2, max_length=80, pattern=r"^[A-Z][A-Z0-9_]*$")
+    nombre: str = Field(min_length=2, max_length=120)
+    descripcion: str | None = Field(default=None, max_length=1000)
+    clase_cierre: str = Field(pattern=r"^(DEVOLUCION|DESCARTE|ADMINISTRATIVO)$")
+    requiere_observacion: bool = False
+    requiere_validacion_entrega: bool = False
+    activo: bool = True
+    orden_visual: int = Field(default=0, ge=0, le=9999)
+
+    @field_validator("nombre")
+    @classmethod
+    def _nombre_no_vacio(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("El nombre debe tener al menos 2 caracteres.")
+        return value
+
+    @field_validator("descripcion")
+    @classmethod
+    def _normalizar_descripcion(cls, value: str | None) -> str | None:
+        value = value.strip() if value else None
+        return value or None
+
+    @model_validator(mode="after")
+    def _validacion_entrega_solo_devolucion(self) -> "MotivoCierreLfCreate":
+        if self.requiere_validacion_entrega and self.clase_cierre != "DEVOLUCION":
+            raise ValueError("La validacion de entrega solo aplica a motivos de devolucion.")
+        return self
 
 
 class CategoriaLfItem(BaseModel):
@@ -150,6 +194,8 @@ class CasoLfEstadoUpdate(BaseModel):
     estado: EstadoCasoLF
     comentario: str | None = Field(default=None, max_length=2000)
     motivo_cierre: MotivoCierreLF | None = None
+    motivo_cierre_id: str | None = None
+    motivo_cierre_id: str | None = None
     observaciones_cierre: str | None = Field(default=None, max_length=2000)
 
 
@@ -249,12 +295,36 @@ class CustodiaPoliticaItem(BaseModel):
     version: int = 1
 
 
+POLITICA_CUSTODIA_LIMITS = {
+    "dias_maximos_custodia": (1, 365),
+    "dias_alerta_vencimiento": (0, 90),
+    "dias_recordatorio_previo": (0, 90),
+    "horas_maximas_perecibles": (1, 168),
+    "horas_alerta_perecible": (0, 72),
+}
+
+
 class CustodiaPoliticaUpdateInput(BaseModel):
-    dias_maximos_custodia: int = Field(gt=0)
-    dias_alerta_vencimiento: int = Field(ge=0)
-    dias_recordatorio_previo: int = Field(ge=0)
-    horas_maximas_perecibles: int = Field(gt=0)
-    horas_alerta_perecible: int = Field(ge=0)
+    dias_maximos_custodia: int = Field(
+        ge=POLITICA_CUSTODIA_LIMITS["dias_maximos_custodia"][0],
+        le=POLITICA_CUSTODIA_LIMITS["dias_maximos_custodia"][1],
+    )
+    dias_alerta_vencimiento: int = Field(
+        ge=POLITICA_CUSTODIA_LIMITS["dias_alerta_vencimiento"][0],
+        le=POLITICA_CUSTODIA_LIMITS["dias_alerta_vencimiento"][1],
+    )
+    dias_recordatorio_previo: int = Field(
+        ge=POLITICA_CUSTODIA_LIMITS["dias_recordatorio_previo"][0],
+        le=POLITICA_CUSTODIA_LIMITS["dias_recordatorio_previo"][1],
+    )
+    horas_maximas_perecibles: int = Field(
+        ge=POLITICA_CUSTODIA_LIMITS["horas_maximas_perecibles"][0],
+        le=POLITICA_CUSTODIA_LIMITS["horas_maximas_perecibles"][1],
+    )
+    horas_alerta_perecible: int = Field(
+        ge=POLITICA_CUSTODIA_LIMITS["horas_alerta_perecible"][0],
+        le=POLITICA_CUSTODIA_LIMITS["horas_alerta_perecible"][1],
+    )
 
     @model_validator(mode="after")
     def _coherencia(self) -> "CustodiaPoliticaUpdateInput":
