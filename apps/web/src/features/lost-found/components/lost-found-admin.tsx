@@ -21,7 +21,7 @@ import {
   Textarea,
 } from "@safecampus/ui-kit";
 import { Activity, AlertTriangle, Archive, CheckCircle2, Edit3, PackageSearch, Plus, Settings, TrendingUp, type LucideIcon } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
 import type { CategoriaLf, KpisLf } from "../types";
 

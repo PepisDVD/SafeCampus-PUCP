@@ -1,21 +1,22 @@
-from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from typing import Any
-from uuid import UUID
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import EstadoCasoLF, MotivoCierreLF
+from app.core.audit import AuditModulo
 from app.core.config import settings
+from app.core.constants import EstadoCasoLF
 from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.lost_found_repository import LostFoundRepository
 from app.repositories.notificacion_repository import NotificacionRepository
+from app.schemas.incidente import UsuarioMini
 from app.schemas.lost_found import (
     CancelarCasoLfInput,
-    CasoLfCreateInput,
     CasoLfCreated,
+    CasoLfCreateInput,
     CasoLfDetail,
     CasoLfEstadoUpdate,
     CasoLfFotosInput,
@@ -37,7 +38,6 @@ from app.schemas.lost_found import (
     MatchLfResponderInput,
     ParticipacionLfInput,
 )
-from app.schemas.incidente import UsuarioMini
 from app.services.storage_service import StorageService
 
 OPERATIVO_ROLES = {"supervisor", "operador", "administrador"}
@@ -128,9 +128,9 @@ class LostFoundService:
         self,
         *,
         search: str | None,
-        tipo: str | None,
-        estado: str | None,
-        categoria_id: str | None,
+        tipos: list[str] | None,
+        estados: list[str] | None,
+        categoria_ids: list[str] | None,
         cursor: datetime | None,
         limit: int,
     ) -> list[CasoLfListItem]:
@@ -138,9 +138,9 @@ class LostFoundService:
             self._map_list(row)
             for row in await self._repo.list_operativo(
                 search=search,
-                tipo=tipo,
-                estado=estado,
-                categoria_id=categoria_id,
+                tipos=tipos,
+                estados=estados,
+                categoria_ids=categoria_ids,
                 cursor=cursor,
                 limit=max(1, min(limit, 200)),
             )
@@ -368,18 +368,18 @@ class LostFoundService:
     async def listar_custodias(
         self,
         *,
-        estado: str | None,
+        estados: list[str] | None,
         search: str | None,
-        vencimiento: str | None,
+        vencimientos: list[str] | None,
         page: int,
         per_page: int,
     ) -> dict[str, Any]:
         safe_page = max(1, page)
         safe_per_page = max(1, min(per_page, 100))
         rows, total = await self._repo.list_custodias(
-            estado=estado,
+            estados=estados,
             search=search,
-            vencimiento=vencimiento,
+            vencimientos=vencimientos,
             page=safe_page,
             per_page=safe_per_page,
         )
@@ -476,7 +476,7 @@ class LostFoundService:
         return " ".join(str(data.get(k) or "") for k in ("titulo", "descripcion", "lugar_referencia", "color_principal", "marca", "subcategoria")).lower()
 
     async def _audit_lf(self, usuario_id: str | None, accion: str, entidad: str | None, entidad_id: str | None, detalle: dict[str, Any]) -> None:
-        await self._audit.create_registro(usuario_id=usuario_id, modulo="LOST_FOUND", accion=accion, entidad=entidad, entidad_id=entidad_id, detalle=detalle)
+        await self._audit.create_registro(usuario_id=usuario_id, modulo=AuditModulo.LOST_FOUND, accion=accion, entidad=entidad, entidad_id=entidad_id, detalle=detalle)
 
     @staticmethod
     def _mark_deletable(rows: list[dict[str, Any]], usuario_id: str) -> list[dict[str, Any]]:

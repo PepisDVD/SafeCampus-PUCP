@@ -41,7 +41,7 @@ export default async function LlmAuditPage({
           Auditoria LLM — Historial de uso
         </h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Registro detallado de cada invocacion del chatbot IA con consumo de tokens y latencia.
+          Registro detallado de cada invocación del chatbot IA con consumo de tokens y latencia.
         </p>
       </div>
       <Suspense fallback={<Skeleton className="h-96 w-full rounded-lg" />}>

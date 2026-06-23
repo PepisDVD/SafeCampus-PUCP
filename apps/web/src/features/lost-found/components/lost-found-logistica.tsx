@@ -12,8 +12,11 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
+  FilterBar,
   Input,
   Label,
+  MultiSelectFilter,
+  SearchInput,
   Select,
   SelectContent,
   SelectItem,
@@ -29,8 +32,8 @@ import {
   TablePaginationBar,
   Textarea,
 } from "@safecampus/ui-kit";
-import { CheckCircle2, Edit3, Eye, PackageCheck, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { CheckCircle2, Edit3, Eye, PackageCheck, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
 import { estadoLabel, estadoLfTone } from "../presentation";
 import type { CasoLfDetail, CasoLfListItem, CustodiaLf, ListResponse } from "../types";
@@ -43,12 +46,17 @@ type Props = {
 };
 
 const ESTADOS = ["ACTIVA", "PROXIMA_VENCER", "VENCIDA", "DEVUELTA", "DESCARTADA"] as const;
+const VENCIMIENTOS = [
+  { value: "vigente", label: "Vigentes" },
+  { value: "proxima", label: "Próximos a vencer" },
+  { value: "vencida", label: "Vencidas" },
+] as const;
 
 export function LostFoundLogistica({ initialCustodias, casos }: Props) {
   const [data, setData] = useState(initialCustodias);
   const [search, setSearch] = useState("");
-  const [estado, setEstado] = useState("ACTIVA");
-  const [vencimiento, setVencimiento] = useState("TODOS");
+  const [estados, setEstados] = useState<string[]>(["ACTIVA"]);
+  const [vencimientos, setVencimientos] = useState<string[]>([]);
   const [perPage, setPerPage] = useState(String(initialCustodias.per_page));
   const [drawer, setDrawer] = useState<"crear" | "editar" | "devolver" | "descartar" | "trazabilidad" | null>(null);
   const [selected, setSelected] = useState<CustodiaLf | null>(null);
@@ -61,7 +69,13 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
 
   const load = (page = data.page) => {
     startTransition(async () => {
-      const params = buildParams({ search, estado, vencimiento, page: String(page), per_page: perPage });
+      const params = buildParams({
+        search,
+        estado: estados.join(","),
+        vencimiento: vencimientos.join(","),
+        page: String(page),
+        per_page: perPage,
+      });
       setData(await lostFoundClient.custodias(params));
     });
   };
@@ -82,8 +96,8 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
     <div className="space-y-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950">Logistica Lost & Found</h1>
-          <p className="text-sm text-slate-500">Custodia fisica, devoluciones y descarte de objetos encontrados.</p>
+          <h1 className="text-2xl font-semibold text-slate-950">Logística Lost & Found</h1>
+          <p className="text-sm text-slate-500">Custodia física, devoluciones y descarte de objetos encontrados.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => load()} disabled={isPending}>
@@ -97,28 +111,21 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
         </div>
       </div>
 
-      <section className="rounded-lg border bg-white p-4">
+      <FilterBar>
         <div className="grid gap-3 lg:grid-cols-[1.4fr_repeat(4,minmax(150px,0.5fr))]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Codigo, objeto, ubicacion u observacion" />
-          </div>
-          <Select value={estado} onValueChange={setEstado}>
-            <SelectTrigger><SelectValue placeholder="Estado" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODOS">Todos los estados</SelectItem>
-              {ESTADOS.map((item) => <SelectItem key={item} value={item}>{estadoLabel(item)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={vencimiento} onValueChange={setVencimiento}>
-            <SelectTrigger><SelectValue placeholder="Vencimiento" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODOS">Todos</SelectItem>
-              <SelectItem value="vigente">Vigentes</SelectItem>
-              <SelectItem value="proxima">Proximas a vencer</SelectItem>
-              <SelectItem value="vencida">Vencidas</SelectItem>
-            </SelectContent>
-          </Select>
+          <SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Código, objeto, ubicación u observación" />
+          <MultiSelectFilter
+            placeholder="Todos los estados"
+            options={ESTADOS.map((item) => ({ value: item, label: estadoLabel(item) }))}
+            selected={estados}
+            onChange={setEstados}
+          />
+          <MultiSelectFilter
+            placeholder="Todos"
+            options={VENCIMIENTOS}
+            selected={vencimientos}
+            onChange={setVencimientos}
+          />
           <Select value={perPage} onValueChange={setPerPage}>
             <SelectTrigger><SelectValue placeholder="Filas" /></SelectTrigger>
             <SelectContent>
@@ -127,7 +134,7 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
           </Select>
           <Button onClick={() => load(1)} disabled={isPending}>Aplicar filtros</Button>
         </div>
-      </section>
+      </FilterBar>
 
       <section className="overflow-hidden rounded-lg border bg-white">
         <Table>
@@ -136,8 +143,8 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
               <TableHead>Caso</TableHead>
               <TableHead>Objeto</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Ubicacion</TableHead>
-              <TableHead>Recepcion</TableHead>
+              <TableHead>Ubicación</TableHead>
+              <TableHead>Recepción</TableHead>
               <TableHead>Vencimiento</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -293,7 +300,7 @@ function CustodiaDrawer({
         <form onSubmit={submit} className="flex min-h-full flex-col">
           <DrawerHeader className="border-b px-6 py-5 text-left">
             <DrawerTitle>{title}</DrawerTitle>
-            <DrawerDescription>Actualiza la trazabilidad fisica del objeto encontrado.</DrawerDescription>
+            <DrawerDescription>Actualiza la trazabilidad física del objeto encontrado.</DrawerDescription>
           </DrawerHeader>
 
           <div className="flex-1 space-y-4 px-6 py-5">
@@ -333,8 +340,8 @@ function CustodiaDrawer({
                         <p className="font-medium text-slate-950">{selectedCase.titulo}</p>
                         <p className="mt-1 line-clamp-3 text-slate-600">{selectedCase.descripcion}</p>
                         <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-                          <div><dt className="text-xs text-slate-500">Codigo</dt><dd>{selectedCase.codigo}</dd></div>
-                          <div><dt className="text-xs text-slate-500">Categoria</dt><dd>{selectedCase.categoria_nombre ?? "Sin categoria"}</dd></div>
+                          <div><dt className="text-xs text-slate-500">Código</dt><dd>{selectedCase.codigo}</dd></div>
+                          <div><dt className="text-xs text-slate-500">Categoría</dt><dd>{selectedCase.categoria_nombre ?? "Sin categoría"}</dd></div>
                           <div><dt className="text-xs text-slate-500">Lugar reportado</dt><dd>{selectedCase.lugar_referencia}</dd></div>
                           <div><dt className="text-xs text-slate-500">Marca/color</dt><dd>{[selectedCase.marca, selectedCase.color_principal].filter(Boolean).join(" · ") || "No indicado"}</dd></div>
                         </dl>
@@ -356,7 +363,7 @@ function CustodiaDrawer({
 
             {(mode === "crear" || mode === "editar") && (
               <>
-                <Field label="Ubicacion fisica">
+                <Field label="Ubicación física">
                   <Input name="ubicacion_custodia" defaultValue={custodia?.ubicacion_custodia ?? ""} required placeholder="Ej. Estante B, casillero 04" />
                 </Field>
                 <Field label="Observaciones">

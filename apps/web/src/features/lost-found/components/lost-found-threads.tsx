@@ -28,6 +28,7 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
+  FilterBar,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -36,6 +37,8 @@ import {
   DialogTitle,
   Input,
   Label,
+  MultiSelectFilter,
+  SearchInput,
   Select,
   SelectContent,
   SelectItem,
@@ -47,7 +50,7 @@ import {
   ToggleGroupItem,
 } from "@safecampus/ui-kit";
 import { Eye, Grid2X2, List, MapPin, MessageSquare, PackageSearch, Plus, Search, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
 import type { CasoLfListItem, CategoriaLf, UbicacionMaestra } from "../types";
@@ -69,6 +72,17 @@ type TouchedFields = Partial<Record<keyof FormErrors, boolean>>;
 
 const PAGE_SIZE = 12;
 const DEFAULT_MAP_POINT = { lat: -12.06945, lng: -77.08055 };
+const TIPO_OPTIONS = [
+  { value: "PERDIDO", label: "Perdidos" },
+  { value: "ENCONTRADO", label: "Encontrados" },
+] as const;
+const ESTADO_OPTIONS = [
+  { value: "ABIERTO", label: "Abiertos" },
+  { value: "EN_REVISION", label: "En revisión" },
+  { value: "CONFIRMADO", label: "Confirmados" },
+  { value: "EN_CUSTODIA", label: "En custodia" },
+  { value: "CERRADO", label: "Cerrados" },
+] as const;
 
 const LeafletCoordinatePicker = dynamic(
   () => import("@/features/admin/components/maestros/leaflet-coordinate-picker").then((mod) => mod.LeafletCoordinatePicker),
@@ -92,9 +106,9 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
   const [casos, setCasos] = useState(initialCasos);
   const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor ?? null);
   const [query, setQuery] = useState("");
-  const [tipo, setTipo] = useState("TODOS");
-  const [estado, setEstado] = useState("TODOS");
-  const [categoria, setCategoria] = useState("TODAS");
+  const [tipos, setTipos] = useState<string[]>([]);
+  const [estados, setEstados] = useState<string[]>([]);
+  const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState<string[]>([]);
   const [columns, setColumns] = useState("4");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [open, setOpen] = useState(false);
@@ -116,11 +130,13 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
   const threadParams = useCallback((cursor?: string | null) => ({
     limit: String(PAGE_SIZE),
     ...(query.trim() ? { search: query.trim() } : {}),
-    ...(tipo !== "TODOS" ? { tipo } : {}),
-    ...(estado !== "TODOS" ? { estado } : {}),
-    ...(categoria !== "TODAS" ? { categoria_id: categoria } : {}),
+    ...(tipos.length ? { tipo: tipos.join(",") } : {}),
+    ...(estados.length ? { estado: estados.join(",") } : {}),
+    ...(categoriasSeleccionadas.length
+      ? { categoria_id: categoriasSeleccionadas.join(",") }
+      : {}),
     ...(cursor ? { cursor } : {}),
-  }), [categoria, estado, query, tipo]);
+  }), [categoriasSeleccionadas, estados, query, tipos]);
 
   const loadMore = useCallback(() => {
     if (!nextCursor || isPending) return;
@@ -245,7 +261,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
     }));
     setMapConfirmOpen(false);
     setMapDialogOpen(false);
-    toast.success("Ubicacion marcada en el mapa");
+    toast.success("Ubicación marcada en el mapa");
   };
 
   const canAddFotos = fotos.length < 3;
@@ -317,7 +333,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
           <DrawerContent className="flex h-dvh max-h-dvh flex-col overflow-hidden p-0 sm:max-w-xl">
             <DrawerHeader className="shrink-0 border-b px-4 py-4">
               <DrawerTitle>Nuevo hilo Lost & Found</DrawerTitle>
-              <DrawerDescription>Registra una publicacion operativa o comunitaria.</DrawerDescription>
+              <DrawerDescription>Registra una publicación operativa o comunitaria.</DrawerDescription>
             </DrawerHeader>
             <div className="mx-auto grid w-full max-w-2xl flex-1 gap-3 overflow-y-auto px-4 py-4">
               <Select value={form.tipo} onValueChange={(value) => setForm((f) => ({ ...f, tipo: value as "PERDIDO" | "ENCONTRADO" }))}>
@@ -328,10 +344,10 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
                 </SelectContent>
               </Select>
               <div className="space-y-2">
-                <Label htmlFor="lf-titulo">Titulo</Label>
+                <Label htmlFor="lf-titulo">Título</Label>
                 <Input
                   id="lf-titulo"
-                  placeholder="Ej. Celular negro en pabellon A"
+                  placeholder="Ej. Celular negro en pabellón A"
                   value={form.titulo}
                   onBlur={() => setTouched((current) => ({ ...current, titulo: true }))}
                   onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
@@ -340,12 +356,12 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <Label htmlFor="lf-descripcion">Descripcion</Label>
+                  <Label htmlFor="lf-descripcion">Descripción</Label>
                   <span className="text-xs text-slate-500">{form.descripcion.length}/500</span>
                 </div>
                 <Textarea
                   id="lf-descripcion"
-                  placeholder="Describe rasgos, contenido visible, estado y detalles utiles para confirmar propiedad."
+                  placeholder="Describe rasgos, contenido visible, estado y detalles útiles para confirmar la propiedad."
                   value={form.descripcion}
                   onBlur={() => setTouched((current) => ({ ...current, descripcion: true }))}
                   onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
@@ -359,7 +375,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
                   setForm((f) => ({ ...f, categoria_id: value }));
                 }}
               >
-                <SelectTrigger><SelectValue placeholder="Categoria" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Categoría" /></SelectTrigger>
                 <SelectContent>
                   {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
                 </SelectContent>
@@ -377,7 +393,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
                 <FieldError message={visibleError(formErrors.fecha_evento, touched.fecha_evento, submitted)} />
               </div>
               <Select value={ubicacionSeleccionada} onValueChange={handleUbicacionChange}>
-                <SelectTrigger><SelectValue placeholder="Ubicacion" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Ubicación" /></SelectTrigger>
                 <SelectContent>
                   {ubicaciones.map((ubicacion) => (
                     <SelectItem key={ubicacion.id} value={ubicacion.id}>{ubicacion.nombre}</SelectItem>
@@ -394,7 +410,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
                     onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))}
                   />
                 )}
-                <Button type="button" variant="outline" size="icon" className="shrink-0" onClick={openMapDialog} aria-label="Marcar ubicacion en mapa">
+                <Button type="button" variant="outline" size="icon" className="shrink-0" onClick={openMapDialog} aria-label="Marcar ubicación en mapa">
                   <MapPin className="h-4 w-4" />
                 </Button>
               </div>
@@ -443,38 +459,30 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
         </Drawer>
       </div>
 
-      <section className="rounded-lg border bg-white p-4">
+      <FilterBar>
         <div className="grid gap-3 lg:grid-cols-[1.4fr_160px_180px_220px_150px_auto_auto]">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <Input className="pl-9" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por codigo, objeto, lugar o marca" />
-        </div>
-        <Select value={tipo} onValueChange={setTipo}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="TODOS">Todos</SelectItem>
-            <SelectItem value="PERDIDO">Perdidos</SelectItem>
-            <SelectItem value="ENCONTRADO">Encontrados</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={estado} onValueChange={setEstado}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="TODOS">Todos los estados</SelectItem>
-            <SelectItem value="ABIERTO">Abiertos</SelectItem>
-            <SelectItem value="EN_REVISION">En revision</SelectItem>
-            <SelectItem value="CONFIRMADO">Confirmados</SelectItem>
-            <SelectItem value="EN_CUSTODIA">En custodia</SelectItem>
-            <SelectItem value="CERRADO">Cerrados</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={categoria} onValueChange={setCategoria}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="TODAS">Todas las categorias</SelectItem>
-            {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <SearchInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por código, objeto, lugar o marca" />
+        <MultiSelectFilter
+          placeholder="Todos"
+          options={TIPO_OPTIONS}
+          selected={tipos}
+          onChange={setTipos}
+        />
+        <MultiSelectFilter
+          placeholder="Todos los estados"
+          options={ESTADO_OPTIONS}
+          selected={estados}
+          onChange={setEstados}
+        />
+        <MultiSelectFilter
+          placeholder="Todas las categorías"
+          options={categorias.map((categoria) => ({
+            value: categoria.id,
+            label: categoria.nombre,
+          }))}
+          selected={categoriasSeleccionadas}
+          onChange={setCategoriasSeleccionadas}
+        />
         <Select value={columns} onValueChange={setColumns}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -500,7 +508,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
           Buscar
         </Button>
         </div>
-      </section>
+      </FilterBar>
 
       <Dialog open={Boolean(previewSeleccionado)} onOpenChange={(isOpen) => !isOpen && closePreview()}>
         <DialogContent className="sm:max-w-2xl">
@@ -519,7 +527,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
       <Dialog open={mapDialogOpen} onOpenChange={setMapDialogOpen}>
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Seleccionar ubicacion exacta</DialogTitle>
+            <DialogTitle>Seleccionar ubicación exacta</DialogTitle>
             <DialogDescription>
               Haz clic en el mapa para marcar donde se perdio o encontro el objeto.
             </DialogDescription>
@@ -536,7 +544,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
           </p>
           <DialogFooter className="gap-2 sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setMapDialogOpen(false)}>Cancelar</Button>
-            <Button type="button" onClick={() => setMapConfirmOpen(true)}>Guardar ubicacion</Button>
+            <Button type="button" onClick={() => setMapConfirmOpen(true)}>Guardar ubicación</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -544,7 +552,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
       <AlertDialog open={mapConfirmOpen} onOpenChange={setMapConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar ubicacion</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar ubicación</AlertDialogTitle>
             <AlertDialogDescription>
               Se aplicaran las coordenadas seleccionadas al hilo. Puedes ajustar el texto del lugar manualmente.
             </AlertDialogDescription>
@@ -708,7 +716,7 @@ function validateCase(form: CasoLfCreatePayload, fotoCount: number): FormErrors 
   const descriptionLength = form.descripcion.trim().length;
   if (form.titulo.trim().length < 3) errors.titulo = "El titulo debe tener al menos 3 caracteres.";
   if (descriptionLength < 20 || descriptionLength > 500) errors.descripcion = "La descripcion debe tener entre 20 y 500 caracteres.";
-  if (!form.categoria_id) errors.categoria_id = "Selecciona una categoria.";
+  if (!form.categoria_id) errors.categoria_id = "Selecciona una categoría.";
   if (!form.fecha_evento || Number.isNaN(new Date(form.fecha_evento).getTime())) errors.fecha_evento = "Indica la fecha del evento.";
   if (form.lugar_referencia.trim().length < 3) errors.lugar_referencia = "El lugar es obligatorio.";
   if (fotoCount < 1) errors.fotos = "La foto es obligatoria.";

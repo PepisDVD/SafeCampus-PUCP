@@ -55,7 +55,7 @@ import {
   Textarea,
   cn,
 } from "@safecampus/ui-kit";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 
 import {
   actualizarAlerta,

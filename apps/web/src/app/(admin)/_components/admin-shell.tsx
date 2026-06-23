@@ -195,7 +195,7 @@ export function AdminShell({ user, children }: AdminShellProps) {
               Centro de control
             </p>
             <p className="hidden text-xs text-slate-500 sm:block">
-              Operacion, seguridad y administracion del sistema
+              Operacion, seguridad y administración del sistema
             </p>
           </div>
           <div className="flex-1" />

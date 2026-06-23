@@ -54,15 +54,6 @@ class AuthRepository:
         result = await self.db.execute(statement)
         return dict(result.mappings().one())
 
-    async def get_role_id_by_name(self, role_name: str) -> str | None:
-        statement = (
-            select(Rol.id)
-            .where(func.lower(Rol.nombre) == role_name.lower())
-            .limit(1)
-        )
-        role_id = await self.db.scalar(statement)
-        return str(role_id) if role_id else None
-
     async def assign_role(self, usuario_id: str, rol_id: str) -> None:
         statement = (
             insert(UsuarioRol)

@@ -22,6 +22,7 @@ class MaestrosService:
         payload = {
             "codigo": data.codigo.strip().upper(),
             "nombre": data.nombre.strip(),
+            "tipo": data.tipo,
             "latitud": data.latitud,
             "longitud": data.longitud,
             "activa": data.activa,
@@ -40,9 +41,11 @@ class MaestrosService:
         ubicacion_id: str,
         data: UbicacionMaestraUpdateInput,
     ) -> UbicacionMaestraItem:
+        # El código es inmutable tras el registro: solo se actualizan el resto
+        # de campos para conservar la integridad referencial del maestro.
         payload = {
-            "codigo": data.codigo.strip().upper(),
             "nombre": data.nombre.strip(),
+            "tipo": data.tipo,
             "latitud": data.latitud,
             "longitud": data.longitud,
             "activa": data.activa,
@@ -54,13 +57,27 @@ class MaestrosService:
         except IntegrityError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Ya existe una ubicacion con el mismo codigo o nombre.",
+                detail="Ya existe una ubicacion con el mismo nombre.",
             ) from exc
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ubicacion no encontrada.")
         return UbicacionMaestraItem(**row)
 
     async def eliminar_ubicacion(self, ubicacion_id: str) -> None:
+        # Una ubicación referenciada por otras entidades no puede eliminarse de
+        # forma definitiva; en su lugar debe desactivarse.
+        try:
+            tiene_relaciones = await self._repo.ubicacion_tiene_relaciones(ubicacion_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ID de ubicacion invalido.") from exc
+        if tiene_relaciones:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "La ubicacion esta asociada a otras entidades del sistema. "
+                    "Desactivala en lugar de eliminarla."
+                ),
+            )
         try:
             deleted = await self._repo.delete_ubicacion(ubicacion_id)
         except ValueError as exc:

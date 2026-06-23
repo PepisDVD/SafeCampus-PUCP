@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 
 export function PwaRegister() {
   useEffect(() => {

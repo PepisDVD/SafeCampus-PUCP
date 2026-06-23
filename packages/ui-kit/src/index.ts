@@ -12,6 +12,12 @@ export { useIsMobile } from "./hooks/use-mobile";
 // Nav — shared sidebar + user nav
 export { AppSidebar, type NavItem } from "./components/nav/app-sidebar";
 export { UserNav, type UserNavUser } from "./components/nav/user-nav";
+export {
+  RoleBadge,
+  formatRoleLabel,
+  getRoleTone,
+  type RoleBadgeProps,
+} from "./components/role-badge";
 
 // Sidebar primitives
 export {
@@ -123,6 +129,13 @@ export {
   DropdownMenuRadioGroup,
 } from "./components/ui/dropdown-menu";
 export { Input } from "./components/ui/input";
+export { SearchInput, type SearchInputProps } from "./components/ui/search-input";
+export {
+  MultiSelectFilter,
+  type MultiSelectFilterProps,
+  type MultiSelectOption,
+} from "./components/ui/multi-select-filter";
+export { FilterBar } from "./components/ui/filter-bar";
 export { Label } from "./components/ui/label";
 export {
   Popover,
@@ -166,6 +179,11 @@ export {
   SheetDescription,
 } from "./components/ui/sheet";
 export { Skeleton } from "./components/ui/skeleton";
+export {
+  StatusBadge,
+  type StatusBadgeProps,
+  type StatusTone,
+} from "./components/ui/status-badge";
 export { Switch } from "./components/ui/switch";
 export {
   Table,
@@ -188,6 +206,10 @@ export {
   TooltipProvider,
 } from "./components/ui/tooltip";
 export { Toaster } from "./components/ui/sonner";
+// Se re-exporta `toast` desde aquí para garantizar que las apps usen la MISMA
+// instancia de sonner que el <Toaster>; importarlo por separado desde "sonner"
+// puede resolver a otra copia del paquete y los toasts no se renderizarían.
+export { toast } from "sonner";
 export {
   ChartContainer,
   ChartTooltip,

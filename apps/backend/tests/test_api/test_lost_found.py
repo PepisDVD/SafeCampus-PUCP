@@ -8,7 +8,6 @@ from app.schemas.auth import AuthUserResponse
 from app.schemas.incidente import UsuarioMini
 from app.schemas.lost_found import CasoLfDetail, CasoLfListItem, CasoLfListResponse
 
-
 CASE_ID = "11111111-1111-1111-1111-111111111111"
 USER_ID = "00000000-0000-0000-0000-000000000001"
 
@@ -16,6 +15,8 @@ USER_ID = "00000000-0000-0000-0000-000000000001"
 class FakeLostFoundService:
     def __init__(self) -> None:
         self.feed_args = None
+        self.operativo_args = None
+        self.custodias_args = None
         self.upload_args = None
         self.deleted_comment = None
 
@@ -39,6 +40,14 @@ class FakeLostFoundService:
                 created_at=datetime(2026, 5, 30, 11, 0, tzinfo=UTC),
             )
         ]
+
+    async def listar_operativo(self, **kwargs) -> list[CasoLfListItem]:
+        self.operativo_args = kwargs
+        return []
+
+    async def listar_custodias(self, **kwargs) -> dict:
+        self.custodias_args = kwargs
+        return {"items": [], "total": 0, "page": kwargs["page"], "per_page": kwargs["per_page"]}
 
     async def subir_fotos_archivos(self, caso_id, usuario_id, roles, archivos) -> CasoLfDetail:
         self.upload_args = (caso_id, usuario_id, roles, len(archivos))
@@ -80,6 +89,11 @@ def _fake_comunidad() -> AuthUserResponse:
         departamento=None,
         roles=["comunidad"],
     )
+
+
+def _fake_operador() -> AuthUserResponse:
+    user = _fake_comunidad()
+    return user.model_copy(update={"roles": ["operador"]})
 
 
 def test_lost_found_feed_comunidad_acepta_filtros_y_cursor(client):
@@ -135,6 +149,48 @@ def test_lost_found_delete_comentario_propio_usa_usuario_actual(client):
         response = client.delete("/api/v1/lost-found/comentarios/22222222-2222-2222-2222-222222222222")
         assert response.status_code == 204
         assert fake.deleted_comment == ("22222222-2222-2222-2222-222222222222", USER_ID)
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lost_found_operativo_acepta_filtros_multiselect(client):
+    fake = FakeLostFoundService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_operador
+    try:
+        response = client.get(
+            "/api/v1/lost-found/casos",
+            params={
+                "tipo": "PERDIDO,ENCONTRADO",
+                "estado": "ABIERTO,EN_REVISION",
+                "categoria_id": f"{CASE_ID},{USER_ID}",
+            },
+        )
+        assert response.status_code == 200
+        assert fake.operativo_args["tipos"] == ["PERDIDO", "ENCONTRADO"]
+        assert fake.operativo_args["estados"] == ["ABIERTO", "EN_REVISION"]
+        assert fake.operativo_args["categoria_ids"] == [CASE_ID, USER_ID]
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lost_found_custodias_acepta_filtros_multiselect(client):
+    fake = FakeLostFoundService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_operador
+    try:
+        response = client.get(
+            "/api/v1/lost-found/custodias",
+            params={
+                "estado": "ACTIVA,VENCIDA",
+                "vencimiento": "proxima,vencida",
+            },
+        )
+        assert response.status_code == 200
+        assert fake.custodias_args["estados"] == ["ACTIVA", "VENCIDA"]
+        assert fake.custodias_args["vencimientos"] == ["proxima", "vencida"]
     finally:
         app.dependency_overrides.pop(get_service, None)
         app.dependency_overrides.pop(get_current_user, None)

@@ -1,11 +1,11 @@
 """Repository for sc_omnicanal webhook ingestion."""
 
-from datetime import UTC, datetime
 import json
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Integer, and_, cast, Date, func, or_, select, update
+from sqlalchemy import Date, Integer, and_, cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -577,15 +577,15 @@ class OmnicanalRepository:
         page: int = 1,
         page_size: int = 20,
         conversacion_id: str | None = None,
-        provider: str | None = None,
+        providers: list[str] | None = None,
         desde: str | None = None,
         hasta: str | None = None,
     ) -> tuple[list[ChatbotLlmUsage], int]:
         filters = []
         if conversacion_id:
             filters.append(ChatbotLlmUsage.conversacion_id == UUID(conversacion_id))
-        if provider:
-            filters.append(ChatbotLlmUsage.provider == provider)
+        if providers:
+            filters.append(ChatbotLlmUsage.provider.in_(providers))
         if desde:
             filters.append(ChatbotLlmUsage.created_at >= desde)
         if hasta:

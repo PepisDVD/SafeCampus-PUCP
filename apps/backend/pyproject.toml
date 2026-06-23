@@ -42,7 +42,12 @@ include = ["app*"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+# B008: `Depends()`, `Query()`, etc. en defaults es el patrón idiomático de
+# FastAPI (no un bug). Se ignora globalmente para evitar ruido.
+ignore = ["B008"]
 
 [tool.black]
 line-length = 100

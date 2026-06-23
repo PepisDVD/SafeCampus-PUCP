@@ -12,12 +12,10 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
+  FilterBar,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  MultiSelectFilter,
+  SearchInput,
   Table,
   TableBody,
   TableCell,
@@ -86,8 +84,8 @@ export function LlmAuditTableClient({
   const [conversacionId, setConversacionId] = useState(
     searchParams.get("conversacion_id") ?? "",
   );
-  const [provider, setProvider] = useState(
-    searchParams.get("provider") ?? "todos",
+  const [providerFilters, setProviderFilters] = useState<string[]>(
+    searchParams.get("provider")?.split(",").filter(Boolean) ?? [],
   );
   const [desde, setDesde] = useState(searchParams.get("desde") ?? "");
   const [hasta, setHasta] = useState(searchParams.get("hasta") ?? "");
@@ -96,7 +94,7 @@ export function LlmAuditTableClient({
     const params = new URLSearchParams();
     params.set("page", String(page));
     if (conversacionId.trim()) params.set("conversacion_id", conversacionId.trim());
-    if (provider && provider !== "todos") params.set("provider", provider);
+    if (providerFilters.length) params.set("provider", providerFilters.join(","));
     if (desde) params.set("desde", desde);
     if (hasta) params.set("hasta", hasta);
 
@@ -118,7 +116,7 @@ export function LlmAuditTableClient({
   return (
     <div className="space-y-5">
       {/* Filters */}
-      <div className="rounded-lg border bg-white p-4">
+      <FilterBar>
         <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700">
           <Filter className="h-4 w-4" />
           Filtros
@@ -126,12 +124,12 @@ export function LlmAuditTableClient({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs text-muted-foreground">
-              ID de conversacion
+              ID de conversación
             </label>
-            <Input
+            <SearchInput
               value={conversacionId}
               onChange={(e) => setConversacionId(e.target.value)}
-              placeholder="UUID de conversacion…"
+              placeholder="UUID de conversación..."
               className="h-8 text-xs"
             />
           </div>
@@ -139,19 +137,16 @@ export function LlmAuditTableClient({
             <label className="mb-1 block text-xs text-muted-foreground">
               Proveedor
             </label>
-            <Select value={provider} onValueChange={setProvider}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                {providers.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelectFilter
+              className="h-8 text-xs"
+              placeholder="Todos los proveedores"
+              options={providers.map((provider) => ({
+                value: provider,
+                label: provider,
+              }))}
+              selected={providerFilters}
+              onChange={setProviderFilters}
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted-foreground">
@@ -189,7 +184,7 @@ export function LlmAuditTableClient({
             variant="outline"
             onClick={() => {
               setConversacionId("");
-              setProvider("todos");
+              setProviderFilters([]);
               setDesde("");
               setHasta("");
               startTransition(() => router.push(pathname));
@@ -199,7 +194,7 @@ export function LlmAuditTableClient({
             Limpiar
           </Button>
         </div>
-      </div>
+      </FilterBar>
 
       {/* Table */}
       <div
@@ -366,7 +361,7 @@ export function LlmAuditTableClient({
               Detalle de uso LLM
             </DrawerTitle>
             <DrawerDescription>
-              Registro detallado de una invocacion del chatbot LLM.
+              Registro detallado de una invocación del chatbot LLM.
             </DrawerDescription>
           </DrawerHeader>
           {selectedItem && (

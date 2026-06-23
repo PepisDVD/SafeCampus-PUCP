@@ -27,7 +27,7 @@ class LlmAuditService:
         page: int = 1,
         page_size: int = 20,
         conversacion_id: str | None = None,
-        provider: str | None = None,
+        providers: list[str] | None = None,
         desde: str | None = None,
         hasta: str | None = None,
     ) -> LlmUsageListResponse:
@@ -35,7 +35,7 @@ class LlmAuditService:
             page=page,
             page_size=page_size,
             conversacion_id=conversacion_id,
-            provider=provider,
+            providers=providers,
             desde=desde,
             hasta=hasta,
         )
@@ -100,6 +100,7 @@ class LlmAuditService:
     async def listar_providers(self) -> list[str]:
         """Returns distinct providers that have usage records."""
         from sqlalchemy import select
+
         from app.models.sc_omnicanal import ChatbotLlmUsage
 
         stmt = (

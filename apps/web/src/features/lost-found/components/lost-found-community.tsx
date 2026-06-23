@@ -41,7 +41,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
 import type { CasoLfDetail, CasoLfListItem, CategoriaLf, MatchLf, UbicacionMaestra } from "../types";

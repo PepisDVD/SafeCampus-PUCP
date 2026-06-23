@@ -625,6 +625,10 @@ class IncidenteRepository:
     ) -> list[dict[str, Any]]:
         """Conteo agrupado por categoría dentro del rango."""
         total = func.count().label("total")
+        # Se agrupa por la columna cruda (cada categoría distinta, incluida NULL,
+        # es un grupo) y se aplica coalesce solo en el SELECT. Repetir el
+        # coalesce en el GROUP BY generaba bind params distintos y Postgres lo
+        # rechazaba con "categoria must appear in the GROUP BY clause".
         statement = (
             select(
                 func.coalesce(Incidente.categoria, "otro").label("tipo"),

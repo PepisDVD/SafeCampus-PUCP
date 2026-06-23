@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "@safecampus/ui-kit";
+import { LoginWelcomeToast } from "@/features/auth/components/login-welcome-toast";
 import { PwaRegister } from "@/components/pwa/pwa-register";
 import "./globals.css";
 
@@ -28,7 +29,8 @@ export default function RootLayout({
       <body className="min-h-full">
         <PwaRegister />
         {children}
-        <Toaster richColors position="top-center" />
+        <LoginWelcomeToast />
+        <Toaster theme="light" richColors position="top-center" />
       </body>
     </html>
   );
