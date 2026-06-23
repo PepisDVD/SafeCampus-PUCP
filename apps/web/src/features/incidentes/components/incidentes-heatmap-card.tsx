@@ -86,7 +86,7 @@ export function IncidentesHeatmapCard({ items }: IncidentesHeatmapCardProps) {
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="h-[280px]">
+        <div className="h-[520px]">
           {conCoordenadas.length === 0 ? (
             <div className="flex h-full items-center justify-center bg-slate-50 text-sm text-muted-foreground">
               Sin incidentes geolocalizados para este filtro.
