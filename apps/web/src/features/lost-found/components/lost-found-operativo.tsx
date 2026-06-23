@@ -120,7 +120,6 @@ export function LostFoundOperativo({ initialCasos, initialCustodias, kpis }: Pro
       <section className="rounded-lg border bg-white p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-slate-950">Resumen por estado</h2>
-          <span className="text-xs text-slate-500">Catalogo operativo completo</span>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
           {stateCounts.map(({ estado, count }) => (

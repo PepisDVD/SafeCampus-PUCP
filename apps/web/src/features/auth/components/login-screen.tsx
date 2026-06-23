@@ -224,9 +224,6 @@ function SsoPanel({
       <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
         Iniciar sesión
       </h2>
-      <p className="mt-1 text-sm text-gray-500 sm:text-base">
-        Acceso con tu cuenta institucional PUCP
-      </p>
 
       <div className="mt-6 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
         <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#001C55]" />
