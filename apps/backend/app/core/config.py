@@ -7,7 +7,11 @@
 from pathlib import Path
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -29,6 +33,10 @@ class Settings(BaseSettings):
     # --- Database ---
     DATABASE_URL: str
     DATABASE_ECHO: bool = False
+    DATABASE_POOL_SIZE: int = 5
+    DATABASE_MAX_OVERFLOW: int = 2
+    DATABASE_POOL_TIMEOUT_SECONDS: int = 30
+    DATABASE_POOL_RECYCLE_SECONDS: int = 300
 
     # --- Auth / JWT ---
     SECRET_KEY: str = "CHANGE-ME-IN-PRODUCTION-safecampus-secret-key-2026"

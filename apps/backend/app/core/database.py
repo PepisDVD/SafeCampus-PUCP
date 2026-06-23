@@ -12,9 +12,12 @@ from app.core.config import settings
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DATABASE_ECHO,
-    pool_size=20,
-    max_overflow=10,
-    # Supabase pooler (PgBouncer en modo transaction) no soporta prepared statements.
+    pool_size=settings.DATABASE_POOL_SIZE,
+    max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    pool_timeout=settings.DATABASE_POOL_TIMEOUT_SECONDS,
+    pool_recycle=settings.DATABASE_POOL_RECYCLE_SECONDS,
+    pool_pre_ping=True,
+    # Supabase pooler (PgBouncer) no soporta prepared statements de asyncpg.
     connect_args={
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,

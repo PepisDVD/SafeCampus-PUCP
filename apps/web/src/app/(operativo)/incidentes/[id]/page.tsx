@@ -43,6 +43,7 @@ import { IncidenteAccionesDialogs } from "./_components/incidente-acciones-dialo
 import { IncidenteEvidencias } from "./_components/incidente-evidencias";
 import { IncidenteExpedienteCierre } from "./_components/incidente-expediente-cierre";
 import { IncidenteHistorial } from "./_components/incidente-historial";
+import { IncidenteUbicacionCard } from "./_components/incidente-ubicacion-card";
 
 function formatFechaLarga(iso: string | null | undefined): string {
   if (!iso) return "--";
@@ -342,6 +343,12 @@ export default async function IncidenteDetallePage({
         </main>
 
         <aside className="space-y-5">
+          <IncidenteUbicacionCard
+            latitud={detalle.latitud}
+            longitud={detalle.longitud}
+            lugarReferencia={detalle.lugar_referencia}
+          />
+
           <section
             id="panel-operativo"
             className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
