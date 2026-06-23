@@ -18,6 +18,22 @@ export type MetadatosSchemaLf = {
   campos: MetadatoCampoLf[];
 };
 
+/** Configuración del umbral de sugerencia del motor de matching. */
+export type MatchingConfigLf = {
+  umbral: number;
+  version: number;
+};
+
+/** Política de custodia y recordatorios de vencimiento. */
+export type CustodiaPoliticaLf = {
+  dias_maximos_custodia: number;
+  dias_alerta_vencimiento: number;
+  dias_recordatorio_previo: number;
+  horas_maximas_perecibles: number;
+  horas_alerta_perecible: number;
+  version: number;
+};
+
 export type CategoriaLf = {
   id: string;
   codigo: string;

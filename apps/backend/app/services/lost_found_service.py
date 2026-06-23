@@ -38,9 +38,13 @@ from app.schemas.lost_found import (
     CustodiaLfCreateInput,
     CustodiaLfItem,
     CustodiaLfUpdateInput,
+    CustodiaPoliticaItem,
+    CustodiaPoliticaUpdateInput,
     DescarteLfInput,
     DevolucionLfInput,
     KpisLfResponse,
+    MatchingConfigItem,
+    MatchingConfigUpdateInput,
     MatchLfItem,
     MatchLfResponderInput,
     ParticipacionLfInput,
@@ -49,6 +53,22 @@ from app.services.storage_service import StorageService
 
 OPERATIVO_ROLES = {"supervisor", "operador", "administrador"}
 CHAT_STATES = {"ABIERTO", "EN_REVISION"}
+MATCHING_CONFIG_KEY = "matching.sugerencia"
+MATCHING_UMBRAL_DEFAULT = 0.55
+MATCHING_CONFIG_VERSION = 1
+
+CUSTODIA_POLITICA_KEY = "custodia.politica"
+CUSTODIA_POLITICA_VERSION = 1
+CUSTODIA_POLITICA_DEFAULT = {
+    "dias_maximos_custodia": 30,
+    "dias_alerta_vencimiento": 7,
+    "dias_recordatorio_previo": 3,
+    "horas_maximas_perecibles": 24,
+    "horas_alerta_perecible": 6,
+    "version": CUSTODIA_POLITICA_VERSION,
+}
+# Estados de caso que NO generan recordatorios de custodia.
+CASO_ESTADOS_SIN_RECORDATORIO = {"DEVUELTO", "DESCARTADO", "CERRADO"}
 TRANSITIONS = {
     "ABIERTO": {"EN_REVISION", "EN_CUSTODIA", "CERRADO"},
     "EN_REVISION": {"CONFIRMADO", "ABIERTO", "CERRADO"},
@@ -391,14 +411,91 @@ class LostFoundService:
             raise HTTPException(status_code=404, detail="Comentario no encontrado.")
         await self._audit_lf(actor_id, "LF_COMENTARIO_MODERADO", "comentario_caso_lf", comentario_id, {"visible": data.visible, "motivo": data.motivo})
 
+    async def obtener_politica_custodia(self) -> CustodiaPoliticaItem:
+        """Lee la política de custodia. Si no existe, devuelve los valores por defecto."""
+        value = await self._repo.get_config_value(CUSTODIA_POLITICA_KEY) or {}
+        merged = {**CUSTODIA_POLITICA_DEFAULT, **value}
+        return CustodiaPoliticaItem(**{k: merged[k] for k in CustodiaPoliticaItem.model_fields})
+
+    async def actualizar_politica_custodia(self, actor_id: str, data: CustodiaPoliticaUpdateInput) -> CustodiaPoliticaItem:
+        before = await self.obtener_politica_custodia()
+        value = {**data.model_dump(), "version": CUSTODIA_POLITICA_VERSION}
+        await self._repo.update_config(
+            CUSTODIA_POLITICA_KEY,
+            value,
+            "Política de custodia: plazos de vencimiento y recordatorios (objetos normales y perecibles).",
+            actor_id,
+        )
+        detalle = build_detalle(
+            origen="WEB_OPERATIVA",
+            resultado=AuditResultado.EXITOSO,
+            before=before.model_dump(exclude={"version"}),
+            after=data.model_dump(),
+            resumen="Se actualizó la política de custodia y recordatorios",
+        )
+        await self._audit_lf(actor_id, "LF_POLITICA_CUSTODIA_ACTUALIZADA", "configuracion_lf", None, detalle)
+        return CustodiaPoliticaItem(**value)
+
+    async def evaluar_recordatorios_custodia(self, now: datetime | None = None) -> list[dict[str, Any]]:
+        """Evalúa vencimientos y registra (de forma idempotente) los recordatorios pendientes.
+
+        Función reutilizable y SIN ejecución automática: el proyecto no cuenta con
+        scheduler/cron. PUNTO DE INTEGRACIÓN PENDIENTE: una tarea programada debe
+        invocar este método periódicamente y luego entregar cada recordatorio
+        devuelto a través del sistema de notificaciones (`NotificacionRepository`).
+
+        Reglas aplicadas:
+          - Sólo custodias ACTIVA cuyo caso no esté DEVUELTO/DESCARTADO/CERRADO.
+          - "Por vencer" es una condición calculada desde `fecha_vencimiento` (no un estado).
+          - El UNIQUE (custodia, tipo, fecha_referencia) evita recordatorios repetidos.
+          - No recalcula custodias históricas: usa la `fecha_vencimiento` ya persistida.
+        """
+        now = now or datetime.now(timezone.utc)
+        politica = await self.obtener_politica_custodia()
+        candidatas = await self._repo.custodias_para_recordatorio(list(CASO_ESTADOS_SIN_RECORDATORIO))
+        nuevos: list[dict[str, Any]] = []
+        for c in candidatas:
+            venc = c["fecha_vencimiento"]
+            es_perecible = bool(c["es_perecible"])
+            if es_perecible:
+                alerta = venc - timedelta(hours=politica.horas_alerta_perecible)
+                if now >= venc:
+                    tipo = "VENCIDO"
+                elif now >= alerta:
+                    tipo = "PERECIBLE_PROXIMO_VENCIMIENTO"
+                else:
+                    continue
+            else:
+                alerta = venc - timedelta(days=politica.dias_recordatorio_previo)
+                if now >= venc:
+                    tipo = "VENCIDO"
+                elif now >= alerta:
+                    tipo = "PROXIMO_VENCIMIENTO"
+                else:
+                    continue
+            creado = await self._repo.registrar_recordatorio(str(c["id"]), tipo, venc)
+            if creado:
+                nuevos.append({"custodia_id": str(c["id"]), "caso_codigo": c.get("caso_codigo"), "tipo": tipo, "fecha_referencia": venc})
+        return nuevos
+
     async def crear_custodia(self, caso_id: str, actor_id: str, data: CustodiaLfCreateInput) -> CustodiaLfItem:
         caso = await self._repo.get_detail_by_ref(caso_id)
         if not caso:
             raise HTTPException(status_code=404, detail="Caso no encontrado.")
+        # La fecha de vencimiento se calcula desde la política vigente y el snapshot es_perecible.
+        politica = await self.obtener_politica_custodia()
+        es_perecible = bool(data.es_perecible)
+        ahora = datetime.now(timezone.utc)
+        vencimiento = ahora + (
+            timedelta(hours=politica.horas_maximas_perecibles)
+            if es_perecible
+            else timedelta(days=politica.dias_maximos_custodia)
+        )
         row = await self._repo.create_custodia(caso_id, actor_id, {
             "ubicacion_custodia": data.ubicacion_custodia,
             "observaciones": data.observaciones,
-            "es_perecible": bool(data.es_perecible),
+            "es_perecible": es_perecible,
+            "fecha_vencimiento": vencimiento,
         })
         await self._repo.update_estado(caso_id=caso_id, estado="EN_CUSTODIA", ejecutor_id=actor_id, comentario=data.observaciones)
         await self._audit_lf(actor_id, "LF_CUSTODIA_REGISTRADA", "custodia_objeto", row["id"], {"caso_id": caso_id, "ubicacion": data.ubicacion_custodia})
@@ -464,12 +561,43 @@ class LostFoundService:
         await self._audit_lf(actor_id, "LF_CONFIG_MODIFICADA", "configuracion_lf", None, {"parametro": key, "valor_nuevo": data.value})
         return ConfiguracionLfItem(**row)
 
+    async def obtener_config_matching(self) -> MatchingConfigItem:
+        """Lee el umbral de sugerencia. Si no existe, devuelve el valor por defecto."""
+        value = await self._repo.get_config_value(MATCHING_CONFIG_KEY) or {}
+        umbral = value.get("umbral", MATCHING_UMBRAL_DEFAULT)
+        try:
+            umbral = float(umbral)
+        except (TypeError, ValueError):
+            umbral = MATCHING_UMBRAL_DEFAULT
+        umbral = min(1.0, max(0.0, umbral))
+        return MatchingConfigItem(umbral=umbral, version=int(value.get("version", MATCHING_CONFIG_VERSION)))
+
+    async def actualizar_config_matching(self, actor_id: str, data: MatchingConfigUpdateInput) -> MatchingConfigItem:
+        before = await self.obtener_config_matching()
+        nuevo_umbral = round(float(data.umbral), 4)
+        value = {"umbral": nuevo_umbral, "version": MATCHING_CONFIG_VERSION}
+        await self._repo.update_config(
+            MATCHING_CONFIG_KEY,
+            value,
+            "Umbral de sugerencia del motor de matching determinístico (0.00 a 1.00).",
+            actor_id,
+        )
+        detalle = build_detalle(
+            origen="WEB_OPERATIVA",
+            resultado=AuditResultado.EXITOSO,
+            before={"umbral": before.umbral},
+            after={"umbral": nuevo_umbral},
+            resumen="Se actualizó el umbral de sugerencia de matching",
+        )
+        await self._audit_lf(actor_id, "LF_UMBRAL_MATCHING_ACTUALIZADO", "configuracion_lf", None, detalle)
+        return MatchingConfigItem(umbral=nuevo_umbral, version=MATCHING_CONFIG_VERSION)
+
     async def _generar_matches(self, caso_id: str, actor_id: str) -> int:
         caso = await self._repo.get_detail_by_ref(caso_id)
         if not caso:
             return 0
-        config = await self._repo.get_config_value("matching") or {"umbral": 0.55}
-        umbral = float(config.get("umbral", 0.55))
+        config = await self.obtener_config_matching()
+        umbral = config.umbral
         categoria = await self._repo.get_categoria(str(caso["categoria_id"])) if caso.get("categoria_id") else None
         matching_codes = codigos_matching(categoria.get("metadatos_schema") if categoria else None)
         created = 0

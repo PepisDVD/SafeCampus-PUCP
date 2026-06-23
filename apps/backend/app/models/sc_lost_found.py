@@ -7,7 +7,7 @@ from datetime import datetime, time
 from typing import Any
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, Time, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, Time, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -88,7 +88,11 @@ class HistorialCasoLf(Base):
 
 class MatchSugerido(Base):
     __tablename__ = "match_sugerido"
-    __table_args__ = {"schema": "sc_lost_found"}
+    __table_args__ = (
+        UniqueConstraint("caso_perdido_id", "caso_encontrado_id", name="uq_match_sugerido_par"),
+        Index("idx_match_sugerido_estado_score", "estado", "score_total"),
+        {"schema": "sc_lost_found"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
     caso_perdido_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_lost_found.caso_lost_found.id", ondelete="CASCADE"), nullable=False)
@@ -166,3 +170,26 @@ class ConfiguracionLf(Base):
     updated_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class RecordatorioCustodiaLf(Base):
+    """Ledger de idempotencia de recordatorios de vencimiento de custodia.
+
+    Evita generar el mismo recordatorio más de una vez (UNIQUE por custodia,
+    tipo y fecha de referencia). La entrega real se delega al sistema de
+    notificaciones transversal.
+    """
+
+    __tablename__ = "recordatorio_custodia_lf"
+    __table_args__ = (
+        UniqueConstraint("custodia_id", "tipo", "fecha_referencia", name="uq_recordatorio_custodia"),
+        {"schema": "sc_lost_found"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    custodia_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_lost_found.custodia_objeto.id", ondelete="CASCADE"), nullable=False)
+    tipo: Mapped[str] = mapped_column(String(40), nullable=False)
+    fecha_referencia: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    enviado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, server_default="PENDIENTE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

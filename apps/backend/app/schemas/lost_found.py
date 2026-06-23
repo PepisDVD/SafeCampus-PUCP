@@ -1,7 +1,7 @@
 from datetime import datetime, time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.constants import EstadoCasoLF, EstadoCustodia, EstadoMatchLF, MotivoCierreLF, TipoCasoLF
 from app.schemas.incidente import UsuarioMini, ZonaCount
@@ -229,6 +229,42 @@ class ConfiguracionLfItem(BaseModel):
 class ConfiguracionLfUpdateInput(BaseModel):
     value: dict[str, Any]
     descripcion: str | None = Field(default=None, max_length=1000)
+
+
+class MatchingConfigItem(BaseModel):
+    umbral: float = Field(ge=0, le=1)
+    version: int = 1
+
+
+class MatchingConfigUpdateInput(BaseModel):
+    umbral: float = Field(ge=0, le=1, description="Umbral de sugerencia entre 0.00 y 1.00.")
+
+
+class CustodiaPoliticaItem(BaseModel):
+    dias_maximos_custodia: int
+    dias_alerta_vencimiento: int
+    dias_recordatorio_previo: int
+    horas_maximas_perecibles: int
+    horas_alerta_perecible: int
+    version: int = 1
+
+
+class CustodiaPoliticaUpdateInput(BaseModel):
+    dias_maximos_custodia: int = Field(gt=0)
+    dias_alerta_vencimiento: int = Field(ge=0)
+    dias_recordatorio_previo: int = Field(ge=0)
+    horas_maximas_perecibles: int = Field(gt=0)
+    horas_alerta_perecible: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _coherencia(self) -> "CustodiaPoliticaUpdateInput":
+        if self.dias_alerta_vencimiento >= self.dias_maximos_custodia:
+            raise ValueError("Los días para marcar 'Por vencer' deben ser menores a los días máximos de custodia.")
+        if self.dias_recordatorio_previo >= self.dias_maximos_custodia:
+            raise ValueError("Los días previos de recordatorio deben ser menores a los días máximos de custodia.")
+        if self.horas_alerta_perecible >= self.horas_maximas_perecibles:
+            raise ValueError("Las horas de alerta de perecibles deben ser menores a las horas máximas de custodia.")
+        return self
 
 
 class KpisLfResponse(BaseModel):

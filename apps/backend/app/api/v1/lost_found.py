@@ -27,9 +27,13 @@ from app.schemas.lost_found import (
     CustodiaLfItem,
     CustodiaLfListResponse,
     CustodiaLfUpdateInput,
+    CustodiaPoliticaItem,
+    CustodiaPoliticaUpdateInput,
     DescarteLfInput,
     DevolucionLfInput,
     KpisLfResponse,
+    MatchingConfigItem,
+    MatchingConfigUpdateInput,
     MatchLfItem,
     MatchLfResponderInput,
     ParticipacionLfInput,
@@ -376,3 +380,41 @@ async def actualizar_configuracion(
     service: LostFoundService = Depends(get_service),
 ):
     return await service.actualizar_configuracion(key, current_user.id, body)
+
+
+@router.get("/matching/configuracion", response_model=MatchingConfigItem)
+async def obtener_config_matching(
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    """Lee el umbral de sugerencia de matching (valor por defecto si no existe)."""
+    return await service.obtener_config_matching()
+
+
+@router.put("/matching/configuracion", response_model=MatchingConfigItem)
+async def actualizar_config_matching(
+    body: MatchingConfigUpdateInput,
+    current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    """Actualiza el umbral de sugerencia (0.00 a 1.00). Solo administrador."""
+    return await service.actualizar_config_matching(current_user.id, body)
+
+
+@router.get("/custodia/politica", response_model=CustodiaPoliticaItem)
+async def obtener_politica_custodia(
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    """Lee la política de custodia y recordatorios (valores por defecto si no existe)."""
+    return await service.obtener_politica_custodia()
+
+
+@router.put("/custodia/politica", response_model=CustodiaPoliticaItem)
+async def actualizar_politica_custodia(
+    body: CustodiaPoliticaUpdateInput,
+    current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    """Actualiza la política de custodia y recordatorios. Solo administrador."""
+    return await service.actualizar_politica_custodia(current_user.id, body)

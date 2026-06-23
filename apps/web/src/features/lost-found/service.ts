@@ -1,5 +1,5 @@
 import { serverApi } from "@/lib/api/server";
-import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CustodiaLf, KpisLf, ListResponse, MatchLf, UbicacionMaestra } from "./types";
+import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CustodiaLf, CustodiaPoliticaLf, KpisLf, ListResponse, MatchingConfigLf, MatchLf, UbicacionMaestra } from "./types";
 
 export async function getLostFoundBootstrap() {
   const [categorias, feed, misCasos, ubicaciones] = await Promise.all([
@@ -50,6 +50,10 @@ export async function getLostFoundThreadMatches(id: string) {
 }
 
 export async function getLostFoundAdmin() {
-  const categorias = await serverApi.get<CategoriaLf[]>("/lost-found/categorias", { include_inactive: "true" });
-  return { categorias };
+  const [categorias, matchingConfig, politicaCustodia] = await Promise.all([
+    serverApi.get<CategoriaLf[]>("/lost-found/categorias", { include_inactive: "true" }),
+    serverApi.get<MatchingConfigLf>("/lost-found/matching/configuracion"),
+    serverApi.get<CustodiaPoliticaLf>("/lost-found/custodia/politica"),
+  ]);
+  return { categorias, matchingConfig, politicaCustodia };
 }

@@ -43,7 +43,7 @@ import {
 } from "@safecampus/ui-kit";
 import { Archive, Clock, Layers, PackageSearch, Plus, Settings, ShieldCheck, Trash2, type LucideIcon } from "lucide-react";
 import { lostFoundClient } from "../client";
-import type { CategoriaLf, CategoriaLfWritePayload, MetadatoCampoLf, MetadatoTipoLf } from "../types";
+import type { CategoriaLf, CategoriaLfWritePayload, CustodiaPoliticaLf, MatchingConfigLf, MetadatoCampoLf, MetadatoTipoLf } from "../types";
 
 const TABS = [
   { value: "categorias", label: "Categorías", icon: Layers },
@@ -60,9 +60,11 @@ type SortValue = "nombre_asc" | "nombre_desc" | "orden_visual";
 
 type Props = {
   categorias: CategoriaLf[];
+  matchingConfig: MatchingConfigLf;
+  politicaCustodia: CustodiaPoliticaLf;
 };
 
-export function LostFoundAdmin({ categorias }: Props) {
+export function LostFoundAdmin({ categorias, matchingConfig, politicaCustodia }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -96,18 +98,10 @@ export function LostFoundAdmin({ categorias }: Props) {
           <CategoriasTab categorias={categorias} />
         </TabsContent>
         <TabsContent value="matching">
-          <Placeholder
-            icon={Settings}
-            title="Matching"
-            description="Configuracion del motor de matching deterministico (umbral y pesos). Disponible en una proxima fase."
-          />
+          <MatchingTab config={matchingConfig} />
         </TabsContent>
         <TabsContent value="ciclo-vida">
-          <Placeholder
-            icon={Clock}
-            title="Ciclo de vida"
-            description="Transiciones de estado y motivos de cierre del caso. Disponible en una proxima fase."
-          />
+          <CicloVidaTab politica={politicaCustodia} />
         </TabsContent>
         <TabsContent value="custodia">
           <Placeholder
@@ -276,6 +270,175 @@ function CategoriasTab({ categorias: initial }: { categorias: CategoriaLf[] }) {
           setDrawerOpen(false);
         }}
       />
+    </div>
+  );
+}
+
+// ───────────────────────────── Matching ─────────────────────────────
+
+function MatchingTab({ config }: { config: MatchingConfigLf }) {
+  const [umbral, setUmbral] = useState(String(config.umbral));
+  const [saved, setSaved] = useState(config.umbral);
+  const [isPending, startTransition] = useTransition();
+
+  const value = Number(umbral);
+  const invalid = umbral.trim() === "" || Number.isNaN(value) || value < 0 || value > 1;
+  const dirty = !invalid && Number(value.toFixed(4)) !== Number(saved.toFixed(4));
+
+  const submit = () => {
+    if (invalid) {
+      toast.error("El umbral debe ser un número entre 0.00 y 1.00.");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        const result = await lostFoundClient.actualizarMatchingConfig(Number(value.toFixed(4)));
+        setSaved(result.umbral);
+        setUmbral(String(result.umbral));
+        toast.success("Umbral de sugerencia actualizado.");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo guardar el umbral.");
+      }
+    });
+  };
+
+  return (
+    <Card className="max-w-md">
+      <CardContent className="space-y-5 p-5">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-950">Matching</h2>
+          <p className="text-sm text-slate-500">
+            Define cuándo se sugiere una coincidencia entre casos perdidos y encontrados.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="umbral-matching">Umbral de sugerencia</Label>
+          <Input
+            id="umbral-matching"
+            type="number"
+            step="0.05"
+            min="0"
+            max="1"
+            value={umbral}
+            onChange={(e) => setUmbral(e.target.value)}
+            aria-invalid={invalid}
+            className="w-32"
+          />
+          <p className="text-xs text-slate-500">
+            Un valor alto exige mayor similitud antes de sugerir una coincidencia. Rango permitido: 0.00 a 1.00.
+          </p>
+          {invalid && <p className="text-xs text-rose-600">Ingresa un valor entre 0.00 y 1.00.</p>}
+        </div>
+
+        <Button type="button" onClick={submit} disabled={isPending || invalid || !dirty}>
+          {isPending ? <Spinner className="mr-2 h-4 w-4" /> : null}
+          Guardar cambios
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ───────────────────────────── Ciclo de vida ─────────────────────────────
+
+type PoliticaForm = Omit<CustodiaPoliticaLf, "version">;
+
+function validarPolitica(p: PoliticaForm): string | null {
+  const vals = Object.values(p);
+  if (vals.some((v) => Number.isNaN(v))) return "Completa todos los campos con números válidos.";
+  if (p.dias_maximos_custodia <= 0) return "Los días máximos de custodia deben ser mayores a 0.";
+  if (p.dias_alerta_vencimiento < 0 || p.dias_recordatorio_previo < 0) return "Los días no pueden ser negativos.";
+  if (p.dias_alerta_vencimiento >= p.dias_maximos_custodia) return "Los días para marcar 'Por vencer' deben ser menores a los días máximos.";
+  if (p.dias_recordatorio_previo >= p.dias_maximos_custodia) return "Los días previos de recordatorio deben ser menores a los días máximos.";
+  if (p.horas_maximas_perecibles <= 0) return "Las horas máximas de perecibles deben ser mayores a 0.";
+  if (p.horas_alerta_perecible < 0) return "Las horas de alerta no pueden ser negativas.";
+  if (p.horas_alerta_perecible >= p.horas_maximas_perecibles) return "Las horas de alerta deben ser menores a las horas máximas de perecibles.";
+  return null;
+}
+
+function CicloVidaTab({ politica }: { politica: CustodiaPoliticaLf }) {
+  const toForm = (p: CustodiaPoliticaLf): Record<keyof PoliticaForm, string> => ({
+    dias_maximos_custodia: String(p.dias_maximos_custodia),
+    dias_alerta_vencimiento: String(p.dias_alerta_vencimiento),
+    dias_recordatorio_previo: String(p.dias_recordatorio_previo),
+    horas_maximas_perecibles: String(p.horas_maximas_perecibles),
+    horas_alerta_perecible: String(p.horas_alerta_perecible),
+  });
+
+  const [form, setForm] = useState(() => toForm(politica));
+  const [saved, setSaved] = useState<PoliticaForm>(politica);
+  const [isPending, startTransition] = useTransition();
+
+  const set = (key: keyof PoliticaForm, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const nums: PoliticaForm = {
+    dias_maximos_custodia: Number(form.dias_maximos_custodia),
+    dias_alerta_vencimiento: Number(form.dias_alerta_vencimiento),
+    dias_recordatorio_previo: Number(form.dias_recordatorio_previo),
+    horas_maximas_perecibles: Number(form.horas_maximas_perecibles),
+    horas_alerta_perecible: Number(form.horas_alerta_perecible),
+  };
+  const error = validarPolitica(nums);
+  const dirty = (Object.keys(nums) as (keyof PoliticaForm)[]).some((k) => nums[k] !== saved[k]);
+
+  const submit = () => {
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    startTransition(async () => {
+      try {
+        const result = await lostFoundClient.actualizarPoliticaCustodia(nums);
+        setSaved(result);
+        setForm(toForm(result));
+        toast.success("Política de custodia actualizada.");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "No se pudo guardar la política.");
+      }
+    });
+  };
+
+  return (
+    <Card className="max-w-xl">
+      <CardContent className="space-y-5 p-5">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-950">Política de custodia</h2>
+          <p className="text-sm text-slate-500">
+            Plazos de vencimiento y recordatorios. No afecta custodias ya registradas.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <NumberField label="Días máximos de custodia" value={form.dias_maximos_custodia} min="1" onChange={(v) => set("dias_maximos_custodia", v)} />
+          <NumberField label="Días para marcar “Por vencer”" value={form.dias_alerta_vencimiento} min="0" onChange={(v) => set("dias_alerta_vencimiento", v)} />
+          <NumberField label="Días previos para recordatorio" value={form.dias_recordatorio_previo} min="0" onChange={(v) => set("dias_recordatorio_previo", v)} />
+        </div>
+
+        <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+          <h3 className="text-sm font-semibold text-slate-900">Objetos perecibles</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <NumberField label="Horas máximas de custodia" value={form.horas_maximas_perecibles} min="1" onChange={(v) => set("horas_maximas_perecibles", v)} />
+            <NumberField label="Horas previas para alerta" value={form.horas_alerta_perecible} min="0" onChange={(v) => set("horas_alerta_perecible", v)} />
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-rose-600">{error}</p>}
+
+        <Button type="button" onClick={submit} disabled={isPending || !!error || !dirty}>
+          {isPending ? <Spinner className="mr-2 h-4 w-4" /> : null}
+          Guardar cambios
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NumberField({ label, value, onChange, min }: { label: string; value: string; onChange: (value: string) => void; min: string }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      <Input type="number" min={min} value={value} onChange={(e) => onChange(e.target.value)} className="w-full" />
     </div>
   );
 }

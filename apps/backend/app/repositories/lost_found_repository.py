@@ -17,6 +17,7 @@ from app.models.sc_lost_found import (
     HistorialCasoLf,
     MatchSugerido,
     ParticipanteHiloLf,
+    RecordatorioCustodiaLf,
 )
 from app.models.sc_users import Rol, Usuario, UsuarioRol
 
@@ -463,7 +464,8 @@ class LostFoundRepository:
 
     async def create_custodia(self, caso_id: str, actor_id: str, data: dict[str, Any]) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
-        vencimiento = now + (timedelta(hours=24) if data["es_perecible"] else timedelta(days=15))
+        # La fecha de vencimiento la calcula el servicio según la política vigente.
+        vencimiento = data.pop("fecha_vencimiento", None) or now + (timedelta(hours=24) if data.get("es_perecible") else timedelta(days=15))
         custodia = CustodiaObjeto(caso_id=UUID(caso_id), recibido_por_id=UUID(actor_id), fecha_vencimiento=vencimiento, **data)
         self.db.add(custodia)
         await self.db.flush()
@@ -554,6 +556,35 @@ class LostFoundRepository:
         result = await self.db.execute(statement)
         row = result.scalar_one()
         return {"key": row.key, "value": row.value, "descripcion": row.descripcion, "updated_at": row.updated_at}
+
+    async def custodias_para_recordatorio(self, caso_estados_excluidos: list[str]) -> list[dict[str, Any]]:
+        """Custodias ACTIVA cuyo caso no esté devuelto/descartado/cerrado."""
+        result = await self.db.execute(
+            select(
+                CustodiaObjeto.id,
+                CustodiaObjeto.fecha_vencimiento,
+                CustodiaObjeto.es_perecible,
+                CasoLostFound.id.label("caso_id"),
+                CasoLostFound.codigo.label("caso_codigo"),
+            )
+            .join(CasoLostFound, CasoLostFound.id == CustodiaObjeto.caso_id)
+            .where(
+                CustodiaObjeto.estado == "ACTIVA",
+                CasoLostFound.estado.notin_(caso_estados_excluidos),
+            )
+        )
+        return [dict(row) for row in result.mappings()]
+
+    async def registrar_recordatorio(self, custodia_id: str, tipo: str, fecha_referencia: datetime) -> bool:
+        """Inserta un recordatorio; devuelve True sólo si era nuevo (dedupe por UNIQUE)."""
+        statement = (
+            insert(RecordatorioCustodiaLf)
+            .values(custodia_id=UUID(str(custodia_id)), tipo=tipo, fecha_referencia=fecha_referencia)
+            .on_conflict_do_nothing(constraint="uq_recordatorio_custodia")
+            .returning(RecordatorioCustodiaLf.id)
+        )
+        result = await self.db.execute(statement)
+        return result.scalar_one_or_none() is not None
 
     async def get_kpis(self) -> dict[str, Any]:
         statement = select(
