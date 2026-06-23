@@ -35,6 +35,22 @@ const SEVERIDAD_WEIGHT: Record<string, number> = {
   BAJO: 0.2,
 };
 
+function InvalidateSizeOnResize() {
+  const map = useMap();
+
+  useEffect(() => {
+    // Recalcula el tamaño del mapa (y del canvas del heatmap) en cuanto el
+    // contenedor cambia de dimensiones; evita que el calor quede recortado.
+    const container = map.getContainer();
+    map.invalidateSize();
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
+
+  return null;
+}
+
 function HeatLayer({ points }: { points: [number, number, number][] }) {
   const map = useMap();
 
@@ -90,6 +106,7 @@ export function LeafletIncidentesHeatmap({ items }: LeafletIncidentesHeatmapProp
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      <InvalidateSizeOnResize />
       <HeatLayer points={points} />
     </MapContainer>
   );
