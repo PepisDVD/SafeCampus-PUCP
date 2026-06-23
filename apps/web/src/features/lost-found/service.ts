@@ -50,10 +50,6 @@ export async function getLostFoundThreadMatches(id: string) {
 }
 
 export async function getLostFoundAdmin() {
-  const [categorias, kpis, configuracion] = await Promise.all([
-    serverApi.get<CategoriaLf[]>("/lost-found/categorias", { include_inactive: "true" }),
-    serverApi.get<KpisLf>("/lost-found/kpis"),
-    serverApi.get<Array<{ key: string; value: Record<string, unknown>; descripcion?: string; updated_at: string }>>("/lost-found/configuracion"),
-  ]);
-  return { categorias, kpis, configuracion };
+  const categorias = await serverApi.get<CategoriaLf[]>("/lost-found/categorias", { include_inactive: "true" });
+  return { categorias };
 }

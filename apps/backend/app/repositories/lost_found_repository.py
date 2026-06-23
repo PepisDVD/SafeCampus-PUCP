@@ -72,38 +72,42 @@ class LostFoundRepository:
             .outerjoin(Usuario, Usuario.id == CasoLostFound.reportante_id)
         )
 
+    @staticmethod
+    def _categoria_dict(row: CategoriaObjeto) -> dict[str, Any]:
+        return {
+            "id": str(row.id),
+            "codigo": row.codigo,
+            "nombre": row.nombre,
+            "descripcion": row.descripcion,
+            "icono": row.icono,
+            "activa": row.activa,
+            "es_perecible": row.es_perecible,
+            "orden_visual": row.orden_visual,
+            "metadatos_schema": row.metadatos_schema or {},
+        }
+
     async def list_categorias(self, include_inactive: bool = False) -> list[dict[str, Any]]:
-        statement = select(CategoriaObjeto).order_by(CategoriaObjeto.nombre.asc())
+        statement = select(CategoriaObjeto).order_by(
+            CategoriaObjeto.orden_visual.asc(), CategoriaObjeto.nombre.asc()
+        )
         if not include_inactive:
             statement = statement.where(CategoriaObjeto.activa.is_(True))
         result = await self.db.execute(statement)
-        return [
-            {
-                "id": str(row.id),
-                "nombre": row.nombre,
-                "descripcion": row.descripcion,
-                "icono": row.icono,
-                "activa": row.activa,
-                "es_perecible": row.es_perecible,
-                "metadatos_schema": row.metadatos_schema or {},
-            }
-            for row in result.scalars()
-        ]
+        return [self._categoria_dict(row) for row in result.scalars()]
+
+    async def get_categoria(self, categoria_id: str) -> dict[str, Any] | None:
+        try:
+            row = await self.db.get(CategoriaObjeto, UUID(categoria_id))
+        except ValueError:
+            return None
+        return self._categoria_dict(row) if row else None
 
     async def upsert_categoria(self, data: dict[str, Any]) -> dict[str, Any]:
         categoria = CategoriaObjeto(**data)
         self.db.add(categoria)
         await self.db.flush()
         await self.db.refresh(categoria)
-        return {
-            "id": str(categoria.id),
-            "nombre": categoria.nombre,
-            "descripcion": categoria.descripcion,
-            "icono": categoria.icono,
-            "activa": categoria.activa,
-            "es_perecible": categoria.es_perecible,
-            "metadatos_schema": categoria.metadatos_schema or {},
-        }
+        return self._categoria_dict(categoria)
 
     async def update_categoria(self, categoria_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
         statement = (
@@ -116,15 +120,7 @@ class LostFoundRepository:
         row = result.scalar_one_or_none()
         if not row:
             return None
-        return {
-            "id": str(row.id),
-            "nombre": row.nombre,
-            "descripcion": row.descripcion,
-            "icono": row.icono,
-            "activa": row.activa,
-            "es_perecible": row.es_perecible,
-            "metadatos_schema": row.metadatos_schema or {},
-        }
+        return self._categoria_dict(row)
 
     async def list_feed(
         self,
@@ -274,7 +270,7 @@ class LostFoundRepository:
                 "id", "codigo", "tipo", "estado", "titulo", "descripcion", "categoria_id",
                 "subcategoria", "lugar_referencia", "fecha_evento", "foto_url",
                 "color_principal", "marca", "conteo_comentarios", "contacto_info",
-                "foto_adicional_urls", "etiquetas", "motivo_cierre", "observaciones_cierre",
+                "foto_adicional_urls", "etiquetas", "metadatos", "motivo_cierre", "observaciones_cierre",
                 "created_at", "updated_at",
             )},
             "categoria_nombre": row["categoria_nombre"],
@@ -351,7 +347,7 @@ class LostFoundRepository:
     async def find_match_candidates(self, caso: dict[str, Any], limit: int = 40) -> list[dict[str, Any]]:
         opposite = "ENCONTRADO" if caso["tipo"] == "PERDIDO" else "PERDIDO"
         result = await self.db.execute(
-            select(CasoLostFound.id, CasoLostFound.codigo, CasoLostFound.tipo, CasoLostFound.estado, CasoLostFound.titulo, CasoLostFound.descripcion, CasoLostFound.categoria_id, CasoLostFound.lugar_referencia, CasoLostFound.fecha_evento, CasoLostFound.color_principal, CasoLostFound.marca, CasoLostFound.etiquetas, CasoLostFound.reportante_id)
+            select(CasoLostFound.id, CasoLostFound.codigo, CasoLostFound.tipo, CasoLostFound.estado, CasoLostFound.titulo, CasoLostFound.descripcion, CasoLostFound.categoria_id, CasoLostFound.lugar_referencia, CasoLostFound.fecha_evento, CasoLostFound.color_principal, CasoLostFound.marca, CasoLostFound.etiquetas, CasoLostFound.metadatos, CasoLostFound.reportante_id)
             .where(CasoLostFound.tipo == opposite, CasoLostFound.estado.in_(("ABIERTO", "EN_REVISION", "EN_CUSTODIA")))
             .order_by(desc(CasoLostFound.created_at))
             .limit(limit)

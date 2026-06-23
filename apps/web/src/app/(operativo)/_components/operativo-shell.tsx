@@ -27,16 +27,6 @@ import { signOut } from "@/lib/auth";
 const OPERATIVO_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/incidentes", label: "Incidentes", icon: ShieldCheck },
-  {
-    href: "/lost-found-operaciones",
-    label: "Lost & Found",
-    icon: PackageSearch,
-    children: [
-      { href: "/lost-found-operaciones", label: "Dashboard", icon: BarChart3 },
-      { href: "/lost-found-hilos", label: "Hilos", icon: MessageSquare },
-      { href: "/lost-found-logistica", label: "Logistica", icon: PackageCheck },
-    ],
-  },
   { href: "/mapa", label: "Mapa", icon: MapPinned },
   {
     href: "/alertas",
@@ -48,6 +38,16 @@ const OPERATIVO_NAV: NavItem[] = [
     ],
   },
   { href: "/kpis", label: "KPIs", icon: BarChart3 },
+  {
+    href: "/lost-found-operaciones",
+    label: "Lost & Found",
+    icon: PackageSearch,
+    children: [
+      { href: "/lost-found-operaciones", label: "Dashboard", icon: BarChart3 },
+      { href: "/lost-found-hilos", label: "Hilos", icon: MessageSquare },
+      { href: "/lost-found-logistica", label: "Logistica", icon: PackageCheck },
+    ],
+  },
   { href: "/mensajes", label: "Mensajes", icon: MessageSquare },
 ];
 

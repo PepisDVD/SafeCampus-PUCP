@@ -179,6 +179,7 @@ export {
   SheetDescription,
 } from "./components/ui/sheet";
 export { Skeleton } from "./components/ui/skeleton";
+export { Spinner } from "./components/ui/spinner";
 export {
   StatusBadge,
   type StatusBadgeProps,

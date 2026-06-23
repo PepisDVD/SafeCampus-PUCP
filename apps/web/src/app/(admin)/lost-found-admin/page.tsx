@@ -1,13 +1,13 @@
+import { Suspense } from "react";
+
 import { LostFoundAdmin } from "@/features/lost-found/components/lost-found-admin";
 import { getLostFoundAdmin } from "@/features/lost-found/service";
 
 export default async function LostFoundAdminPage() {
-  const { categorias, kpis, configuracion } = await getLostFoundAdmin();
+  const { categorias } = await getLostFoundAdmin();
   return (
-    <LostFoundAdmin
-      categorias={categorias}
-      kpis={kpis}
-      configuracion={configuracion}
-    />
+    <Suspense>
+      <LostFoundAdmin categorias={categorias} />
+    </Suspense>
   );
 }

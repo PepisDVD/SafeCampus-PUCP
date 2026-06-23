@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from typing import Any
@@ -6,9 +8,14 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.audit import AuditModulo
+from app.core.audit import AuditModulo, AuditResultado, build_detalle
 from app.core.config import settings
 from app.core.constants import EstadoCasoLF
+from app.core.lost_found_metadata import (
+    codigos_matching,
+    normalizar_metadatos_schema,
+    validar_metadatos_caso,
+)
 from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.lost_found_repository import LostFoundRepository
 from app.repositories.notificacion_repository import NotificacionRepository
@@ -73,21 +80,53 @@ class LostFoundService:
         return [CategoriaLfItem(**row) for row in await self._repo.list_categorias(include_inactive)]
 
     async def crear_categoria(self, data: CategoriaLfCreate, actor_id: str) -> CategoriaLfItem:
-        row = await self._repo.upsert_categoria(data.model_dump())
-        await self._audit_lf(actor_id, "LF_CATEGORIA_MODIFICADA", "categoria_objeto", row["id"], {"accion": "crear", "nombre": row["nombre"]})
+        payload = data.model_dump()
+        payload["metadatos_schema"] = normalizar_metadatos_schema(payload.get("metadatos_schema"))
+        payload["codigo"] = self._slug_codigo(payload.get("codigo") or payload["nombre"])
+        row = await self._repo.upsert_categoria(payload)
+        await self._audit_categoria(
+            actor_id,
+            "LF_CATEGORIA_CREADA",
+            row["id"],
+            before={},
+            after=row,
+            resumen=f"Categoría '{row['nombre']}' ({row['codigo']}) creada.",
+        )
         return CategoriaLfItem(**row)
 
     async def actualizar_categoria(self, categoria_id: str, data: CategoriaLfCreate, actor_id: str) -> CategoriaLfItem:
-        row = await self._repo.update_categoria(categoria_id, data.model_dump())
+        before = await self._repo.get_categoria(categoria_id)
+        if not before:
+            raise HTTPException(status_code=404, detail="Categoria no encontrada.")
+        payload = data.model_dump()
+        payload["metadatos_schema"] = normalizar_metadatos_schema(payload.get("metadatos_schema"))
+        payload["codigo"] = self._slug_codigo(payload.get("codigo") or before["codigo"] or payload["nombre"])
+        row = await self._repo.update_categoria(categoria_id, payload)
         if not row:
             raise HTTPException(status_code=404, detail="Categoria no encontrada.")
-        await self._audit_lf(actor_id, "LF_CATEGORIA_MODIFICADA", "categoria_objeto", row["id"], {"accion": "actualizar", "nombre": row["nombre"]})
+
+        desactivada = bool(before.get("activa")) and not row.get("activa")
+        metadatos_cambiados = before.get("metadatos_schema") != row.get("metadatos_schema")
+        if desactivada:
+            accion, resumen = "LF_CATEGORIA_DESACTIVADA", f"Categoría '{row['nombre']}' desactivada."
+        elif metadatos_cambiados:
+            accion, resumen = "LF_CATEGORIA_METADATOS_ACTUALIZADOS", f"Metadatos de la categoría '{row['nombre']}' actualizados."
+        else:
+            accion, resumen = "LF_CATEGORIA_ACTUALIZADA", f"Categoría '{row['nombre']}' actualizada."
+        await self._audit_categoria(actor_id, accion, row["id"], before=before, after=row, resumen=resumen)
         return CategoriaLfItem(**row)
 
     async def crear_caso(self, reportante_id: str, data: CasoLfCreateInput) -> CasoLfCreated:
         payload = data.model_dump()
         payload["tipo"] = data.tipo.value
-        payload["ts_busqueda"] = self._build_search(payload)
+        categoria = await self._repo.get_categoria(data.categoria_id)
+        if not categoria:
+            raise HTTPException(status_code=422, detail="La categoría seleccionada no existe.")
+        schema = categoria.get("metadatos_schema")
+        payload["metadatos"] = validar_metadatos_caso(payload.get("metadatos"), schema)
+        # Sólo los campos textuales marcados para matching entran al motor de matching.
+        matching_terms = [str(payload["metadatos"][c]) for c in codigos_matching(schema) if payload["metadatos"].get(c)]
+        payload["ts_busqueda"] = " ".join(filter(None, [self._build_search(payload), *matching_terms]))
         creado = await self._repo.create_caso(reportante_id, payload)
         await self._audit_lf(reportante_id, "LF_CASO_CREADO", "caso_lost_found", creado["id"], {"codigo": creado["codigo"], "tipo_caso": data.tipo.value, "categoria_id": data.categoria_id})
         matches = await self._generar_matches(creado["id"], reportante_id)
@@ -431,9 +470,11 @@ class LostFoundService:
             return 0
         config = await self._repo.get_config_value("matching") or {"umbral": 0.55}
         umbral = float(config.get("umbral", 0.55))
+        categoria = await self._repo.get_categoria(str(caso["categoria_id"])) if caso.get("categoria_id") else None
+        matching_codes = codigos_matching(categoria.get("metadatos_schema") if categoria else None)
         created = 0
         for candidate in await self._repo.find_match_candidates(caso):
-            score, detalle = self._score(caso, candidate)
+            score, detalle = self._score(caso, candidate, matching_codes)
             if score < umbral:
                 continue
             perdido_id = str(caso["id"] if caso["tipo"] == "PERDIDO" else candidate["id"])
@@ -447,10 +488,13 @@ class LostFoundService:
         return created
 
     @staticmethod
-    def _score(caso: dict[str, Any], candidate: dict[str, Any]) -> tuple[float, dict[str, Any]]:
+    def _score(caso: dict[str, Any], candidate: dict[str, Any], matching_codes: list[str] | None = None) -> tuple[float, dict[str, Any]]:
         categoria = 1.0 if caso.get("categoria_id") and caso.get("categoria_id") == candidate.get("categoria_id") else 0.0
-        text_a = " ".join(str(caso.get(k) or "") for k in ("titulo", "descripcion", "marca", "color_principal"))
-        text_b = " ".join(str(candidate.get(k) or "") for k in ("titulo", "descripcion", "marca", "color_principal"))
+        # Sólo los metadatos textuales elegibles (participa_en_matching) entran al texto comparado.
+        meta_a = " ".join(str((caso.get("metadatos") or {}).get(c) or "") for c in (matching_codes or []))
+        meta_b = " ".join(str((candidate.get("metadatos") or {}).get(c) or "") for c in (matching_codes or []))
+        text_a = " ".join(str(caso.get(k) or "") for k in ("titulo", "descripcion", "marca", "color_principal")) + " " + meta_a
+        text_b = " ".join(str(candidate.get(k) or "") for k in ("titulo", "descripcion", "marca", "color_principal")) + " " + meta_b
         texto = SequenceMatcher(None, text_a.lower(), text_b.lower()).ratio()
         lugar = SequenceMatcher(None, str(caso.get("lugar_referencia") or "").lower(), str(candidate.get("lugar_referencia") or "").lower()).ratio()
         fecha = 0.0
@@ -477,6 +521,31 @@ class LostFoundService:
 
     async def _audit_lf(self, usuario_id: str | None, accion: str, entidad: str | None, entidad_id: str | None, detalle: dict[str, Any]) -> None:
         await self._audit.create_registro(usuario_id=usuario_id, modulo=AuditModulo.LOST_FOUND, accion=accion, entidad=entidad, entidad_id=entidad_id, detalle=detalle)
+
+    async def _audit_categoria(
+        self,
+        actor_id: str,
+        accion: str,
+        categoria_id: str,
+        *,
+        before: dict[str, Any],
+        after: dict[str, Any],
+        resumen: str,
+    ) -> None:
+        detalle = build_detalle(
+            origen="WEB_OPERATIVA",
+            resultado=AuditResultado.EXITOSO,
+            before=before,
+            after=after,
+            resumen=resumen,
+        )
+        await self._audit_lf(actor_id, accion, "categoria_objeto", categoria_id, detalle)
+
+    @staticmethod
+    def _slug_codigo(value: str) -> str:
+        base = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii")
+        slug = re.sub(r"[^A-Z0-9]+", "_", base.upper()).strip("_")
+        return slug or "CATEGORIA"
 
     @staticmethod
     def _mark_deletable(rows: list[dict[str, Any]], usuario_id: str) -> list[dict[str, Any]]:

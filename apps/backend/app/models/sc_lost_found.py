@@ -26,13 +26,16 @@ class CategoriaObjeto(Base):
     __table_args__ = {"schema": "sc_lost_found"}
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    codigo: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
     nombre: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     descripcion: Mapped[str | None] = mapped_column(Text)
     icono: Mapped[str | None] = mapped_column(String(50))
     activa: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     es_perecible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    orden_visual: Mapped[int] = mapped_column(nullable=False, server_default="0")
     metadatos_schema: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
 class CasoLostFound(Base):
@@ -56,6 +59,7 @@ class CasoLostFound(Base):
     color_principal: Mapped[str | None] = mapped_column(String(50))
     marca: Mapped[str | None] = mapped_column(String(100))
     etiquetas: Mapped[list[Any] | None] = mapped_column(JSONB, server_default="[]")
+    metadatos: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
     motivo_cierre: Mapped[str | None] = mapped_column(MotivoCierreLfEnum)
     observaciones_cierre: Mapped[str | None] = mapped_column(Text)
     ts_busqueda: Mapped[str | None] = mapped_column(Text)

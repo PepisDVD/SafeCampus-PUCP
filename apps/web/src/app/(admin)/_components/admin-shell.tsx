@@ -43,34 +43,6 @@ const ADMIN_NAV: NavItem[] = [
     section: "Operacion",
   },
   {
-    href: "/lost-found-operaciones",
-    label: "Lost & Found",
-    icon: PackageSearch,
-    section: "Operacion",
-    children: [
-      {
-        href: "/lost-found-operaciones",
-        label: "Dashboard",
-        icon: BarChart3,
-      },
-      {
-        href: "/lost-found-hilos",
-        label: "Hilos",
-        icon: MessageSquare,
-      },
-      {
-        href: "/lost-found-logistica",
-        label: "Logistica",
-        icon: PackageCheck,
-      },
-      {
-        href: "/lost-found-admin",
-        label: "Configuracion",
-        icon: ClipboardList,
-      },
-    ],
-  },
-  {
     href: "/mapa",
     label: "Mapa",
     icon: MapPinned,
@@ -99,6 +71,34 @@ const ADMIN_NAV: NavItem[] = [
     label: "KPIs",
     icon: BarChart3,
     section: "Operacion",
+  },
+  {
+    href: "/lost-found-operaciones",
+    label: "Lost & Found",
+    icon: PackageSearch,
+    section: "Operacion",
+    children: [
+      {
+        href: "/lost-found-operaciones",
+        label: "Dashboard",
+        icon: BarChart3,
+      },
+      {
+        href: "/lost-found-hilos",
+        label: "Hilos",
+        icon: MessageSquare,
+      },
+      {
+        href: "/lost-found-logistica",
+        label: "Logistica",
+        icon: PackageCheck,
+      },
+      {
+        href: "/lost-found-admin",
+        label: "Configuracion",
+        icon: ClipboardList,
+      },
+    ],
   },
   {
     href: "/mensajes",

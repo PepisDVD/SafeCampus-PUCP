@@ -9,20 +9,24 @@ from app.schemas.incidente import UsuarioMini, ZonaCount
 
 class CategoriaLfItem(BaseModel):
     id: str
+    codigo: str
     nombre: str
     descripcion: str | None = None
     icono: str | None = None
     activa: bool = True
     es_perecible: bool = False
+    orden_visual: int = 0
     metadatos_schema: dict[str, Any] | None = None
 
 
 class CategoriaLfCreate(BaseModel):
+    codigo: str | None = Field(default=None, max_length=60)
     nombre: str = Field(min_length=2, max_length=100)
     descripcion: str | None = Field(default=None, max_length=1000)
     icono: str | None = Field(default=None, max_length=50)
     activa: bool = True
     es_perecible: bool = False
+    orden_visual: int = Field(default=0, ge=0)
     metadatos_schema: dict[str, Any] | None = None
 
 
@@ -40,6 +44,7 @@ class CasoLfCreateInput(BaseModel):
     color_principal: str | None = Field(default=None, max_length=50)
     marca: str | None = Field(default=None, max_length=100)
     etiquetas: list[str] = Field(default_factory=list, max_length=10)
+    metadatos: dict[str, Any] = Field(default_factory=dict)
     contacto_info: str | None = Field(default=None, max_length=255)
     latitud: float | None = None
     longitud: float | None = None

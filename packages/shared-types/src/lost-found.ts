@@ -1,13 +1,33 @@
 import { EstadoCasoLF, EstadoCustodia, EstadoMatchLF, TipoCasoLF } from "./enums";
 
+export type MetadatoTipoLf = "texto" | "numero";
+
+/** Configuración de un metadato aplicado a una categoría (contrato metadatos_schema). */
+export type MetadatoCampoLf = {
+  codigo: string;
+  etiqueta: string;
+  tipo: MetadatoTipoLf;
+  requerido: boolean;
+  participa_en_matching: boolean;
+  orden: number;
+  activo: boolean;
+};
+
+export type MetadatosSchemaLf = {
+  version: number;
+  campos: MetadatoCampoLf[];
+};
+
 export type CategoriaLf = {
   id: string;
+  codigo: string;
   nombre: string;
   descripcion?: string | null;
   icono?: string | null;
   activa: boolean;
   es_perecible: boolean;
-  metadatos_schema?: Record<string, unknown> | null;
+  orden_visual: number;
+  metadatos_schema?: MetadatosSchemaLf | null;
 };
 
 export type CasoLfListItem = {
