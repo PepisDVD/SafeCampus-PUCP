@@ -179,7 +179,13 @@ class LostFoundRepository:
         cursor: datetime | None,
         limit: int,
     ) -> list[dict[str, Any]]:
-        statement = self._base_select().where(CasoLostFound.estado.in_(("ABIERTO", "EN_REVISION")))
+        # La comunidad ve los hilos no ocultos (incluye cerrados, que se muestran en solo lectura).
+        # Sólo se excluyen los descartados. La visibilidad la controla el flag `oculto`.
+        statement = (
+            self._base_select()
+            .where(CasoLostFound.oculto.is_(False))
+            .where(CasoLostFound.estado != "DESCARTADO")
+        )
         if tipo:
             statement = statement.where(CasoLostFound.tipo == tipo)
         if estado:
@@ -280,6 +286,29 @@ class LostFoundRepository:
         await self.upsert_participacion(str(caso.id), reportante_id, True)
         return {"id": str(caso.id), "codigo": caso.codigo, "estado": caso.estado, "created_at": caso.created_at}
 
+    async def update_caso_descriptivo(self, caso_id: str, data: dict[str, Any]) -> None:
+        latitud = data.pop("latitud", None)
+        longitud = data.pop("longitud", None)
+        values: dict[str, Any] = {
+            "titulo": data["titulo"],
+            "descripcion": data["descripcion"],
+            "categoria_id": UUID(data["categoria_id"]) if data.get("categoria_id") else None,
+            "subcategoria": data.get("subcategoria"),
+            "lugar_referencia": data.get("lugar_referencia"),
+            "fecha_evento": data.get("fecha_evento"),
+            "hora_aproximada": data.get("hora_aproximada"),
+            "color_principal": data.get("color_principal"),
+            "marca": data.get("marca"),
+            "etiquetas": data.get("etiquetas", []),
+            "metadatos": data.get("metadatos", {}),
+            "contacto_info": data.get("contacto_info"),
+            "ts_busqueda": data.get("ts_busqueda"),
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if latitud is not None and longitud is not None:
+            values["geom"] = func.ST_SetSRID(func.ST_MakePoint(longitud, latitud), 4326)
+        await self.db.execute(update(CasoLostFound).where(CasoLostFound.id == UUID(caso_id)).values(**values))
+
     async def get_detail_by_ref(self, ref: str) -> dict[str, Any] | None:
         Reportante = aliased(Usuario)
         filters = []
@@ -314,7 +343,7 @@ class LostFoundRepository:
                 "subcategoria", "lugar_referencia", "fecha_evento", "foto_url",
                 "color_principal", "marca", "conteo_comentarios", "contacto_info",
                 "foto_adicional_urls", "etiquetas", "metadatos", "motivo_cierre", "motivo_cierre_id", "observaciones_cierre",
-                "created_at", "updated_at",
+                "oculto", "created_at", "updated_at",
             )},
             "categoria_nombre": row["categoria_nombre"],
             "latitud": row["latitud"],
@@ -327,9 +356,16 @@ class LostFoundRepository:
         }
 
     async def get_estado(self, caso_id: str) -> dict[str, Any] | None:
-        result = await self.db.execute(select(CasoLostFound.id, CasoLostFound.codigo, CasoLostFound.estado, CasoLostFound.tipo, CasoLostFound.reportante_id).where(CasoLostFound.id == UUID(caso_id)).limit(1))
+        result = await self.db.execute(select(CasoLostFound.id, CasoLostFound.codigo, CasoLostFound.estado, CasoLostFound.tipo, CasoLostFound.oculto, CasoLostFound.reportante_id).where(CasoLostFound.id == UUID(caso_id)).limit(1))
         row = result.mappings().one_or_none()
         return dict(row) if row else None
+
+    async def set_oculto(self, caso_id: str, oculto: bool) -> None:
+        await self.db.execute(
+            update(CasoLostFound)
+            .where(CasoLostFound.id == UUID(caso_id))
+            .values(oculto=oculto, updated_at=datetime.now(timezone.utc))
+        )
 
     async def update_estado(
         self,

@@ -107,6 +107,8 @@ export type CasoLfDetail = CasoLfListItem & {
   contacto_info?: string | null;
   foto_adicional_urls: string[];
   etiquetas: string[];
+  metadatos?: Record<string, unknown> | null;
+  oculto?: boolean;
   motivo_cierre_id?: string | null;
   latitud?: number | null;
   longitud?: number | null;

@@ -13,10 +13,13 @@ export type CasoLfCreatePayload = {
   color_principal?: string;
   marca?: string;
   etiquetas?: string[];
+  metadatos?: Record<string, string | number>;
   contacto_info?: string;
   latitud?: number | null;
   longitud?: number | null;
 };
+
+export type CasoLfUpdatePayload = Omit<CasoLfCreatePayload, "tipo">;
 
 export const lostFoundClient = {
   feed: (params?: Record<string, string>) =>
@@ -26,6 +29,8 @@ export const lostFoundClient = {
   crearCaso: (body: CasoLfCreatePayload) =>
     api.post<{ id: string; codigo: string; matches_generados: number }>("/lost-found/casos", normalizeCasePayload(body)),
   detalle: (ref: string) => api.get<CasoLfDetail>(`/lost-found/casos/${ref}`),
+  actualizarCaso: (id: string, body: CasoLfUpdatePayload) =>
+    api.patch<CasoLfDetail>(`/lost-found/casos/${id}`, normalizeUpdatePayload(body)),
   subirFotosArchivos: (id: string, archivos: File[]) => {
     const form = new FormData();
     archivos.forEach((archivo) => form.append("archivos", archivo));
@@ -51,6 +56,10 @@ export const lostFoundClient = {
     api.get<ListResponse<CasoLfListItem>>("/lost-found/casos", { params }),
   cambiarEstado: (id: string, estado: string, comentario?: string) =>
     api.patch<CasoLfDetail>(`/lost-found/casos/${id}/estado`, { estado, comentario }),
+  cerrarReabrirCaso: (id: string, cerrar: boolean) =>
+    api.patch<CasoLfDetail>(`/lost-found/casos/${id}/cierre`, { cerrar }),
+  ocultarMostrarCaso: (id: string, oculto: boolean) =>
+    api.patch<CasoLfDetail>(`/lost-found/casos/${id}/visibilidad`, { oculto }),
   registrarCustodia: (id: string, body: { ubicacion_custodia: string; observaciones?: string; es_perecible?: boolean }) =>
     api.post<CustodiaLf>(`/lost-found/casos/${id}/custodia`, body),
   custodias: (params?: Record<string, string>) =>
@@ -77,6 +86,21 @@ export const lostFoundClient = {
 };
 
 function normalizeCasePayload(body: CasoLfCreatePayload): CasoLfCreatePayload {
+  return {
+    ...body,
+    titulo: body.titulo.trim(),
+    descripcion: body.descripcion.trim(),
+    categoria_id: body.categoria_id.trim(),
+    subcategoria: clean(body.subcategoria),
+    lugar_referencia: body.lugar_referencia.trim(),
+    color_principal: clean(body.color_principal),
+    marca: clean(body.marca),
+    contacto_info: clean(body.contacto_info),
+    etiquetas: body.etiquetas?.map((item) => item.trim()).filter(Boolean) ?? [],
+  };
+}
+
+function normalizeUpdatePayload(body: CasoLfUpdatePayload): CasoLfUpdatePayload {
   return {
     ...body,
     titulo: body.titulo.trim(),

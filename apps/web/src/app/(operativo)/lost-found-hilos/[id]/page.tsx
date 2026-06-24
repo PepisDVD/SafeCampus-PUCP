@@ -1,5 +1,9 @@
 import { LostFoundThreadDetail } from "@/features/lost-found/components/lost-found-thread-detail";
+import { LfBreadcrumb } from "@/features/lost-found/components/lf-breadcrumb";
 import { getLostFoundThreadDetail, getLostFoundThreadMatches } from "@/features/lost-found/service";
+import { serverApi } from "@/lib/api/server";
+import { getCurrentUserProfile } from "@/lib/auth/server";
+import type { CategoriaLf } from "@/features/lost-found/types";
 
 export default async function LostFoundHiloDetallePage({
   params,
@@ -7,9 +11,27 @@ export default async function LostFoundHiloDetallePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [detail, matches] = await Promise.all([
+  const [detail, matches, categorias, profile] = await Promise.all([
     getLostFoundThreadDetail(id),
     getLostFoundThreadMatches(id),
+    serverApi.get<CategoriaLf[]>("/lost-found/categorias"),
+    getCurrentUserProfile(),
   ]);
-  return <LostFoundThreadDetail initialCase={detail} initialMatches={matches} />;
+  return (
+    <>
+      <LfBreadcrumb
+        items={[
+          { label: "Lost & Found", href: "/lost-found-operaciones" },
+          { label: "Hilos", href: "/lost-found-hilos" },
+          { label: detail.codigo },
+        ]}
+      />
+      <LostFoundThreadDetail
+        initialCase={detail}
+        initialMatches={matches}
+        categorias={categorias}
+        currentUser={profile ? { id: profile.id, isAdmin: profile.roles.includes("administrador") } : null}
+      />
+    </>
+  );
 }

@@ -36,6 +36,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  TablePaginationBar,
   TableRow,
   Tabs,
   TabsContent,
@@ -63,6 +64,7 @@ const DEFAULT_TAB: TabValue = "categorias";
 
 type SortValue = "nombre_asc" | "nombre_desc" | "orden_visual";
 type MotivoSortValue = "nombre_asc" | "nombre_desc" | "orden_visual";
+const MOTIVOS_PER_PAGE = 8;
 
 type Props = {
   categorias: CategoriaLf[];
@@ -513,6 +515,7 @@ function MotivosCierre({ motivos: initial }: { motivos: MotivoCierreLf[] }) {
   const [editing, setEditing] = useState<MotivoCierreLf | null>(null);
   const [open, setOpen] = useState(false);
   const [sort, setSort] = useState<MotivoSortValue>("nombre_asc");
+  const [page, setPage] = useState(1);
   const [pending, startTransition] = useTransition();
   const motivosOrdenados = useMemo(
     () => [...motivos].sort((a, b) => {
@@ -520,6 +523,12 @@ function MotivosCierre({ motivos: initial }: { motivos: MotivoCierreLf[] }) {
       return sort === "nombre_asc" ? a.nombre.localeCompare(b.nombre) : b.nombre.localeCompare(a.nombre);
     }),
     [motivos, sort],
+  );
+  const totalPages = Math.max(1, Math.ceil(motivosOrdenados.length / MOTIVOS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const paginados = useMemo(
+    () => motivosOrdenados.slice((currentPage - 1) * MOTIVOS_PER_PAGE, currentPage * MOTIVOS_PER_PAGE),
+    [motivosOrdenados, currentPage],
   );
   const upsert = (saved: MotivoCierreLf) => setMotivos((items) => items.some((x) => x.id === saved.id) ? items.map((x) => x.id === saved.id ? saved : x) : [...items, saved]);
   const toggle = (motivo: MotivoCierreLf) => startTransition(async () => {
@@ -536,7 +545,7 @@ function MotivosCierre({ motivos: initial }: { motivos: MotivoCierreLf[] }) {
         description="Catálogo controlado para nuevos cierres. Los motivos usados solo pueden desactivarse."
       />
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={sort} onValueChange={(value) => setSort(value as MotivoSortValue)}>
+        <Select value={sort} onValueChange={(value) => { setSort(value as MotivoSortValue); setPage(1); }}>
           <SelectTrigger className="w-48" aria-label="Ordenar motivos de cierre"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="nombre_asc">Nombre (A → Z)</SelectItem>
@@ -547,12 +556,25 @@ function MotivosCierre({ motivos: initial }: { motivos: MotivoCierreLf[] }) {
         <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="mr-2 h-4 w-4" />Nuevo motivo</Button>
       </div>
     </div>
-    <div className="overflow-x-auto rounded-lg border"><Table><TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Nombre</TableHead><TableHead>Clase</TableHead><TableHead>Requiere observación</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader><TableBody>
-      {motivosOrdenados.map((m) => <TableRow key={m.id} className={m.activo ? "" : "opacity-60"}><TableCell className="font-mono text-xs">{m.codigo}</TableCell><TableCell>{m.nombre}</TableCell><TableCell><Badge variant="outline">{m.clase_cierre}</Badge></TableCell><TableCell>{m.requiere_observacion ? "Sí" : "No"}</TableCell><TableCell><StatusBadge tone={m.activo ? "success" : "neutral"}>{m.activo ? "Activo" : "Inactivo"}</StatusBadge></TableCell><TableCell><div className="flex justify-end gap-1">
+    <div className="rounded-lg border"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Nombre</TableHead><TableHead>Clase</TableHead><TableHead>Requiere observación</TableHead><TableHead>Estado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader><TableBody>
+      {paginados.length === 0 ? <TableRow><TableCell colSpan={6} className="py-10 text-center text-sm text-slate-500">Aún no hay motivos de cierre.</TableCell></TableRow> : paginados.map((m) => <TableRow key={m.id} className={m.activo ? "" : "opacity-60"}><TableCell className="font-mono text-xs">{m.codigo}</TableCell><TableCell>{m.nombre}</TableCell><TableCell><Badge variant="outline">{m.clase_cierre}</Badge></TableCell><TableCell>{m.requiere_observacion ? "Sí" : "No"}</TableCell><TableCell><StatusBadge tone={m.activo ? "success" : "neutral"}>{m.activo ? "Activo" : "Inactivo"}</StatusBadge></TableCell><TableCell><div className="flex justify-end gap-1">
         <Tooltip><TooltipTrigger asChild><Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label={`Editar ${m.nombre}`} onClick={() => { setEditing(m); setOpen(true); }}><Pencil className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Editar</TooltipContent></Tooltip>
         <Tooltip><TooltipTrigger asChild><Button type="button" size="icon" variant="ghost" className={m.activo ? "h-8 w-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700" : "h-8 w-8 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"} aria-label={`${m.activo ? "Desactivar" : "Reactivar"} ${m.nombre}`} disabled={pending} onClick={() => toggle(m)}>{m.activo ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}</Button></TooltipTrigger><TooltipContent>{m.activo ? "Desactivar" : "Reactivar"}</TooltipContent></Tooltip>
       </div></TableCell></TableRow>)}
     </TableBody></Table></div>
+      {motivosOrdenados.length > 0 && (
+        <TablePaginationBar
+          page={currentPage}
+          totalPages={totalPages}
+          total={motivosOrdenados.length}
+          perPage={MOTIVOS_PER_PAGE}
+          isPending={pending}
+          entityLabel="motivos"
+          onPrev={() => setPage(Math.max(1, currentPage - 1))}
+          onNext={() => setPage(Math.min(totalPages, currentPage + 1))}
+        />
+      )}
+    </div>
     <MotivoCierreDrawer key={editing?.id ?? "nuevo-motivo"} open={open} motivo={editing} onClose={() => setOpen(false)} onSaved={(saved) => { upsert(saved); setOpen(false); }} />
   </CardContent></Card>;
 }

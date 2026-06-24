@@ -80,6 +80,7 @@ class CasoLostFound(Base):
     motivo_cierre: Mapped[str | None] = mapped_column(MotivoCierreLfEnum)
     motivo_cierre_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_lost_found.motivo_cierre_lf.id"))
     observaciones_cierre: Mapped[str | None] = mapped_column(Text)
+    oculto: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     ts_busqueda: Mapped[str | None] = mapped_column(Text)
     conteo_comentarios: Mapped[int] = mapped_column(nullable=False, server_default="0")
     reportante_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"), nullable=False)

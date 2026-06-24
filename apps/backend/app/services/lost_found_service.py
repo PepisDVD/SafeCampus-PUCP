@@ -22,12 +22,15 @@ from app.repositories.notificacion_repository import NotificacionRepository
 from app.schemas.incidente import UsuarioMini
 from app.schemas.lost_found import (
     CancelarCasoLfInput,
+    CasoCierreInput,
     CasoLfCreated,
     CasoLfCreateInput,
     CasoLfDetail,
+    CasoVisibilidadInput,
     CasoLfEstadoUpdate,
     CasoLfFotosInput,
     CasoLfListItem,
+    CasoLfUpdateInput,
     CategoriaLfCreate,
     CategoriaLfItem,
     ComentarioLfCreateInput,
@@ -237,6 +240,9 @@ class LostFoundService:
         is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
         if row["estado"] == "CERRADO" and not is_owner and not is_operativo:
             raise HTTPException(status_code=403, detail="No tienes acceso a este caso.")
+        # Un hilo oculto sólo es accesible para su dueño o el equipo operativo/admin.
+        if row.get("oculto") and not is_owner and not is_operativo:
+            raise HTTPException(status_code=404, detail="Caso Lost & Found no encontrado.")
         historial = await self._repo.list_historial(str(row["id"])) if is_owner or is_operativo else []
         comentarios = self._mark_deletable(await self._repo.list_comentarios(str(row["id"]), include_hidden=is_operativo), usuario_id)
         return self._map_detail(row, historial, comentarios, public=not is_owner and not is_operativo)
@@ -261,6 +267,78 @@ class LostFoundService:
         await self._audit_lf(actor_id, "LF_ESTADO_CAMBIADO", "caso_lost_found", caso_id, {"estado_anterior": result["estado_anterior"], "estado_nuevo": result["estado_nuevo"], "motivo": data.motivo_cierre})
         if data.estado in {EstadoCasoLF.DEVUELTO, EstadoCasoLF.DESCARTADO}:
             await self._repo.update_estado(caso_id=caso_id, estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico post resolucion", motivo_cierre=(data.motivo_cierre.value if data.motivo_cierre else None), motivo_cierre_id=motivo["id"], observaciones_cierre=data.observaciones_cierre)
+        return await self.obtener_detalle(caso_id, actor_id, ["administrador"])
+
+    async def actualizar_caso(self, caso_id: str, usuario_id: str, roles: list[str], data: CasoLfUpdateInput) -> CasoLfDetail:
+        actual = await self._repo.get_estado(caso_id)
+        if not actual:
+            raise HTTPException(status_code=404, detail="Caso no encontrado.")
+        is_admin = "administrador" in roles
+        is_owner = str(actual["reportante_id"]) == usuario_id
+        # Solo el dueño del hilo o un administrador pueden editar sus datos descriptivos.
+        if not is_admin and not is_owner:
+            raise HTTPException(status_code=403, detail="No puedes editar este hilo.")
+        if not is_admin and str(actual["estado"]) == "CERRADO":
+            raise HTTPException(status_code=422, detail="No puedes editar un hilo cerrado.")
+
+        categoria = await self._repo.get_categoria(data.categoria_id)
+        if not categoria:
+            raise HTTPException(status_code=422, detail="La categoría seleccionada no existe.")
+        payload = data.model_dump()
+        schema = categoria.get("metadatos_schema")
+        payload["metadatos"] = validar_metadatos_caso(payload.get("metadatos"), schema)
+        matching_terms = [str(payload["metadatos"][c]) for c in codigos_matching(schema) if payload["metadatos"].get(c)]
+        payload["ts_busqueda"] = " ".join(filter(None, [self._build_search(payload), *matching_terms]))
+        await self._repo.update_caso_descriptivo(caso_id, payload)
+        await self._audit_lf(
+            usuario_id,
+            "LF_CASO_ACTUALIZADO",
+            "caso_lost_found",
+            caso_id,
+            build_detalle(origen="WEB_OPERATIVA", resultado=AuditResultado.EXITOSO, resumen=f"Datos del hilo {actual['codigo']} actualizados"),
+        )
+        return await self.obtener_detalle(caso_id, usuario_id, roles)
+
+    async def cerrar_reabrir_caso(self, caso_id: str, actor_id: str, data: CasoCierreInput) -> CasoLfDetail:
+        """Cierre/reapertura administrativa: habilita o deshabilita la interacción del hilo."""
+        actual = await self._repo.get_estado(caso_id)
+        if not actual:
+            raise HTTPException(status_code=404, detail="Caso no encontrado.")
+        estado_actual = str(actual["estado"])
+        if data.cerrar and estado_actual == "CERRADO":
+            raise HTTPException(status_code=422, detail="El hilo ya está cerrado.")
+        if not data.cerrar and estado_actual != "CERRADO":
+            raise HTTPException(status_code=422, detail="El hilo no está cerrado.")
+        nuevo_estado = "CERRADO" if data.cerrar else "ABIERTO"
+        await self._repo.update_estado(
+            caso_id=caso_id,
+            estado=nuevo_estado,
+            ejecutor_id=actor_id,
+            comentario="Cierre administrativo del hilo" if data.cerrar else "Reapertura administrativa del hilo",
+        )
+        accion = "LF_CASO_CERRADO" if data.cerrar else "LF_CASO_REABIERTO"
+        resumen = f"Hilo {actual['codigo']} {'cerrado' if data.cerrar else 'reabierto'} por administración"
+        await self._audit_lf(
+            actor_id, accion, "caso_lost_found", caso_id,
+            build_detalle(origen="WEB_OPERATIVA", resultado=AuditResultado.EXITOSO, before={"estado": estado_actual}, after={"estado": nuevo_estado}, resumen=resumen),
+        )
+        return await self.obtener_detalle(caso_id, actor_id, ["administrador"])
+
+    async def ocultar_mostrar_caso(self, caso_id: str, actor_id: str, data: CasoVisibilidadInput) -> CasoLfDetail:
+        """Oculta/muestra el hilo para la comunidad (no afecta su estado)."""
+        actual = await self._repo.get_estado(caso_id)
+        if not actual:
+            raise HTTPException(status_code=404, detail="Caso no encontrado.")
+        antes = bool(actual.get("oculto"))
+        if antes == data.oculto:
+            raise HTTPException(status_code=422, detail="El hilo ya está en ese estado de visibilidad.")
+        await self._repo.set_oculto(caso_id, data.oculto)
+        accion = "LF_CASO_OCULTADO" if data.oculto else "LF_CASO_MOSTRADO"
+        resumen = f"Hilo {actual['codigo']} {'ocultado de' if data.oculto else 'visible para'} la comunidad"
+        await self._audit_lf(
+            actor_id, accion, "caso_lost_found", caso_id,
+            build_detalle(origen="WEB_OPERATIVA", resultado=AuditResultado.EXITOSO, before={"oculto": antes}, after={"oculto": data.oculto}, resumen=resumen),
+        )
         return await self.obtener_detalle(caso_id, actor_id, ["administrador"])
 
     async def cancelar_caso(self, caso_id: str, usuario_id: str, data: CancelarCasoLfInput) -> CasoLfDetail:
@@ -783,6 +861,8 @@ class LostFoundService:
             contacto_info=None if public else row.get("contacto_info"),
             foto_adicional_urls=row.get("foto_adicional_urls") or [],
             etiquetas=row.get("etiquetas") or [],
+            metadatos=row.get("metadatos") or {},
+            oculto=bool(row.get("oculto")),
             motivo_cierre=row.get("motivo_cierre"),
             motivo_cierre_id=str(row["motivo_cierre_id"]) if row.get("motivo_cierre_id") else None,
             observaciones_cierre=row.get("observaciones_cierre"),

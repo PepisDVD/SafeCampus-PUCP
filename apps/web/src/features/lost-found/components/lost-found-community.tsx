@@ -37,6 +37,7 @@ import {
   MessageSquare,
   PackageCheck,
   PackageSearch,
+  Pencil,
   Search,
   Trash2,
   X,
@@ -44,6 +45,7 @@ import {
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
+import { EditCaseModal } from "./edit-case-modal";
 import type { CasoLfDetail, CasoLfListItem, CategoriaLf, MatchLf, UbicacionMaestra } from "../types";
 
 type Props = {
@@ -99,6 +101,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
   const [photos, setPhotos] = useState<File[]>([]);
   const [mineStatus, setMineStatus] = useState("TODOS");
   const [selected, setSelected] = useState<CasoLfDetail | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [matches, setMatches] = useState<MatchLf[]>([]);
   const [comment, setComment] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -344,6 +347,8 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
           caso={selected}
           matches={matches}
           isOwn={isOwnSelected}
+          canEdit={isOwnSelected}
+          onEdit={() => setEditOpen(true)}
           threadSubscribed={threadSubscribed}
           comment={comment}
           loading={isPending}
@@ -368,6 +373,16 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
           onRespondMatch={respondMatch}
           onCancel={cancelCase}
           onToggleParticipation={toggleParticipation}
+        />
+      )}
+
+      {selected && isOwnSelected && (
+        <EditCaseModal
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          caso={selected}
+          categorias={categorias}
+          onSaved={(saved) => setSelected(saved)}
         />
       )}
     </div>
@@ -421,6 +436,8 @@ function CaseDetail(props: {
   caso: CasoLfDetail;
   matches: MatchLf[];
   isOwn: boolean;
+  canEdit?: boolean;
+  onEdit?: () => void;
   threadSubscribed: boolean;
   comment: string;
   replyingTo: string | null;
@@ -435,7 +452,7 @@ function CaseDetail(props: {
   onCancel: () => void;
   onToggleParticipation: (checked: boolean) => void;
 }) {
-  const { caso, matches, isOwn, threadSubscribed, comment, replyingTo, loading, onClose, onCommentChange, onReply, onClearReply, onSendComment, onDeleteComment, onRespondMatch, onCancel, onToggleParticipation } = props;
+  const { caso, matches, isOwn, canEdit, onEdit, threadSubscribed, comment, replyingTo, loading, onClose, onCommentChange, onReply, onClearReply, onSendComment, onDeleteComment, onRespondMatch, onCancel, onToggleParticipation } = props;
   const canComment = commentableStates.has(caso.estado);
   const canCancel = isOwn && !terminalStates.has(caso.estado);
   const rootComments = caso.comentarios.filter((comentario) => !comentario.parent_id);
@@ -454,7 +471,15 @@ function CaseDetail(props: {
             <CardTitle className="text-lg">{caso.titulo}</CardTitle>
             <p className="text-xs text-slate-500">{caso.codigo} · {caso.lugar_referencia}</p>
           </div>
-          <Button size="icon" variant="ghost" onClick={onClose} aria-label="Cerrar detalle"><X className="h-4 w-4" /></Button>
+          <div className="flex items-center gap-1">
+            {canEdit && onEdit && (
+              <Button size="sm" variant="outline" onClick={onEdit}>
+                <Pencil className="mr-1.5 h-4 w-4" />
+                Editar
+              </Button>
+            )}
+            <Button size="icon" variant="ghost" onClick={onClose} aria-label="Cerrar detalle"><X className="h-4 w-4" /></Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

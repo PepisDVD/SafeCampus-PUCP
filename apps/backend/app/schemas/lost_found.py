@@ -94,6 +94,34 @@ class CasoLfCreateInput(BaseModel):
     longitud: float | None = None
 
 
+class CasoLfUpdateInput(BaseModel):
+    """Edición de datos descriptivos de un caso (no cambia tipo ni estado)."""
+    titulo: str = Field(min_length=3, max_length=200)
+    descripcion: str = Field(min_length=10, max_length=4000)
+    categoria_id: str
+    subcategoria: str | None = Field(default=None, max_length=100)
+    lugar_referencia: str = Field(min_length=3, max_length=255)
+    fecha_evento: datetime
+    hora_aproximada: time | None = None
+    color_principal: str | None = Field(default=None, max_length=50)
+    marca: str | None = Field(default=None, max_length=100)
+    etiquetas: list[str] = Field(default_factory=list, max_length=10)
+    metadatos: dict[str, Any] = Field(default_factory=dict)
+    contacto_info: str | None = Field(default=None, max_length=255)
+    latitud: float | None = None
+    longitud: float | None = None
+
+
+class CasoCierreInput(BaseModel):
+    """Cierre/reapertura administrativa de un hilo."""
+    cerrar: bool
+
+
+class CasoVisibilidadInput(BaseModel):
+    """Ocultar/mostrar un hilo para la comunidad."""
+    oculto: bool
+
+
 class CasoLfCreated(BaseModel):
     id: str
     codigo: str
@@ -165,6 +193,8 @@ class CasoLfDetail(CasoLfListItem):
     contacto_info: str | None = None
     foto_adicional_urls: list[str] = []
     etiquetas: list[str] = []
+    metadatos: dict[str, Any] = {}
+    oculto: bool = False
     motivo_cierre: MotivoCierreLF | None = None
     observaciones_cierre: str | None = None
     latitud: float | None = None

@@ -20,14 +20,6 @@ import {
   Button,
   Card,
   CardContent,
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
   FilterBar,
   Dialog,
   DialogContent,
@@ -53,6 +45,7 @@ import { Eye, Grid2X2, List, MapPin, MessageSquare, PackageSearch, Plus, Search,
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
+import { activeMetadatoCampos, MetadatoFields, validateMetadatos, valuesToMetadatos } from "./metadato-fields";
 import type { CasoLfListItem, CategoriaLf, UbicacionMaestra } from "../types";
 
 type Props = {
@@ -115,6 +108,11 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
   const [form, setForm] = useState<CasoLfCreatePayload>(emptyForm);
   const [touched, setTouched] = useState<TouchedFields>({});
   const [submitted, setSubmitted] = useState(false);
+  const [metadatos, setMetadatos] = useState<Record<string, string>>({});
+  const metadatoCampos = useMemo(
+    () => activeMetadatoCampos(categorias.find((c) => c.id === form.categoria_id)),
+    [categorias, form.categoria_id],
+  );
   const [ubicacionSeleccionada, setUbicacionSeleccionada] = useState("OTRO");
   const [fotos, setFotos] = useState<FotoAdjunta[]>([]);
   const [previewSeleccionado, setPreviewSeleccionado] = useState<FotoAdjunta | null>(null);
@@ -272,11 +270,17 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
       toast.error("Revisa los campos marcados antes de publicar.");
       return;
     }
+    const metaError = validateMetadatos(metadatoCampos, metadatos);
+    if (metaError) {
+      toast.error(metaError);
+      return;
+    }
     startTransition(async () => {
       try {
         const created = await lostFoundClient.crearCaso({
           ...form,
           fecha_evento: new Date(form.fecha_evento).toISOString(),
+          metadatos: valuesToMetadatos(metadatoCampos, metadatos),
         });
         if (fotos.length > 0) {
           await lostFoundClient.subirFotosArchivos(created.id, fotos.map((item) => item.file));
@@ -287,6 +291,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
         setForm(emptyForm);
         setTouched({});
         setSubmitted(false);
+        setMetadatos({});
         setUbicacionSeleccionada("OTRO");
         resetAdjuntos();
         setOpen(false);
@@ -313,7 +318,8 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
           <h1 className="text-2xl font-semibold text-slate-950">Hilos Lost & Found</h1>
           <p className="text-sm text-slate-500">Publicaciones, conversaciones y seguimiento comunitario.</p>
         </div>
-        <Drawer
+        <Button onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Crear hilo</Button>
+        <Dialog
           open={open}
           onOpenChange={(nextOpen) => {
             setOpen(nextOpen);
@@ -321,21 +327,18 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
               setForm(emptyForm);
               setTouched({});
               setSubmitted(false);
+              setMetadatos({});
               setUbicacionSeleccionada("OTRO");
               resetAdjuntos();
             }
           }}
-          direction="right"
         >
-          <DrawerTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" />Crear hilo</Button>
-          </DrawerTrigger>
-          <DrawerContent className="flex h-dvh max-h-dvh flex-col overflow-hidden p-0 sm:max-w-xl">
-            <DrawerHeader className="shrink-0 border-b px-4 py-4">
-              <DrawerTitle>Nuevo hilo Lost & Found</DrawerTitle>
-              <DrawerDescription>Registra una publicación operativa o comunitaria.</DrawerDescription>
-            </DrawerHeader>
-            <div className="mx-auto grid w-full max-w-2xl flex-1 gap-3 overflow-y-auto px-4 py-4">
+          <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-2xl">
+            <DialogHeader className="shrink-0 border-b px-6 py-4 text-left">
+              <DialogTitle>Nuevo hilo Lost & Found</DialogTitle>
+              <DialogDescription>Registra una publicación operativa o comunitaria.</DialogDescription>
+            </DialogHeader>
+            <div className="grid flex-1 gap-3 overflow-y-auto px-6 py-4">
               <Select value={form.tipo} onValueChange={(value) => setForm((f) => ({ ...f, tipo: value as "PERDIDO" | "ENCONTRADO" }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -373,6 +376,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
                 onValueChange={(value) => {
                   setTouched((current) => ({ ...current, categoria_id: true }));
                   setForm((f) => ({ ...f, categoria_id: value }));
+                  setMetadatos({});
                 }}
               >
                 <SelectTrigger><SelectValue placeholder="Categoría" /></SelectTrigger>
@@ -418,10 +422,11 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
                 <p className="text-xs text-slate-500">Coordenadas: {form.latitud.toFixed(6)}, {form.longitud.toFixed(6)}</p>
               )}
               <FieldError message={visibleError(formErrors.lugar_referencia, touched.lugar_referencia, submitted)} />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Input placeholder="Color" value={form.color_principal ?? ""} onChange={(e) => setForm((f) => ({ ...f, color_principal: e.target.value }))} />
-                <Input placeholder="Marca" value={form.marca ?? ""} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} />
-              </div>
+              <MetadatoFields
+                campos={metadatoCampos}
+                values={metadatos}
+                onChange={(codigo, value) => setMetadatos((prev) => ({ ...prev, [codigo]: value }))}
+              />
               <div className="space-y-2">
                 <Label htmlFor="lf-fotos-input">Fotos de evidencia (max. 3)</Label>
                 <Input
@@ -451,12 +456,12 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
                 )}
               </div>
             </div>
-            <DrawerFooter className="mx-auto w-full max-w-2xl shrink-0 border-t bg-white px-4 py-3">
+            <DialogFooter className="shrink-0 gap-2 border-t bg-white px-6 py-3">
+              <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button onClick={createThread} disabled={isPending}>Publicar hilo</Button>
-              <DrawerClose asChild><Button variant="outline">Cancelar</Button></DrawerClose>
-            </DrawerFooter>
-          </DrawerContent>
-        </Drawer>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <FilterBar>
@@ -618,7 +623,7 @@ function ThreadCard({ caso, viewMode }: { caso: CasoLfListItem; viewMode: "grid"
     return (
       <Link href={`/lost-found-hilos/${caso.id}`} className="block">
         <Card className="transition hover:border-[#001C55]/30 hover:shadow-sm">
-          <CardContent className="grid min-h-24 grid-cols-[72px_1fr_auto] items-center gap-4 p-4">
+          <CardContent className="grid min-h-24 grid-cols-[72px_1fr_auto] items-center gap-4 p-4 last:pb-4">
             <CaseThumbnail caso={caso} compact />
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -649,7 +654,7 @@ function ThreadCard({ caso, viewMode }: { caso: CasoLfListItem; viewMode: "grid"
   return (
     <Link href={`/lost-found-hilos/${caso.id}`} className="block">
       <Card className="h-full overflow-hidden transition hover:border-[#001C55]/30 hover:shadow-sm">
-        <CardContent className={hasPhoto ? "grid h-full min-h-64 grid-cols-[minmax(132px,42%)_minmax(0,1fr)] p-0" : "flex h-full min-h-64 flex-col p-4"}>
+        <CardContent className={hasPhoto ? "grid h-full min-h-64 grid-cols-[minmax(132px,42%)_minmax(0,1fr)] p-0 last:pb-0" : "flex h-full min-h-64 flex-col p-4 last:pb-4"}>
           {hasPhoto && (
             <div className="relative min-h-full">
               <Badge variant="outline" className={`absolute left-3 top-3 z-10 bg-white/95 ${estadoLfTone[caso.estado]}`}>{estadoLabel(caso.estado)}</Badge>

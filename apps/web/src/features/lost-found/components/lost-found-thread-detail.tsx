@@ -33,35 +33,72 @@ import {
   TabsTrigger,
   Textarea,
 } from "@safecampus/ui-kit";
-import { Archive, CheckCircle2, GitCompareArrows, History, ImageIcon, MapPin, MessageSquare, XCircle } from "lucide-react";
+import { Archive, CheckCircle2, Eye, EyeOff, GitCompareArrows, History, ImageIcon, Lock, LockOpen, MapPin, MessageSquare, Pencil, XCircle } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
-import type { CasoLfDetail, MatchLf } from "../types";
+import { EditCaseModal } from "./edit-case-modal";
+import { activeMetadatoCampos } from "./metadato-fields";
+import type { CasoLfDetail, CategoriaLf, MatchLf } from "../types";
+
+type CurrentUser = { id: string; isAdmin: boolean } | null;
+
+const COMMENTABLE_STATES = new Set(["ABIERTO", "EN_REVISION"]);
 
 const LostFoundReadonlyMap = dynamic(
   () => import("./lost-found-readonly-map").then((mod) => mod.LostFoundReadonlyMap),
   { ssr: false },
 );
 
-export function LostFoundThreadDetail({ initialCase, initialMatches }: { initialCase: CasoLfDetail; initialMatches: MatchLf[] }) {
+export function LostFoundThreadDetail({
+  initialCase,
+  initialMatches,
+  categorias = [],
+  currentUser = null,
+}: {
+  initialCase: CasoLfDetail;
+  initialMatches: MatchLf[];
+  categorias?: CategoriaLf[];
+  currentUser?: CurrentUser;
+}) {
   const [caso, setCaso] = useState(initialCase);
   const [comment, setComment] = useState("");
   const [operativo, setOperativo] = useState("");
   const [custodia, setCustodia] = useState("");
   const [matches, setMatches] = useState<MatchLf[]>(initialMatches);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  const isAdmin = Boolean(currentUser?.isAdmin);
+  const canEdit = Boolean(currentUser?.isAdmin || (currentUser && caso.reportante?.id === currentUser.id));
+  const cerrado = caso.estado === "CERRADO";
+  const canComment = COMMENTABLE_STATES.has(caso.estado);
+  const metaEntries = activeMetadatoCampos(categorias.find((c) => c.id === caso.categoria_id))
+    .map((campo) => ({ etiqueta: campo.etiqueta, valor: caso.metadatos?.[campo.codigo] }))
+    .filter((entry) => entry.valor !== undefined && entry.valor !== null && String(entry.valor).trim() !== "");
 
   const reload = async () => setCaso(await lostFoundClient.detalle(caso.id));
   const reloadMatches = async () => setMatches(await lostFoundClient.matches(caso.id));
 
   const sendComment = () => {
-    if (!comment.trim()) return;
+    const texto = comment.trim();
+    if (!texto || isPending || !canComment) return;
+    // Update optimista: limpiamos el input al instante y agregamos el comentario
+    // devuelto por el backend, sin recargar todo el detalle (evita la demora).
+    setComment("");
     startTransition(async () => {
-      await lostFoundClient.comentar(caso.id, comment.trim());
-      await reload();
-      setComment("");
+      try {
+        const nuevo = await lostFoundClient.comentar(caso.id, texto);
+        setCaso((prev) => ({
+          ...prev,
+          comentarios: [...prev.comentarios, nuevo],
+          conteo_comentarios: prev.conteo_comentarios + 1,
+        }));
+      } catch (error) {
+        setComment(texto);
+        toast.error(error instanceof Error ? error.message : "No se pudo enviar el comentario");
+      }
     });
   };
 
@@ -70,6 +107,31 @@ export function LostFoundThreadDetail({ initialCase, initialMatches }: { initial
       await lostFoundClient.moderarComentario(id, visible, visible ? "Restaurado por supervision" : "Ocultado por moderacion");
       await reload();
       toast.success(visible ? "Comentario restaurado" : "Comentario ocultado");
+    });
+  };
+
+  const toggleCierre = () => {
+    startTransition(async () => {
+      try {
+        const saved = await lostFoundClient.cerrarReabrirCaso(caso.id, !cerrado);
+        setCaso(saved);
+        toast.success(cerrado ? "Hilo reabierto" : "Hilo cerrado");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo actualizar el hilo");
+      }
+    });
+  };
+
+  const toggleVisibilidad = () => {
+    const nuevoOculto = !caso.oculto;
+    startTransition(async () => {
+      try {
+        const saved = await lostFoundClient.ocultarMostrarCaso(caso.id, nuevoOculto);
+        setCaso(saved);
+        toast.success(nuevoOculto ? "Hilo oculto para la comunidad" : "Hilo visible para la comunidad");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo actualizar la visibilidad");
+      }
     });
   };
 
@@ -104,10 +166,46 @@ export function LostFoundThreadDetail({ initialCase, initialMatches }: { initial
 
   return (
     <div className="space-y-5 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-950">{caso.titulo}</h1>
-        <p className="text-sm text-slate-500">{caso.codigo} · {caso.lugar_referencia}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-semibold text-slate-950">{caso.titulo}</h1>
+            {cerrado && <Badge variant="outline" className="border-slate-300 bg-slate-100 text-slate-600">Cerrado</Badge>}
+            {caso.oculto && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">Oculto</Badge>}
+          </div>
+          <p className="text-sm text-slate-500">{caso.codigo} · {caso.lugar_referencia}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <>
+              <Button variant="outline" onClick={toggleCierre} disabled={isPending}>
+                {cerrado ? <LockOpen className="mr-2 h-4 w-4" /> : <Lock className="mr-2 h-4 w-4" />}
+                {cerrado ? "Reabrir" : "Cerrar"}
+              </Button>
+              <Button variant="outline" onClick={toggleVisibilidad} disabled={isPending}>
+                {caso.oculto ? <Eye className="mr-2 h-4 w-4" /> : <EyeOff className="mr-2 h-4 w-4" />}
+                {caso.oculto ? "Mostrar" : "Ocultar"}
+              </Button>
+            </>
+          )}
+          {canEdit && (
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar hilo
+            </Button>
+          )}
+        </div>
       </div>
+
+      {canEdit && (
+        <EditCaseModal
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          caso={caso}
+          categorias={categorias}
+          onSaved={setCaso}
+        />
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <Card>
@@ -120,6 +218,19 @@ export function LostFoundThreadDetail({ initialCase, initialMatches }: { initial
               {caso.categoria_nombre && <Badge variant="outline">{caso.categoria_nombre}</Badge>}
             </div>
             <p className="text-sm text-slate-700">{caso.descripcion}</p>
+            {metaEntries.length > 0 && (
+              <div className="rounded-lg border bg-slate-50/60 p-3">
+                <p className="mb-2 text-xs font-semibold text-slate-600">Detalles de la categoría</p>
+                <dl className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+                  {metaEntries.map((entry) => (
+                    <div key={entry.etiqueta} className="flex justify-between gap-3 text-sm">
+                      <dt className="text-slate-500">{entry.etiqueta}</dt>
+                      <dd className="text-right font-medium text-slate-800">{String(entry.valor)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
             <p className="text-sm text-slate-500">Reportante: {caso.reportante?.nombre_completo ?? "Usuario"}</p>
           </CardContent>
         </Card>
@@ -241,9 +352,20 @@ export function LostFoundThreadDetail({ initialCase, initialMatches }: { initial
         <CardHeader><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Hilo de conversacion</CardTitle></CardHeader>
         <CardContent>
           <div className="mx-auto max-w-3xl space-y-3">
+            {!canComment && (
+              <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                {cerrado ? "Este hilo está cerrado: no se admiten nuevos comentarios." : "Este hilo no admite comentarios en su estado actual."}
+              </p>
+            )}
             <div className="flex gap-2">
-              <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Responder en el hilo" />
-              <Button onClick={sendComment} disabled={isPending}>Enviar</Button>
+              <Input
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendComment(); } }}
+                placeholder={canComment ? "Responder en el hilo" : "Comentarios deshabilitados"}
+                disabled={!canComment}
+              />
+              <Button onClick={sendComment} disabled={isPending || !canComment || !comment.trim()}>Enviar</Button>
             </div>
 
             {caso.comentarios.map((item) => (

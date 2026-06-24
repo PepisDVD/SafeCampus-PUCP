@@ -14,8 +14,11 @@ from app.schemas.lost_found import (
     CasoLfCreateInput,
     CasoLfDetail,
     CasoLfEstadoUpdate,
+    CasoCierreInput,
     CasoLfFotosInput,
     CasoLfListResponse,
+    CasoLfUpdateInput,
+    CasoVisibilidadInput,
     CategoriaLfCreate,
     CategoriaLfItem,
     ComentarioLfCreateInput,
@@ -218,6 +221,39 @@ async def obtener_caso(
     service: LostFoundService = Depends(get_service),
 ):
     return await service.obtener_detalle(ref, current_user.id, current_user.roles)
+
+
+@router.patch("/casos/{caso_id}", response_model=CasoLfDetail)
+async def actualizar_caso(
+    caso_id: str,
+    body: CasoLfUpdateInput,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: LostFoundService = Depends(get_service),
+):
+    """Edita los datos descriptivos del hilo. Solo el dueño o un administrador."""
+    return await service.actualizar_caso(caso_id, current_user.id, current_user.roles, body)
+
+
+@router.patch("/casos/{caso_id}/cierre", response_model=CasoLfDetail)
+async def cerrar_reabrir_caso(
+    caso_id: str,
+    body: CasoCierreInput,
+    current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    """Cierra o reabre un hilo (habilita/deshabilita la interacción). Solo administrador."""
+    return await service.cerrar_reabrir_caso(caso_id, current_user.id, body)
+
+
+@router.patch("/casos/{caso_id}/visibilidad", response_model=CasoLfDetail)
+async def ocultar_mostrar_caso(
+    caso_id: str,
+    body: CasoVisibilidadInput,
+    current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    """Oculta o muestra un hilo para la comunidad. Solo administrador."""
+    return await service.ocultar_mostrar_caso(caso_id, current_user.id, body)
 
 
 @router.patch("/casos/{caso_id}/estado", response_model=CasoLfDetail)
