@@ -3,18 +3,19 @@
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   Badge,
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
   Button,
-  RoleBadge,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
   Drawer,
   DrawerContent,
   DrawerDescription,
@@ -33,13 +34,16 @@ import {
   TabsTrigger,
   Textarea,
 } from "@safecampus/ui-kit";
-import { Archive, CheckCircle2, Eye, EyeOff, GitCompareArrows, History, ImageIcon, Lock, LockOpen, MapPin, MessageSquare, Pencil, XCircle } from "lucide-react";
+import { Archive, CheckCircle2, Eye, EyeOff, GitCompareArrows, History, ImageIcon, Lock, LockOpen, MapPin, MessageSquare, Pencil, Settings2, XCircle } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
 import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
 import { EditCaseModal } from "./edit-case-modal";
+import { CommentComposer, CommentNode, type CommentCallbacks } from "./comment-node";
 import { activeMetadatoCampos } from "./metadato-fields";
-import type { CasoLfDetail, CategoriaLf, MatchLf } from "../types";
+import type { CasoLfDetail, CategoriaLf, ComentarioLf, MatchLf } from "../types";
+
+const DEFAULT_MAX_DEPTH = 6;
 
 type CurrentUser = { id: string; isAdmin: boolean } | null;
 
@@ -62,7 +66,7 @@ export function LostFoundThreadDetail({
   currentUser?: CurrentUser;
 }) {
   const [caso, setCaso] = useState(initialCase);
-  const [comment, setComment] = useState("");
+  const [manageMode, setManageMode] = useState(false);
   const [operativo, setOperativo] = useState("");
   const [custodia, setCustodia] = useState("");
   const [matches, setMatches] = useState<MatchLf[]>(initialMatches);
@@ -81,33 +85,74 @@ export function LostFoundThreadDetail({
   const reload = async () => setCaso(await lostFoundClient.detalle(caso.id));
   const reloadMatches = async () => setMatches(await lostFoundClient.matches(caso.id));
 
-  const sendComment = () => {
-    const texto = comment.trim();
-    if (!texto || isPending || !canComment) return;
-    // Update optimista: limpiamos el input al instante y agregamos el comentario
-    // devuelto por el backend, sin recargar todo el detalle (evita la demora).
-    setComment("");
-    startTransition(async () => {
-      try {
-        const nuevo = await lostFoundClient.comentar(caso.id, texto);
-        setCaso((prev) => ({
-          ...prev,
-          comentarios: [...prev.comentarios, nuevo],
-          conteo_comentarios: prev.conteo_comentarios + 1,
-        }));
-      } catch (error) {
-        setComment(texto);
-        toast.error(error instanceof Error ? error.message : "No se pudo enviar el comentario");
-      }
-    });
-  };
+  const maxDepth = caso.comentarios_profundidad_maxima ?? DEFAULT_MAX_DEPTH;
+  const childrenMap = useMemo(() => buildChildrenMap(caso.comentarios), [caso.comentarios]);
+  const rootComments = useMemo(() => {
+    const ids = new Set(caso.comentarios.map((c) => c.id));
+    // Un comentario es raíz si no tiene padre o su padre no está en el conjunto visible (huérfano).
+    return caso.comentarios.filter((c) => !c.parent_id || !ids.has(c.parent_id));
+  }, [caso.comentarios]);
 
-  const moderateComment = (id: string, visible: boolean) => {
-    startTransition(async () => {
-      await lostFoundClient.moderarComentario(id, visible, visible ? "Restaurado por supervision" : "Ocultado por moderacion");
-      await reload();
-      toast.success(visible ? "Comentario restaurado" : "Comentario ocultado");
+  const submitComment = (texto: string, archivos: File[], parentId?: string | null): Promise<boolean> =>
+    new Promise((resolve) => {
+      if (!canComment) {
+        resolve(false);
+        return;
+      }
+      startTransition(async () => {
+        try {
+          await lostFoundClient.comentar(caso.id, texto, parentId ?? null, archivos);
+          await reload();
+          resolve(true);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "No se pudo enviar el comentario");
+          resolve(false);
+        }
+      });
     });
+
+  const commentCallbacks: CommentCallbacks = {
+    onReply: (parentId, texto, archivos) => submitComment(texto, archivos, parentId),
+    onEdit: (id, texto) =>
+      new Promise((resolve) => {
+        startTransition(async () => {
+          try {
+            await lostFoundClient.editarComentario(id, texto);
+            await reload();
+            toast.success("Comentario actualizado");
+            resolve(true);
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "No se pudo editar el comentario");
+            resolve(false);
+          }
+        });
+      }),
+    onModerate: (id, visible) =>
+      new Promise((resolve) => {
+        startTransition(async () => {
+          try {
+            await lostFoundClient.moderarComentario(id, visible, visible ? "Restaurado por supervision" : "Ocultado por moderacion");
+            await reload();
+            toast.success(visible ? "Comentario restaurado" : "Comentario ocultado");
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "No se pudo actualizar la visibilidad");
+          }
+          resolve();
+        });
+      }),
+    onDelete: (id) =>
+      new Promise((resolve) => {
+        startTransition(async () => {
+          try {
+            await lostFoundClient.eliminarComentarioGestion(id);
+            await reload();
+            toast.success("Comentario eliminado");
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "No se pudo eliminar el comentario");
+          }
+          resolve();
+        });
+      }),
   };
 
   const toggleCierre = () => {
@@ -349,7 +394,21 @@ export function LostFoundThreadDetail({
       )}
 
       <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Hilo de conversacion</CardTitle></CardHeader>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Hilo de conversacion</CardTitle>
+            {isAdmin && (
+              <Button
+                size="sm"
+                variant={manageMode ? "secondary" : "outline"}
+                onClick={() => setManageMode((v) => !v)}
+              >
+                <Settings2 className="mr-1 h-4 w-4" />
+                {manageMode ? "Salir de gestión" : "Modo gestión"}
+              </Button>
+            )}
+          </div>
+        </CardHeader>
         <CardContent>
           <div className="mx-auto max-w-3xl space-y-3">
             {!canComment && (
@@ -357,39 +416,29 @@ export function LostFoundThreadDetail({
                 {cerrado ? "Este hilo está cerrado: no se admiten nuevos comentarios." : "Este hilo no admite comentarios en su estado actual."}
               </p>
             )}
-            <div className="flex gap-2">
-              <Input
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendComment(); } }}
-                placeholder={canComment ? "Responder en el hilo" : "Comentarios deshabilitados"}
-                disabled={!canComment}
+            {canComment && (
+              <CommentComposer
+                placeholder="Escribe un comentario… (puedes adjuntar hasta 3 imágenes)"
+                isPending={isPending}
+                onSubmit={(texto, archivos) => submitComment(texto, archivos, null)}
               />
-              <Button onClick={sendComment} disabled={isPending || !canComment || !comment.trim()}>Enviar</Button>
-            </div>
+            )}
 
-            {caso.comentarios.map((item) => (
-              <div key={item.id} className="flex gap-3 rounded-lg border bg-white p-3">
-                <Avatar className="h-9 w-9">
-                  <AvatarImage src={item.autor?.avatar_url ?? undefined} />
-                  <AvatarFallback>{initials(item.autor?.nombre_completo)}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium">{item.autor?.nombre_completo ?? "Usuario"}</p>
-                    {roleBadge(item.autor?.rol)}
-                    <span className="text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</span>
-                    <Badge variant={item.visible ? "secondary" : "outline"} className="ml-auto">{item.visible ? "Visible" : "Oculto"}</Badge>
-                  </div>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-700">{item.contenido}</p>
-                  <div className="mt-3">
-                    <Button size="sm" variant="outline" onClick={() => moderateComment(item.id, !item.visible)}>
-                      {item.visible ? "Ocultar" : "Restaurar"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
+            <div className="space-y-3">
+              {rootComments.map((item) => (
+                <CommentNode
+                  key={item.id}
+                  comment={item}
+                  childrenMap={childrenMap}
+                  depth={0}
+                  maxDepth={maxDepth}
+                  manageMode={manageMode}
+                  canComment={canComment}
+                  isPending={isPending}
+                  callbacks={commentCallbacks}
+                />
+              ))}
+            </div>
             {caso.comentarios.length === 0 && (
               <p className="rounded-lg border border-dashed p-4 text-sm text-slate-500">Este hilo aun no tiene comentarios.</p>
             )}
@@ -400,8 +449,15 @@ export function LostFoundThreadDetail({
   );
 }
 
-function initials(name?: string | null) {
-  return (name ?? "U").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+function buildChildrenMap(comentarios: ComentarioLf[]): Map<string, ComentarioLf[]> {
+  const map = new Map<string, ComentarioLf[]>();
+  for (const comentario of comentarios) {
+    if (!comentario.parent_id) continue;
+    const list = map.get(comentario.parent_id) ?? [];
+    list.push(comentario);
+    map.set(comentario.parent_id, list);
+  }
+  return map;
 }
 
 function CaseMediaTabs({ caso }: { caso: CasoLfDetail }) {
@@ -415,24 +471,29 @@ function CaseMediaTabs({ caso }: { caso: CasoLfDetail }) {
         <TabsTrigger value="mapa" disabled={!hasCoordinates}><MapPin className="mr-2 h-4 w-4" />Mapa</TabsTrigger>
       </TabsList>
       <TabsContent value="imagenes" className="mt-4 space-y-3">
-        {photos.length > 0 ? (
-          <>
-            <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-slate-50">
-              <Image src={photos[0]!} alt="" fill unoptimized className="object-cover" />
-            </div>
-            {photos.length > 1 && (
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                {photos.slice(1).map((url) => (
-                  <div key={url} className="relative aspect-video w-full overflow-hidden rounded-lg border bg-slate-50">
-                    <Image src={url} alt="" fill unoptimized className="object-cover" />
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
+        {photos.length === 0 ? (
           <div className="flex aspect-video items-center justify-center rounded-lg border border-dashed bg-slate-50 text-sm text-slate-500">
             Sin imagenes registradas.
+          </div>
+        ) : photos.length === 1 ? (
+          <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-slate-50">
+            <Image src={photos[0]!} alt="" fill unoptimized className="object-cover" />
+          </div>
+        ) : (
+          <div className="px-10">
+            <Carousel className="w-full" opts={{ loop: true }}>
+              <CarouselContent>
+                {photos.map((url) => (
+                  <CarouselItem key={url}>
+                    <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-slate-50">
+                      <Image src={url} alt="" fill unoptimized className="object-cover" />
+                    </div>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              <CarouselPrevious />
+              <CarouselNext />
+            </Carousel>
           </div>
         )}
       </TabsContent>
@@ -487,8 +548,4 @@ function HistoryDrawer({ open, onOpenChange, caso }: { open: boolean; onOpenChan
       </DrawerContent>
     </Drawer>
   );
-}
-
-function roleBadge(role?: string | null) {
-  return role ? <RoleBadge role={role} /> : null;
 }

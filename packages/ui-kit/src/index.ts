@@ -179,6 +179,14 @@ export {
   SheetDescription,
 } from "./components/ui/sheet";
 export { Skeleton } from "./components/ui/skeleton";
+export {
+  type CarouselApi,
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselPrevious,
+  CarouselNext,
+} from "./components/ui/carousel";
 export { Spinner } from "./components/ui/spinner";
 export {
   StatusBadge,

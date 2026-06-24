@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, case, desc, func, or_, select, update
+from sqlalchemy import and_, case, desc, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -483,7 +483,7 @@ class LostFoundRepository:
             .scalar_subquery()
         )
         statement = (
-            select(ComentarioCasoLf.id, ComentarioCasoLf.caso_id, ComentarioCasoLf.parent_id, ComentarioCasoLf.autor_id, ComentarioCasoLf.contenido, ComentarioCasoLf.visible, ComentarioCasoLf.motivo_ocultamiento, ComentarioCasoLf.created_at, ComentarioCasoLf.updated_at, Usuario.nombre.label("autor_nombre"), Usuario.apellido.label("autor_apellido"), Usuario.email.label("autor_email"), Usuario.avatar_url.label("autor_avatar_url"), autor_rol.label("autor_rol"))
+            select(ComentarioCasoLf.id, ComentarioCasoLf.caso_id, ComentarioCasoLf.parent_id, ComentarioCasoLf.autor_id, ComentarioCasoLf.contenido, ComentarioCasoLf.imagenes, ComentarioCasoLf.visible, ComentarioCasoLf.motivo_ocultamiento, ComentarioCasoLf.deleted_at, ComentarioCasoLf.created_at, ComentarioCasoLf.updated_at, Usuario.nombre.label("autor_nombre"), Usuario.apellido.label("autor_apellido"), Usuario.email.label("autor_email"), Usuario.avatar_url.label("autor_avatar_url"), autor_rol.label("autor_rol"))
             .outerjoin(Usuario, Usuario.id == ComentarioCasoLf.autor_id)
             .where(ComentarioCasoLf.caso_id == UUID(caso_id))
             .order_by(ComentarioCasoLf.created_at.asc())
@@ -501,14 +501,51 @@ class LostFoundRepository:
         row = result.mappings().one_or_none()
         return dict(row) if row else None
 
-    async def create_comentario(self, caso_id: str, autor_id: str, contenido: str, parent_id: str | None = None) -> dict[str, Any]:
-        comentario = ComentarioCasoLf(caso_id=UUID(caso_id), parent_id=UUID(parent_id) if parent_id else None, autor_id=UUID(autor_id), contenido=contenido)
+    async def create_comentario(self, caso_id: str, autor_id: str, contenido: str, parent_id: str | None = None, imagenes: list[str] | None = None) -> dict[str, Any]:
+        comentario = ComentarioCasoLf(caso_id=UUID(caso_id), parent_id=UUID(parent_id) if parent_id else None, autor_id=UUID(autor_id), contenido=contenido, imagenes=imagenes or [])
         self.db.add(comentario)
         await self.db.execute(update(CasoLostFound).where(CasoLostFound.id == UUID(caso_id)).values(conteo_comentarios=CasoLostFound.conteo_comentarios + 1, updated_at=datetime.now(timezone.utc)))
         await self.upsert_participacion(caso_id, autor_id, True)
         await self.db.flush()
         await self.db.refresh(comentario)
-        return {"id": comentario.id, "caso_id": comentario.caso_id, "parent_id": comentario.parent_id, "autor_id": comentario.autor_id, "contenido": comentario.contenido, "visible": comentario.visible, "motivo_ocultamiento": comentario.motivo_ocultamiento, "created_at": comentario.created_at, "updated_at": comentario.updated_at}
+        return {"id": comentario.id, "caso_id": comentario.caso_id, "parent_id": comentario.parent_id, "autor_id": comentario.autor_id, "contenido": comentario.contenido, "imagenes": comentario.imagenes or [], "visible": comentario.visible, "motivo_ocultamiento": comentario.motivo_ocultamiento, "deleted_at": comentario.deleted_at, "created_at": comentario.created_at, "updated_at": comentario.updated_at}
+
+    async def get_comentario_profundidad(self, comentario_id: str) -> int:
+        """Profundidad de un comentario subiendo por parent_id (raíz = 0)."""
+        try:
+            ref = UUID(comentario_id)
+        except ValueError:
+            return 0
+        ancestros = (
+            select(ComentarioCasoLf.id, ComentarioCasoLf.parent_id, literal(0).label("depth"))
+            .where(ComentarioCasoLf.id == ref)
+            .cte("ancestros_comentario", recursive=True)
+        )
+        padre = aliased(ComentarioCasoLf)
+        ancestros = ancestros.union_all(
+            select(padre.id, padre.parent_id, (ancestros.c.depth + 1).label("depth"))
+            .where(padre.id == ancestros.c.parent_id)
+        )
+        result = await self.db.execute(select(func.max(ancestros.c.depth)))
+        return int(result.scalar() or 0)
+
+    async def update_comentario_contenido(self, comentario_id: str, contenido: str) -> bool:
+        result = await self.db.execute(
+            update(ComentarioCasoLf)
+            .where(ComentarioCasoLf.id == UUID(comentario_id))
+            .values(contenido=contenido, updated_at=datetime.now(timezone.utc))
+            .returning(ComentarioCasoLf.id)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def soft_delete_comentario(self, comentario_id: str, actor_id: str, motivo: str) -> bool:
+        result = await self.db.execute(
+            update(ComentarioCasoLf)
+            .where(ComentarioCasoLf.id == UUID(comentario_id))
+            .values(visible=False, ocultado_por_id=UUID(actor_id), motivo_ocultamiento=motivo, deleted_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
+            .returning(ComentarioCasoLf.id)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def delete_own_comentario(self, comentario_id: str, usuario_id: str, motivo: str) -> bool:
         result = await self.db.execute(

@@ -176,9 +176,13 @@ class ComentarioLfItem(BaseModel):
     parent_id: str | None = None
     autor: UsuarioMini | None = None
     contenido: str
+    imagenes: list[str] = []
     visible: bool
     motivo_ocultamiento: str | None = None
+    profundidad: int = 0
+    eliminado: bool = False
     puede_eliminar: bool = False
+    puede_editar: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -186,6 +190,10 @@ class ComentarioLfItem(BaseModel):
 class ComentarioLfCreateInput(BaseModel):
     contenido: str = Field(min_length=2, max_length=2000)
     parent_id: str | None = None
+
+
+class ComentarioLfEditInput(BaseModel):
+    contenido: str = Field(min_length=2, max_length=2000)
 
 
 class CasoLfDetail(CasoLfListItem):
@@ -200,6 +208,7 @@ class CasoLfDetail(CasoLfListItem):
     latitud: float | None = None
     longitud: float | None = None
     updated_at: datetime
+    comentarios_profundidad_maxima: int = 6
     historial: list[HistorialLfItem] = []
     comentarios: list[ComentarioLfItem] = []
 

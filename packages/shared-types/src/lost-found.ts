@@ -95,9 +95,13 @@ export type ComentarioLf = {
   parent_id?: string | null;
   autor?: UsuarioMiniLf | null;
   contenido: string;
+  imagenes?: string[];
   visible: boolean;
   motivo_ocultamiento?: string | null;
+  profundidad?: number;
+  eliminado?: boolean;
   puede_eliminar?: boolean;
+  puede_editar?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -113,6 +117,7 @@ export type CasoLfDetail = CasoLfListItem & {
   latitud?: number | null;
   longitud?: number | null;
   updated_at: string;
+  comentarios_profundidad_maxima?: number;
   historial: Array<{
     id: string;
     estado_anterior?: EstadoCasoLF | null;

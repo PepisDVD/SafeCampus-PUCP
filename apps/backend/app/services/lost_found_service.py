@@ -34,6 +34,7 @@ from app.schemas.lost_found import (
     CategoriaLfCreate,
     CategoriaLfItem,
     ComentarioLfCreateInput,
+    ComentarioLfEditInput,
     ComentarioLfItem,
     ComentarioVisibilidadInput,
     ConfiguracionLfItem,
@@ -72,6 +73,17 @@ CUSTODIA_POLITICA_DEFAULT = {
     "horas_alerta_perecible": 6,
     "version": CUSTODIA_POLITICA_VERSION,
 }
+COMENTARIOS_LISTA_NEGRA_KEY = "comentarios.lista_negra"
+COMENTARIOS_PROFUNDIDAD_KEY = "comentarios.profundidad_maxima"
+COMENTARIOS_PROFUNDIDAD_DEFAULT = 6
+COMENTARIOS_PROFUNDIDAD_MAX = 12
+COMENTARIO_ELIMINADO_PLACEHOLDER = "Comentario eliminado."
+LISTA_NEGRA_DEFAULT = [
+    "idiota", "imbecil", "estupido", "estupida", "tarado", "tarada", "mierda",
+    "puta", "puto", "pendejo", "pendeja", "cabron", "cabrona", "marica",
+    "maricon", "concha", "carajo", "verga", "huevon", "huevona",
+    "conchatumadre", "ctm", "malparido", "gonorrea",
+]
 # Estados de caso que NO generan recordatorios de custodia.
 CASO_ESTADOS_SIN_RECORDATORIO = {"DEVUELTO", "DESCARTADO", "CERRADO"}
 TRANSITIONS = {
@@ -244,8 +256,18 @@ class LostFoundService:
         if row.get("oculto") and not is_owner and not is_operativo:
             raise HTTPException(status_code=404, detail="Caso Lost & Found no encontrado.")
         historial = await self._repo.list_historial(str(row["id"])) if is_owner or is_operativo else []
-        comentarios = self._mark_deletable(await self._repo.list_comentarios(str(row["id"]), include_hidden=is_operativo), usuario_id)
-        return self._map_detail(row, historial, comentarios, public=not is_owner and not is_operativo)
+        comentarios = await self._repo.list_comentarios(str(row["id"]), include_hidden=is_operativo)
+        comentarios = self._compute_profundidades(comentarios)
+        comentarios = self._mark_comment_flags(comentarios, usuario_id, is_operativo)
+        max_profundidad = await self._obtener_profundidad_maxima()
+        return self._map_detail(
+            row,
+            historial,
+            comentarios,
+            public=not is_owner and not is_operativo,
+            mostrar_eliminado=is_operativo,
+            profundidad_maxima=max_profundidad,
+        )
 
     async def cambiar_estado(self, caso_id: str, actor_id: str, data: CasoLfEstadoUpdate) -> CasoLfDetail:
         actual = await self._repo.get_estado(caso_id)
@@ -438,6 +460,90 @@ class LostFoundService:
         )
         return await self.obtener_detalle(caso_id, usuario_id, roles)
 
+    async def subir_media_caso(
+        self,
+        caso_id: str,
+        usuario_id: str,
+        roles: list[str],
+        archivos: list[UploadFile],
+    ) -> list[str]:
+        """Sube imágenes al storage y devuelve sus URLs SIN mutar el caso.
+
+        Lo usa la edición del hilo para combinar imágenes existentes (URLs ya
+        guardadas) con nuevas (archivos) antes de persistir la lista final.
+        """
+        actual = await self._repo.get_estado(caso_id)
+        is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
+        if not actual or (str(actual["reportante_id"]) != usuario_id and not is_operativo):
+            raise HTTPException(status_code=404, detail="Caso no encontrado.")
+        if actual["estado"] == "CERRADO":
+            raise HTTPException(status_code=422, detail="No se pueden actualizar fotos de un caso cerrado.")
+        if not archivos:
+            raise HTTPException(status_code=422, detail="Debes adjuntar al menos 1 imagen.")
+        return await self._subir_imagenes(f"lost-found/{caso_id}", archivos, max_n=self._MAX_FOTOS_POR_CASO)
+
+    async def _subir_imagenes(self, prefix: str, archivos: list[UploadFile] | None, *, max_n: int = 3) -> list[str]:
+        """Valida (MIME/tamaño/cantidad) y sube imágenes; devuelve sus URLs."""
+        if not archivos:
+            return []
+        if len(archivos) > max_n:
+            raise HTTPException(status_code=422, detail=f"Solo puedes adjuntar hasta {max_n} imagenes.")
+        storage = StorageService()
+        urls: list[str] = []
+        for archivo in archivos:
+            mime = archivo.content_type or ""
+            if mime not in self._MIME_PERMITIDOS:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Tipo de archivo no permitido. Solo se aceptan imagenes (jpg, png, webp, heic, gif).",
+                )
+            contenido = await archivo.read()
+            if len(contenido) > self._MAX_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Cada archivo debe pesar como maximo 10 MB.",
+                )
+            nombre_seguro = (archivo.filename or "foto").replace("/", "_").replace("\\", "_")
+            url = await storage.upload(
+                bucket=settings.SUPABASE_STORAGE_BUCKET,
+                path=f"{prefix}/{uuid4().hex}_{nombre_seguro}",
+                content=contenido,
+                content_type=mime,
+            )
+            urls.append(url)
+        return urls
+
+    async def _obtener_lista_negra(self) -> list[str]:
+        value = await self._repo.get_config_value(COMENTARIOS_LISTA_NEGRA_KEY) or {}
+        palabras = value.get("palabras") if isinstance(value, dict) else None
+        if not isinstance(palabras, list):
+            palabras = LISTA_NEGRA_DEFAULT
+        return [self._normalizar_texto(str(p)) for p in palabras if str(p).strip()]
+
+    async def _obtener_profundidad_maxima(self) -> int:
+        value = await self._repo.get_config_value(COMENTARIOS_PROFUNDIDAD_KEY) or {}
+        try:
+            valor = int(value.get("valor", COMENTARIOS_PROFUNDIDAD_DEFAULT))
+        except (TypeError, ValueError):
+            valor = COMENTARIOS_PROFUNDIDAD_DEFAULT
+        return max(1, min(valor, COMENTARIOS_PROFUNDIDAD_MAX))
+
+    async def _validar_contenido(self, texto: str) -> None:
+        """Rechaza el comentario si contiene alguna palabra de la lista negra."""
+        normalizado = self._normalizar_texto(texto)
+        palabras_texto = set(re.findall(r"[a-z0-9]+", normalizado))
+        for prohibida in await self._obtener_lista_negra():
+            if " " in prohibida or "-" in prohibida:
+                if prohibida in normalizado:
+                    raise HTTPException(status_code=422, detail="El comentario contiene lenguaje no permitido.")
+            elif prohibida in palabras_texto:
+                raise HTTPException(status_code=422, detail="El comentario contiene lenguaje no permitido.")
+
+    @staticmethod
+    def _normalizar_texto(value: str) -> str:
+        base = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii")
+        return base.lower().strip()
+
     async def listar_matches(self, caso_id: str, usuario_id: str, roles: list[str]) -> list[MatchLfItem]:
         caso = await self._repo.get_estado(caso_id)
         is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
@@ -478,27 +584,59 @@ class LostFoundService:
         await self._audit_lf(usuario_id, "LF_MATCH_RESPONDIDO", "match_sugerido", match_id, {"estado": estado, "score": float(match.score_total)})
 
     async def listar_comentarios(self, caso_id: str, roles: list[str], usuario_id: str) -> list[ComentarioLfItem]:
-        rows = await self._repo.list_comentarios(caso_id, include_hidden=bool(OPERATIVO_ROLES.intersection(roles)))
-        return [self._map_comment(row) for row in self._mark_deletable(rows, usuario_id)]
+        is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
+        rows = await self._repo.list_comentarios(caso_id, include_hidden=is_operativo)
+        rows = self._compute_profundidades(rows)
+        rows = self._mark_comment_flags(rows, usuario_id, is_operativo)
+        return [self._map_comment(row, mostrar_eliminado=is_operativo) for row in rows]
 
-    async def crear_comentario(self, caso_id: str, usuario_id: str, data: ComentarioLfCreateInput) -> ComentarioLfItem:
+    async def crear_comentario(self, caso_id: str, usuario_id: str, data: ComentarioLfCreateInput, archivos: list[UploadFile] | None = None) -> ComentarioLfItem:
         actual = await self._repo.get_estado(caso_id)
         if not actual or str(actual["estado"]) not in CHAT_STATES:
             raise HTTPException(status_code=404, detail="Caso activo no encontrado.")
+        contenido = data.contenido.strip()
+        await self._validar_contenido(contenido)
         if data.parent_id:
             parent = await self._repo.get_comentario_meta(data.parent_id)
             if not parent or str(parent["caso_id"]) != caso_id or not parent["visible"]:
                 raise HTTPException(status_code=422, detail="Comentario padre invalido.")
+            max_profundidad = await self._obtener_profundidad_maxima()
+            profundidad_padre = await self._repo.get_comentario_profundidad(data.parent_id)
+            if profundidad_padre + 1 >= max_profundidad:
+                raise HTTPException(status_code=422, detail=f"Se alcanzó la profundidad máxima de respuestas ({max_profundidad}).")
         elif await self._repo.count_root_comentarios(caso_id) >= 200:
             raise HTTPException(status_code=422, detail="El hilo alcanzo el limite de comentarios principales.")
-        row = await self._repo.create_comentario(caso_id, usuario_id, data.contenido.strip(), data.parent_id)
-        await self._audit_lf(usuario_id, "LF_COMENTARIO_CREADO", "comentario_caso_lf", str(row["id"]), {"caso_id": caso_id})
+        imagenes = await self._subir_imagenes(f"lost-found/{caso_id}/comentarios", archivos)
+        row = await self._repo.create_comentario(caso_id, usuario_id, contenido, data.parent_id, imagenes)
+        await self._audit_lf(usuario_id, "LF_COMENTARIO_CREADO", "comentario_caso_lf", str(row["id"]), {"caso_id": caso_id, "imagenes": len(imagenes)})
         participantes = await self._repo.list_participantes(caso_id)
         for p in participantes:
             destinatario = str(p["usuario_id"])
             if destinatario != usuario_id:
                 await self._notify.create_inapp(destinatario_id=destinatario, tipo_evento="LF_COMENTARIO_NUEVO", asunto=f"Nuevo comentario en {actual['codigo']}", contenido=f"Hay actividad en el caso {actual['codigo']}.")
-        return self._map_comment(row)
+        return self._map_comment(row, mostrar_eliminado=True)
+
+    async def editar_comentario(self, comentario_id: str, actor_id: str, roles: list[str], data: ComentarioLfEditInput) -> None:
+        if not bool(OPERATIVO_ROLES.intersection(roles)):
+            raise HTTPException(status_code=403, detail="No tienes permisos para editar comentarios.")
+        comentario = await self._repo.get_comentario_meta(comentario_id)
+        if not comentario:
+            raise HTTPException(status_code=404, detail="Comentario no encontrado.")
+        contenido = data.contenido.strip()
+        await self._validar_contenido(contenido)
+        if not await self._repo.update_comentario_contenido(comentario_id, contenido):
+            raise HTTPException(status_code=404, detail="Comentario no encontrado.")
+        await self._audit_lf(actor_id, "LF_COMENTARIO_EDITADO", "comentario_caso_lf", comentario_id, {"caso_id": str(comentario["caso_id"])})
+
+    async def eliminar_comentario_admin(self, comentario_id: str, actor_id: str, roles: list[str]) -> None:
+        if not bool(OPERATIVO_ROLES.intersection(roles)):
+            raise HTTPException(status_code=403, detail="No tienes permisos para eliminar comentarios.")
+        comentario = await self._repo.get_comentario_meta(comentario_id)
+        if not comentario:
+            raise HTTPException(status_code=404, detail="Comentario no encontrado.")
+        if not await self._repo.soft_delete_comentario(comentario_id, actor_id, "Eliminado por gestión"):
+            raise HTTPException(status_code=404, detail="Comentario no encontrado.")
+        await self._audit_lf(actor_id, "LF_COMENTARIO_ELIMINADO_ADMIN", "comentario_caso_lf", comentario_id, {"caso_id": str(comentario["caso_id"])})
 
     async def actualizar_participacion(self, caso_id: str, usuario_id: str, data: ParticipacionLfInput) -> None:
         await self._repo.upsert_participacion(caso_id, usuario_id, data.suscrito, marcar_leido=data.marcar_leido)
@@ -798,7 +936,7 @@ class LostFoundService:
         return slug or "CATEGORIA"
 
     @staticmethod
-    def _mark_deletable(rows: list[dict[str, Any]], usuario_id: str) -> list[dict[str, Any]]:
+    def _mark_comment_flags(rows: list[dict[str, Any]], usuario_id: str, is_operativo: bool) -> list[dict[str, Any]]:
         now = datetime.now(timezone.utc)
         for row in rows:
             row["puede_eliminar"] = (
@@ -806,6 +944,29 @@ class LostFoundService:
                 and bool(row.get("visible"))
                 and row.get("created_at") >= now - timedelta(minutes=5)
             )
+            # La gestión (editar/ocultar/eliminar) la realiza el equipo operativo/admin.
+            row["puede_editar"] = is_operativo
+        return rows
+
+    @staticmethod
+    def _compute_profundidades(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Calcula la profundidad (raíz = 0) de cada comentario desde el conjunto cargado."""
+        by_id = {str(row["id"]): row for row in rows}
+        cache: dict[str, int] = {}
+
+        def depth(cid: str, _guard: int = 0) -> int:
+            if cid in cache:
+                return cache[cid]
+            row = by_id.get(cid)
+            parent = str(row["parent_id"]) if row and row.get("parent_id") else None
+            if not parent or parent not in by_id or _guard > COMENTARIOS_PROFUNDIDAD_MAX:
+                cache[cid] = 0
+            else:
+                cache[cid] = depth(parent, _guard + 1) + 1
+            return cache[cid]
+
+        for row in rows:
+            row["profundidad"] = depth(str(row["id"]))
         return rows
 
     @staticmethod
@@ -852,11 +1013,12 @@ class LostFoundService:
         )
 
     @classmethod
-    def _map_detail(cls, row: dict[str, Any], historial: list[dict[str, Any]], comentarios: list[dict[str, Any]], public: bool = False) -> CasoLfDetail:
+    def _map_detail(cls, row: dict[str, Any], historial: list[dict[str, Any]], comentarios: list[dict[str, Any]], public: bool = False, *, mostrar_eliminado: bool = False, profundidad_maxima: int = COMENTARIOS_PROFUNDIDAD_DEFAULT) -> CasoLfDetail:
         base = cls._map_list(row, public=public).model_dump()
         base.pop("reportante", None)
         return CasoLfDetail(
             **base,
+            comentarios_profundidad_maxima=profundidad_maxima,
             reportante=cls._usuario(row, public=public),
             contacto_info=None if public else row.get("contacto_info"),
             foto_adicional_urls=row.get("foto_adicional_urls") or [],
@@ -881,20 +1043,28 @@ class LostFoundService:
                 }
                 for h in historial
             ],
-            comentarios=[cls._map_comment(c) for c in comentarios],
+            comentarios=[cls._map_comment(c, mostrar_eliminado=mostrar_eliminado) for c in comentarios],
         )
 
     @classmethod
-    def _map_comment(cls, row: dict[str, Any]) -> ComentarioLfItem:
+    def _map_comment(cls, row: dict[str, Any], *, mostrar_eliminado: bool = False) -> ComentarioLfItem:
+        eliminado = row.get("deleted_at") is not None
+        # Si el comentario fue eliminado y el solicitante no es operativo, se oculta el texto/imágenes.
+        contenido = COMENTARIO_ELIMINADO_PLACEHOLDER if (eliminado and not mostrar_eliminado) else row["contenido"]
+        imagenes = [] if (eliminado and not mostrar_eliminado) else (row.get("imagenes") or [])
         return ComentarioLfItem(
             id=str(row["id"]),
             caso_id=str(row["caso_id"]),
             parent_id=str(row["parent_id"]) if row.get("parent_id") else None,
             autor=cls._usuario(row, "autor_"),
-            contenido=row["contenido"],
+            contenido=contenido,
+            imagenes=imagenes,
             visible=bool(row["visible"]),
             motivo_ocultamiento=row.get("motivo_ocultamiento"),
+            profundidad=int(row.get("profundidad", 0) or 0),
+            eliminado=eliminado,
             puede_eliminar=bool(row.get("puede_eliminar", False)),
+            puede_editar=bool(row.get("puede_editar", False)),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

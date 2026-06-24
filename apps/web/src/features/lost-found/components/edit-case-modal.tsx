@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Button,
   Dialog,
@@ -20,9 +20,15 @@ import {
   Textarea,
   toast,
 } from "@safecampus/ui-kit";
+import { ImageIcon, X } from "lucide-react";
 import { lostFoundClient } from "../client";
 import { activeMetadatoCampos, MetadatoFields, metadatosToValues, validateMetadatos, valuesToMetadatos } from "./metadato-fields";
 import type { CasoLfDetail, CategoriaLf } from "../types";
+
+const ACCEPT_IMAGES = "image/jpeg,image/png,image/webp,image/heic,image/gif";
+const MAX_IMAGES = 3;
+
+type FotoAdjunta = { file: File; previewUrl: string };
 
 export function EditCaseModal({
   open,
@@ -45,7 +51,50 @@ export function EditCaseModal({
   const [metadatos, setMetadatos] = useState<Record<string, string>>(() =>
     metadatosToValues(activeMetadatoCampos(categorias.find((c) => c.id === (caso.categoria_id ?? ""))), caso.metadatos ?? {}),
   );
+  const initialImagenes = useMemo(
+    () => [caso.foto_url, ...(caso.foto_adicional_urls ?? [])].filter(Boolean) as string[],
+    [caso.foto_url, caso.foto_adicional_urls],
+  );
+  const [imagenesExistentes, setImagenesExistentes] = useState<string[]>(initialImagenes);
+  const [nuevasFotos, setNuevasFotos] = useState<FotoAdjunta[]>([]);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const nuevasFotosRef = useRef<FotoAdjunta[]>([]);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    nuevasFotosRef.current = nuevasFotos;
+  }, [nuevasFotos]);
+  useEffect(() => () => nuevasFotosRef.current.forEach((f) => URL.revokeObjectURL(f.previewUrl)), []);
+
+  const totalImagenes = imagenesExistentes.length + nuevasFotos.length;
+
+  const handleFotos = (event: ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files ?? []);
+    const images = selected.filter((f) => f.type.startsWith("image/"));
+    if (images.length !== selected.length) toast.error("Solo se permiten archivos de imagen.");
+    if (images.length === 0) {
+      event.target.value = "";
+      return;
+    }
+    const disponibles = MAX_IMAGES - totalImagenes;
+    if (disponibles <= 0) {
+      toast.error(`Solo puedes tener hasta ${MAX_IMAGES} imágenes.`);
+      event.target.value = "";
+      return;
+    }
+    const aceptadas = images.slice(0, disponibles);
+    if (images.length > disponibles) toast.error(`Solo puedes tener hasta ${MAX_IMAGES} imágenes.`);
+    setNuevasFotos((current) => [...current, ...aceptadas.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
+    event.target.value = "";
+  };
+
+  const removeExistente = (url: string) => setImagenesExistentes((current) => current.filter((u) => u !== url));
+  const removeNueva = (index: number) =>
+    setNuevasFotos((current) => {
+      const target = current[index];
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return current.filter((_, idx) => idx !== index);
+    });
 
   const campos = useMemo(
     () => activeMetadatoCampos(categorias.find((c) => c.id === categoriaId)),
@@ -70,7 +119,7 @@ export function EditCaseModal({
 
     startTransition(async () => {
       try {
-        const saved = await lostFoundClient.actualizarCaso(caso.id, {
+        let saved = await lostFoundClient.actualizarCaso(caso.id, {
           titulo,
           descripcion,
           categoria_id: categoriaId,
@@ -84,6 +133,23 @@ export function EditCaseModal({
           longitud: caso.longitud ?? null,
           metadatos: valuesToMetadatos(campos, metadatos),
         });
+
+        // Sube las imágenes nuevas (sin mutar el caso) y persiste la lista final.
+        const nuevasUrls = nuevasFotos.length
+          ? await lostFoundClient.subirMediaCaso(caso.id, nuevasFotos.map((f) => f.file))
+          : [];
+        const finalImagenes = [...imagenesExistentes, ...nuevasUrls].slice(0, MAX_IMAGES);
+        const cambiaronImagenes =
+          nuevasFotos.length > 0 ||
+          finalImagenes.length !== initialImagenes.length ||
+          finalImagenes.some((url, idx) => url !== initialImagenes[idx]);
+        if (cambiaronImagenes) {
+          saved = await lostFoundClient.actualizarFotos(caso.id, {
+            foto_url: finalImagenes[0],
+            foto_adicional_urls: finalImagenes.slice(1),
+          });
+        }
+
         onSaved(saved);
         onOpenChange(false);
         toast.success("Hilo actualizado");
@@ -132,6 +198,49 @@ export function EditCaseModal({
             <Input id="edit-lugar" value={lugar} onChange={(e) => setLugar(e.target.value)} />
           </div>
           <MetadatoFields campos={campos} values={metadatos} onChange={(c, v) => setMetadatos((prev) => ({ ...prev, [c]: v }))} />
+
+          <div className="space-y-2">
+            <Label>Imágenes <span className="text-xs font-normal text-slate-500">(máx. {MAX_IMAGES})</span></Label>
+            {totalImagenes === 0 && (
+              <p className="text-sm text-slate-500">Sin imágenes. Puedes adjuntar hasta {MAX_IMAGES}.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {imagenesExistentes.map((url) => (
+                <div key={url} className="relative h-20 w-20 overflow-hidden rounded-md border bg-slate-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeExistente(url)}
+                    className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                    aria-label="Quitar imagen"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {nuevasFotos.map((foto, index) => (
+                <div key={foto.previewUrl} className="relative h-20 w-20 overflow-hidden rounded-md border bg-slate-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={foto.previewUrl} alt="" className="h-full w-full object-cover" />
+                  <span className="absolute left-0.5 top-0.5 rounded bg-emerald-600/90 px-1 text-[10px] font-medium text-white">Nueva</span>
+                  <button
+                    type="button"
+                    onClick={() => removeNueva(index)}
+                    className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                    aria-label="Quitar imagen"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <input ref={fileRef} type="file" accept={ACCEPT_IMAGES} multiple hidden onChange={handleFotos} />
+            <Button type="button" variant="outline" size="sm" disabled={totalImagenes >= MAX_IMAGES} onClick={() => fileRef.current?.click()}>
+              <ImageIcon className="mr-1 h-4 w-4" />
+              Agregar imagen {totalImagenes > 0 ? `(${totalImagenes}/${MAX_IMAGES})` : ""}
+            </Button>
+          </div>
         </div>
         <DialogFooter className="shrink-0 gap-2 border-t bg-white px-6 py-3">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

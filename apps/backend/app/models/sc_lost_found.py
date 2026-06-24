@@ -134,6 +134,7 @@ class ComentarioCasoLf(Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_lost_found.comentario_caso_lf.id", ondelete="CASCADE"))
     autor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"), nullable=False)
     contenido: Mapped[str] = mapped_column(Text, nullable=False)
+    imagenes: Mapped[list[Any] | None] = mapped_column(JSONB, server_default="[]")
     visible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     ocultado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"))
     motivo_ocultamiento: Mapped[str | None] = mapped_column(Text)

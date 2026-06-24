@@ -44,10 +44,24 @@ export const lostFoundClient = {
   responderMatch: (id: string, confirmar: boolean, comentario?: string) =>
     api.post<void>(`/lost-found/matches/${id}/responder`, { confirmar, comentario }),
   comentarios: (casoId: string) => api.get<ComentarioLf[]>(`/lost-found/casos/${casoId}/comentarios`),
-  comentar: (casoId: string, contenido: string, parentId?: string | null) =>
-    api.post<ComentarioLf>(`/lost-found/casos/${casoId}/comentarios`, { contenido, parent_id: parentId ?? null }),
+  comentar: (casoId: string, contenido: string, parentId?: string | null, archivos?: File[]) => {
+    const form = new FormData();
+    form.append("contenido", contenido);
+    if (parentId) form.append("parent_id", parentId);
+    (archivos ?? []).forEach((archivo) => form.append("archivos", archivo));
+    return api.postMultipart<ComentarioLf>(`/lost-found/casos/${casoId}/comentarios`, form);
+  },
+  editarComentario: (id: string, contenido: string) =>
+    api.patch<void>(`/lost-found/comentarios/${id}`, { contenido }),
   eliminarComentario: (id: string) =>
     api.delete<void>(`/lost-found/comentarios/${id}`),
+  eliminarComentarioGestion: (id: string) =>
+    api.delete<void>(`/lost-found/comentarios/${id}/gestion`),
+  subirMediaCaso: (id: string, archivos: File[]) => {
+    const form = new FormData();
+    archivos.forEach((archivo) => form.append("archivos", archivo));
+    return api.postMultipart<string[]>(`/lost-found/casos/${id}/media`, form);
+  },
   actualizarParticipacion: (casoId: string, suscrito: boolean, marcarLeido = false) =>
     api.patch<void>(`/lost-found/casos/${casoId}/participacion`, { suscrito, marcar_leido: marcarLeido }),
   moderarComentario: (id: string, visible: boolean, motivo?: string) =>

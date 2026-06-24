@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session, require_roles
@@ -22,6 +22,7 @@ from app.schemas.lost_found import (
     CategoriaLfCreate,
     CategoriaLfItem,
     ComentarioLfCreateInput,
+    ComentarioLfEditInput,
     ComentarioLfItem,
     ComentarioVisibilidadInput,
     ConfiguracionLfItem,
@@ -327,11 +328,38 @@ async def listar_comentarios(
 @router.post("/casos/{caso_id}/comentarios", response_model=ComentarioLfItem, status_code=status.HTTP_201_CREATED)
 async def crear_comentario(
     caso_id: str,
-    body: ComentarioLfCreateInput,
+    contenido: str = Form(..., min_length=2, max_length=2000),
+    parent_id: str | None = Form(default=None),
+    archivos: list[UploadFile] = File(default=[], description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo."),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
 ):
-    return await service.crear_comentario(caso_id, current_user.id, body)
+    body = ComentarioLfCreateInput(contenido=contenido, parent_id=parent_id or None)
+    # FastAPI entrega un UploadFile vacío cuando no se adjunta nada; lo filtramos.
+    imagenes = [a for a in archivos if a and a.filename]
+    return await service.crear_comentario(caso_id, current_user.id, body, imagenes)
+
+
+@router.post("/casos/{caso_id}/media", response_model=list[str])
+async def subir_media_caso(
+    caso_id: str,
+    archivos: list[UploadFile] = File(..., description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo."),
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: LostFoundService = Depends(get_service),
+):
+    """Sube imágenes y devuelve sus URLs sin mutar el caso (para la edición del hilo)."""
+    return await service.subir_media_caso(caso_id, current_user.id, current_user.roles, archivos)
+
+
+@router.patch("/comentarios/{comentario_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def editar_comentario(
+    comentario_id: str,
+    body: ComentarioLfEditInput,
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    """Edita el texto de un comentario (gestión operativa)."""
+    await service.editar_comentario(comentario_id, current_user.id, current_user.roles, body)
 
 
 @router.delete("/comentarios/{comentario_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -341,6 +369,16 @@ async def eliminar_comentario_propio(
     service: LostFoundService = Depends(get_service),
 ):
     await service.eliminar_comentario_propio(comentario_id, current_user.id)
+
+
+@router.delete("/comentarios/{comentario_id}/gestion", status_code=status.HTTP_204_NO_CONTENT)
+async def eliminar_comentario_gestion(
+    comentario_id: str,
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: LostFoundService = Depends(get_service),
+):
+    """Elimina (soft-delete) un comentario preservando el hilo. Gestión operativa."""
+    await service.eliminar_comentario_admin(comentario_id, current_user.id, current_user.roles)
 
 
 @router.patch("/casos/{caso_id}/participacion", status_code=status.HTTP_204_NO_CONTENT)
