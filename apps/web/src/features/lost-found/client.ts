@@ -1,5 +1,7 @@
 import { api } from "@/lib/api/client";
-import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CategoriaLfWritePayload, ComentarioLf, CustodiaLf, CustodiaPoliticaLf, ListResponse, MatchingConfigLf, MatchLf, MotivoCierreLf, MotivoCierreLfWritePayload } from "./types";
+import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CategoriaLfWritePayload, ComentarioLf, CustodiaLf, CustodiaPoliticaLf, DashboardLf, ListResponse, MatchingConfigLf, MatchLf, MotivoCierreLf, MotivoCierreLfWritePayload, SupervisorLf } from "./types";
+
+export type ReaccionResult = { destacados: number; reaccionado: boolean };
 
 export type CasoLfCreatePayload = {
   tipo: "PERDIDO" | "ENCONTRADO";
@@ -44,13 +46,21 @@ export const lostFoundClient = {
   responderMatch: (id: string, confirmar: boolean, comentario?: string) =>
     api.post<void>(`/lost-found/matches/${id}/responder`, { confirmar, comentario }),
   comentarios: (casoId: string) => api.get<ComentarioLf[]>(`/lost-found/casos/${casoId}/comentarios`),
-  comentar: (casoId: string, contenido: string, parentId?: string | null, archivos?: File[]) => {
+  comentar: (casoId: string, contenido: string, parentId?: string | null, archivos?: File[], tag?: string | null) => {
     const form = new FormData();
     form.append("contenido", contenido);
     if (parentId) form.append("parent_id", parentId);
+    if (tag) form.append("tag", tag);
     (archivos ?? []).forEach((archivo) => form.append("archivos", archivo));
     return api.postMultipart<ComentarioLf>(`/lost-found/casos/${casoId}/comentarios`, form);
   },
+  reaccionarComentario: (id: string) =>
+    api.post<ReaccionResult>(`/lost-found/comentarios/${id}/reaccion`, {}),
+  fijarComentario: (id: string, fijar: boolean) =>
+    api.patch<void>(`/lost-found/comentarios/${id}/fijar`, { fijar }),
+  accesoSupervisores: () => api.get<SupervisorLf[]>("/lost-found/acceso/supervisores"),
+  actualizarAccesoSupervisores: (usuarioIds: string[]) =>
+    api.put<SupervisorLf[]>("/lost-found/acceso/supervisores", { usuario_ids: usuarioIds }),
   editarComentario: (id: string, contenido: string) =>
     api.patch<void>(`/lost-found/comentarios/${id}`, { contenido }),
   eliminarComentario: (id: string) =>
@@ -68,6 +78,8 @@ export const lostFoundClient = {
     api.patch<void>(`/lost-found/comentarios/${id}/visibilidad`, { visible, motivo }),
   casosOperativo: (params?: Record<string, string>) =>
     api.get<ListResponse<CasoLfListItem>>("/lost-found/casos", { params }),
+  dashboard: (params: Record<string, string>) =>
+    api.get<DashboardLf>("/lost-found/dashboard", { params }),
   cambiarEstado: (id: string, estado: string, comentario?: string) =>
     api.patch<CasoLfDetail>(`/lost-found/casos/${id}/estado`, { estado, comentario }),
   cerrarReabrirCaso: (id: string, cerrar: boolean) =>
@@ -78,11 +90,11 @@ export const lostFoundClient = {
     api.post<CustodiaLf>(`/lost-found/casos/${id}/custodia`, body),
   custodias: (params?: Record<string, string>) =>
     api.get<ListResponse<CustodiaLf> & { page: number; per_page: number }>("/lost-found/custodias", { params }),
-  actualizarCustodia: (id: string, body: { ubicacion_custodia?: string; observaciones?: string }) =>
+  actualizarCustodia: (id: string, body: { ubicacion_custodia?: string; observaciones?: string | null; fecha_vencimiento?: string }) =>
     api.patch<CustodiaLf>(`/lost-found/custodias/${id}`, body),
   devolver: (id: string, body: { reclamante_id: string; metodo_verificacion: string; observaciones?: string }) =>
     api.post<void>(`/lost-found/custodias/${id}/devolucion`, body),
-  descartar: (id: string, body: { motivo: string; destino_descarte?: string; observaciones?: string }) =>
+  descartar: (id: string, body: { motivo_cierre_id: string; motivo_otro?: string; destino_descarte?: string; observaciones?: string }) =>
     api.post<void>(`/lost-found/custodias/${id}/descarte`, body),
   crearCategoria: (body: CategoriaLfWritePayload) => api.post<CategoriaLf>("/lost-found/categorias", body),
   actualizarCategoria: (id: string, body: CategoriaLfWritePayload) =>

@@ -135,12 +135,45 @@ class ComentarioCasoLf(Base):
     autor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"), nullable=False)
     contenido: Mapped[str] = mapped_column(Text, nullable=False)
     imagenes: Mapped[list[Any] | None] = mapped_column(JSONB, server_default="[]")
+    tag: Mapped[str | None] = mapped_column(String(40))
+    fijado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    fijado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fijado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"))
+    destacados_count: Mapped[int] = mapped_column(nullable=False, server_default="0")
     visible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     ocultado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"))
     motivo_ocultamiento: Mapped[str | None] = mapped_column(Text)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ReaccionComentarioLf(Base):
+    """Reacción "Destacar" de la comunidad: una por usuario y comentario."""
+
+    __tablename__ = "reaccion_comentario_lf"
+    __table_args__ = (
+        UniqueConstraint("comentario_id", "usuario_id", name="uq_reaccion_comentario_lf"),
+        Index("ix_reaccion_comentario_lf_comentario", "comentario_id"),
+        {"schema": "sc_lost_found"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    comentario_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_lost_found.comentario_caso_lf.id", ondelete="CASCADE"), nullable=False)
+    usuario_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class AccesoModuloLf(Base):
+    """Supervisores habilitados para el módulo operativo de Lost & Found."""
+
+    __tablename__ = "acceso_modulo_lf"
+    __table_args__ = {"schema": "sc_lost_found"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    usuario_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id", ondelete="CASCADE"), nullable=False, unique=True)
+    asignado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class ParticipanteHiloLf(Base):

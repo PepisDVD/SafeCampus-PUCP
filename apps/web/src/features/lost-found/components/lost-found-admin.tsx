@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Accordion,
@@ -48,9 +48,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@safecampus/ui-kit";
-import { Archive, Ban, Layers, PackageSearch, Pencil, Plus, RotateCcw, Settings, ShieldCheck, Trash2, type LucideIcon } from "lucide-react";
+import { Archive, Ban, Layers, PackageSearch, Pencil, Plus, RotateCcw, Settings, ShieldCheck, Trash2 } from "lucide-react";
 import { lostFoundClient } from "../client";
-import type { CategoriaLf, CategoriaLfWritePayload, CustodiaPoliticaLf, MatchingConfigLf, MetadatoCampoLf, MetadatoTipoLf, MotivoCierreLf, MotivoCierreLfWritePayload } from "../types";
+import type { CategoriaLf, CategoriaLfWritePayload, CustodiaPoliticaLf, MatchingConfigLf, MetadatoCampoLf, MetadatoTipoLf, MotivoCierreLf, MotivoCierreLfWritePayload, SupervisorLf } from "../types";
 
 const TABS = [
   { value: "categorias", label: "Categorías", icon: Layers },
@@ -116,7 +116,7 @@ export function LostFoundAdmin({ categorias, matchingConfig, politicaCustodia, m
   return (
     <div className="space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-950">Configuración Lost & Found</h1>
+        <h1 className="text-2xl font-semibold text-slate-950">Configuración</h1>
         <p className="text-sm text-slate-500">Catálogo de categorías, metadatos y parámetros del módulo.</p>
       </div>
 
@@ -137,13 +137,127 @@ export function LostFoundAdmin({ categorias, matchingConfig, politicaCustodia, m
           <ReglasOperativasTab config={matchingConfig} politica={politicaCustodia} motivos={motivosCierre} />
         </TabsContent>
         <TabsContent value="custodia">
-          <Placeholder
-            icon={ShieldCheck}
-            title="Custodia"
-            description="Plazos de custodia, vencimientos y reglas de descarte. Disponible en una proxima fase."
-          />
+          <SupervisoresAccesoTab />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ───────────────────────────── Custodia · Acceso de supervisores ─────────────────────────────
+
+function SupervisoresAccesoTab() {
+  const [supervisores, setSupervisores] = useState<SupervisorLf[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [initial, setInitial] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  const aplicar = (rows: SupervisorLf[]) => {
+    setSupervisores(rows);
+    const asignados = new Set(rows.filter((r) => r.asignado).map((r) => r.id));
+    setSelected(new Set(asignados));
+    setInitial(new Set(asignados));
+  };
+
+  useEffect(() => {
+    let active = true;
+    lostFoundClient
+      .accesoSupervisores()
+      .then((rows) => active && aplicar(rows))
+      .catch((error) => active && toast.error(error instanceof Error ? error.message : "No se pudieron cargar los supervisores"))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const dirty = selected.size !== initial.size || [...selected].some((id) => !initial.has(id));
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return (supervisores ?? []).filter(
+      (s) => !term || s.nombre_completo.toLowerCase().includes(term) || (s.email ?? "").toLowerCase().includes(term),
+    );
+  }, [supervisores, search]);
+
+  const save = () =>
+    startTransition(async () => {
+      try {
+        aplicar(await lostFoundClient.actualizarAccesoSupervisores([...selected]));
+        toast.success("Acceso al módulo actualizado");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo guardar el acceso");
+      }
+    });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <TooltipSubtitle
+          title="Acceso al módulo"
+          description="Solo los supervisores habilitados pueden ver y operar el módulo Lost & Found (Dashboard, Hilos y Logística). Los administradores siempre tienen acceso."
+          prominent
+        />
+        <Button onClick={save} disabled={isPending || !dirty}>
+          {isPending && <Spinner className="mr-2 h-4 w-4" />}
+          Guardar cambios
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="space-y-4 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-slate-500">{selected.size} de {supervisores?.length ?? 0} supervisores con acceso.</p>
+            <SearchInput
+              containerClassName="w-full sm:w-72"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar supervisor..."
+            />
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-500">
+              <Spinner className="h-4 w-4" /> Cargando supervisores...
+            </div>
+          ) : (supervisores ?? []).length === 0 ? (
+            <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
+              No hay supervisores registrados en el sistema.
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
+              No se encontraron supervisores con ese criterio.
+            </p>
+          ) : (
+            <div className="divide-y rounded-lg border">
+              {filtered.map((s) => (
+                <label key={s.id} className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">{s.nombre_completo}</p>
+                    {s.email && <p className="truncate text-xs text-slate-500">{s.email}</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge tone={selected.has(s.id) ? "success" : "neutral"}>
+                      {selected.has(s.id) ? "Con acceso" : "Sin acceso"}
+                    </StatusBadge>
+                    <Switch checked={selected.has(s.id)} onCheckedChange={() => toggle(s.id)} aria-label={`Acceso de ${s.nombre_completo}`} />
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -213,7 +327,7 @@ function CategoriasTab({ categorias: initial }: { categorias: CategoriaLf[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-950">Catálogo de categorías</h2>
-          <p className="text-sm text-slate-500">{categorias.length} categorías registradas. No se permite eliminación física.</p>
+          <p className="text-sm text-slate-500">{categorias.length} categorías registradas.</p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />
@@ -978,21 +1092,6 @@ function MetadatoAccordionItem({
 }
 
 // ───────────────────────────── Helpers ─────────────────────────────
-
-function Placeholder({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
-  return (
-    <Card className="border-dashed">
-      <CardContent className="flex flex-col items-center gap-2 p-10 text-center">
-        <div className="rounded-full bg-slate-100 p-3 text-slate-400">
-          <Icon className="h-6 w-6" />
-        </div>
-        <p className="text-sm font-semibold text-slate-900">{title}</p>
-        <p className="max-w-sm text-sm text-slate-500">{description}</p>
-        <Badge variant="outline" className="mt-1">Proximamente</Badge>
-      </CardContent>
-    </Card>
-  );
-}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <div className="space-y-2"><Label>{label}</Label>{children}</div>;

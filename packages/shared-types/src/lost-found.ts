@@ -96,6 +96,13 @@ export type ComentarioLf = {
   autor?: UsuarioMiniLf | null;
   contenido: string;
   imagenes?: string[];
+  tag?: string | null;
+  tag_prioridad?: number;
+  fijado?: boolean;
+  destacados?: number;
+  reaccionado?: boolean;
+  puede_fijar?: boolean;
+  puede_reaccionar?: boolean;
   visible: boolean;
   motivo_ocultamiento?: string | null;
   profundidad?: number;
@@ -104,6 +111,14 @@ export type ComentarioLf = {
   puede_editar?: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type SupervisorLf = {
+  id: string;
+  nombre_completo: string;
+  email?: string | null;
+  rol?: string | null;
+  asignado: boolean;
 };
 
 export type CasoLfDetail = CasoLfListItem & {
@@ -168,4 +183,47 @@ export type KpisLf = {
   matches_confirmados: number;
   custodias_por_vencer: number;
   por_zona: Array<{ zona: string; total: number }>;
+};
+
+export type DashboardLfKpi = {
+  valor: number;
+  variacion?: number | null;
+  detalle?: string | null;
+};
+
+export type DashboardLf = {
+  casos_totales: DashboardLfKpi;
+  casos_activos: DashboardLfKpi;
+  en_custodia: DashboardLfKpi;
+  por_vencer: DashboardLfKpi;
+  tasa_recuperacion: DashboardLfKpi;
+  tiempo_promedio_devolucion: DashboardLfKpi;
+  serie: Array<{ fecha: string; registrados: number; devueltos: number }>;
+  por_categoria: Array<{ clave: string; etiqueta: string; total: number }>;
+  por_estado: Array<{ clave: string; etiqueta: string; total: number }>;
+  por_tipo: Array<{ clave: string; etiqueta: string; total: number }>;
+  custodia_por_categoria: Array<{ categoria: string; dias_promedio: number }>;
+  antiguedad: Array<{ rango: string; total: number }>;
+  custodias_criticas: Array<{
+    id: string;
+    caso_id: string;
+    codigo: string;
+    titulo: string;
+    categoria?: string | null;
+    fecha_vencimiento: string;
+    dias_restantes: number;
+  }>;
+  actividad_reciente: Array<{
+    id: string;
+    codigo: string;
+    titulo: string;
+    tipo: string;
+    estado: string;
+    categoria?: string | null;
+    dias_en_custodia?: number | null;
+    matching_total: number;
+    matching_confirmado: boolean;
+    reportante: string;
+    created_at: string;
+  }>;
 };

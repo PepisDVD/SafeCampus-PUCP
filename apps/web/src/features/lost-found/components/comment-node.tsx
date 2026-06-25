@@ -14,11 +14,17 @@ import {
   CarouselNext,
   CarouselPrevious,
   RoleBadge,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Skeleton,
   Textarea,
   toast,
 } from "@safecampus/ui-kit";
-import { Eye, EyeOff, ImageIcon, Pencil, Reply, Settings2, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, EyeOff, ImageIcon, Pencil, Pin, PinOff, Reply, Settings2, Star, Trash2, X } from "lucide-react";
+import { DEFAULT_TAG, type LfCommentTag, tagMeta } from "../presentation";
 import type { ComentarioLf } from "../types";
 
 const ACCEPT_IMAGES = "image/jpeg,image/png,image/webp,image/heic,image/gif";
@@ -27,13 +33,15 @@ const MAX_IMAGES = 3;
 type FotoAdjunta = { file: File; previewUrl: string };
 
 export type CommentCallbacks = {
-  onReply: (parentId: string, texto: string, archivos: File[]) => Promise<boolean>;
+  onReply: (parentId: string, texto: string, archivos: File[], tag?: string | null) => Promise<boolean>;
   onEdit: (id: string, texto: string) => Promise<boolean>;
   onModerate: (id: string, visible: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onPin: (id: string, fijar: boolean) => Promise<void>;
+  onReact: (id: string) => Promise<void>;
 };
 
-/** Composer reutilizable: texto + hasta 3 imágenes. */
+/** Composer reutilizable: texto + hasta 3 imágenes + etiqueta opcional. */
 export function CommentComposer({
   placeholder,
   disabled,
@@ -41,6 +49,7 @@ export function CommentComposer({
   submitLabel = "Enviar",
   initialText = "",
   allowImages = true,
+  tags,
   onSubmit,
   onCancel,
 }: {
@@ -50,10 +59,12 @@ export function CommentComposer({
   submitLabel?: string;
   initialText?: string;
   allowImages?: boolean;
-  onSubmit: (texto: string, archivos: File[]) => Promise<boolean>;
+  tags?: LfCommentTag[];
+  onSubmit: (texto: string, archivos: File[], tag?: string | null) => Promise<boolean>;
   onCancel?: () => void;
 }) {
   const [texto, setTexto] = useState(initialText);
+  const [tag, setTag] = useState<string>(DEFAULT_TAG);
   const [fotos, setFotos] = useState<FotoAdjunta[]>([]);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const fotosRef = useRef<FotoAdjunta[]>([]);
@@ -95,11 +106,13 @@ export function CommentComposer({
       toast.error("El comentario debe tener al menos 2 caracteres.");
       return;
     }
-    const ok = await onSubmit(value, fotos.map((f) => f.file));
+    const selectedTag = tags ? (tag === DEFAULT_TAG ? null : tag) : undefined;
+    const ok = await onSubmit(value, fotos.map((f) => f.file), selectedTag);
     if (ok) {
       fotos.forEach((f) => URL.revokeObjectURL(f.previewUrl));
       setFotos([]);
       setTexto("");
+      setTag(DEFAULT_TAG);
     }
   };
 
@@ -114,6 +127,18 @@ export function CommentComposer({
         maxLength={2000}
         className="resize-none"
       />
+      {tags && tags.length > 0 && (
+        <Select value={tag} onValueChange={setTag} disabled={disabled}>
+          <SelectTrigger className="w-full sm:w-72" aria-label="Etiqueta del comentario">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {tags.map((t) => (
+              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       {fotos.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {fotos.map((foto, index) => (
@@ -225,6 +250,7 @@ export function CommentNode({
   manageMode,
   canComment,
   isPending,
+  tags,
   callbacks,
 }: {
   comment: ComentarioLf;
@@ -234,18 +260,22 @@ export function CommentNode({
   manageMode: boolean;
   canComment: boolean;
   isPending: boolean;
+  tags?: LfCommentTag[];
   callbacks: CommentCallbacks;
 }) {
   const [replyOpen, setReplyOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  // Las respuestas inician contraídas para no cargar todo el hilo de una vez.
+  const [repliesOpen, setRepliesOpen] = useState(false);
 
   const replies = childrenMap.get(comment.id) ?? [];
   const canReply = canComment && !comment.eliminado && depth + 1 < maxDepth;
+  const tagInfo = comment.tag && comment.tag !== DEFAULT_TAG ? tagMeta(comment.tag) : null;
 
   return (
     <div className={depth > 0 ? "border-l border-slate-200 pl-3 sm:pl-4" : ""}>
-      <div className="flex gap-3 rounded-lg border bg-white p-3">
+      <div className={`flex gap-3 rounded-lg border bg-white p-3 ${comment.fijado ? "border-sky-200 ring-1 ring-sky-100" : ""}`}>
         <Avatar className="h-9 w-9">
           <AvatarImage src={comment.autor?.avatar_url ?? undefined} />
           <AvatarFallback>{initials(comment.autor?.nombre_completo)}</AvatarFallback>
@@ -255,6 +285,12 @@ export function CommentNode({
             <p className="text-sm font-medium">{comment.autor?.nombre_completo ?? "Usuario"}</p>
             {comment.autor?.rol ? <RoleBadge role={comment.autor.rol} /> : null}
             <span className="text-xs text-slate-500">{new Date(comment.created_at).toLocaleString()}</span>
+            {comment.fijado && (
+              <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700"><Pin className="mr-1 h-3 w-3" />Fijado</Badge>
+            )}
+            {tagInfo && (
+              <Badge variant="outline" className={tagInfo.badgeClassName}>{tagInfo.label}</Badge>
+            )}
             {comment.eliminado && (
               <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700">Eliminado</Badge>
             )}
@@ -288,12 +324,29 @@ export function CommentNode({
             </>
           )}
 
-          {!editOpen && (
+          {!editOpen && !comment.eliminado && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {canReply && (
                 <Button size="sm" variant="ghost" onClick={() => setReplyOpen((v) => !v)}>
                   <Reply className="mr-1 h-4 w-4" />
                   Responder
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant={comment.reaccionado ? "secondary" : "ghost"}
+                onClick={() => void callbacks.onReact(comment.id)}
+                disabled={isPending || !comment.puede_reaccionar}
+                aria-pressed={comment.reaccionado}
+                title={comment.puede_reaccionar ? "Destacar" : "No puedes destacar este comentario"}
+              >
+                <Star className={`mr-1 h-4 w-4 ${comment.reaccionado ? "fill-amber-400 text-amber-500" : ""}`} />
+                Destacar{comment.destacados ? ` · ${comment.destacados}` : ""}
+              </Button>
+              {comment.puede_fijar && (
+                <Button size="sm" variant="ghost" onClick={() => void callbacks.onPin(comment.id, !comment.fijado)} disabled={isPending}>
+                  {comment.fijado ? <PinOff className="mr-1 h-4 w-4" /> : <Pin className="mr-1 h-4 w-4" />}
+                  {comment.fijado ? "Quitar fijado" : "Fijar"}
                 </Button>
               )}
               {manageMode && comment.puede_editar && (
@@ -344,8 +397,9 @@ export function CommentNode({
                 placeholder="Escribe una respuesta…"
                 submitLabel="Responder"
                 isPending={isPending}
-                onSubmit={async (texto, archivos) => {
-                  const ok = await callbacks.onReply(comment.id, texto, archivos);
+                tags={tags}
+                onSubmit={async (texto, archivos, tag) => {
+                  const ok = await callbacks.onReply(comment.id, texto, archivos, tag);
                   if (ok) setReplyOpen(false);
                   return ok;
                 }}
@@ -358,7 +412,11 @@ export function CommentNode({
 
       {replies.length > 0 && (
         <div className="mt-3 space-y-3">
-          {replies.map((child) => (
+          <Button size="sm" variant="ghost" className="text-slate-600" onClick={() => setRepliesOpen((v) => !v)}>
+            {repliesOpen ? <ChevronUp className="mr-1 h-4 w-4" /> : <ChevronDown className="mr-1 h-4 w-4" />}
+            {repliesOpen ? "Ocultar respuestas" : `Mostrar ${replies.length} respuesta${replies.length > 1 ? "s" : ""}`}
+          </Button>
+          {repliesOpen && replies.map((child) => (
             <CommentNode
               key={child.id}
               comment={child}
@@ -368,6 +426,7 @@ export function CommentNode({
               manageMode={manageMode}
               canComment={canComment}
               isPending={isPending}
+              tags={tags}
               callbacks={callbacks}
             />
           ))}

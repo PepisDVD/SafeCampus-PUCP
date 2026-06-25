@@ -5,6 +5,7 @@ export type {
   ComentarioLf,
   CustodiaLf,
   CustodiaPoliticaLf,
+  DashboardLf,
   KpisLf,
   MatchLf,
   MatchingConfigLf,
@@ -12,6 +13,7 @@ export type {
   MetadatoCampoLf,
   MetadatosSchemaLf,
   MetadatoTipoLf,
+  SupervisorLf,
   UbicacionMaestra,
 } from "@safecampus/shared-types";
 

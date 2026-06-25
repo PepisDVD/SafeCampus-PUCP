@@ -1,8 +1,11 @@
+import { redirect } from "next/navigation";
+
 import { LostFoundThreads } from "@/features/lost-found/components/lost-found-threads";
 import { LfBreadcrumb } from "@/features/lost-found/components/lf-breadcrumb";
-import { getLostFoundThreads } from "@/features/lost-found/service";
+import { getLostFoundAccess, getLostFoundThreads } from "@/features/lost-found/service";
 
 export default async function LostFoundHilosPage() {
+  if (!(await getLostFoundAccess())) redirect("/dashboard");
   const { casos, nextCursor, categorias, ubicaciones } = await getLostFoundThreads();
   return (
     <>

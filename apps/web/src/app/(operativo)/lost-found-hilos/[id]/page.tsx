@@ -1,6 +1,8 @@
+import { redirect } from "next/navigation";
+
 import { LostFoundThreadDetail } from "@/features/lost-found/components/lost-found-thread-detail";
 import { LfBreadcrumb } from "@/features/lost-found/components/lf-breadcrumb";
-import { getLostFoundThreadDetail, getLostFoundThreadMatches } from "@/features/lost-found/service";
+import { getLostFoundAccess, getLostFoundThreadDetail, getLostFoundThreadMatches } from "@/features/lost-found/service";
 import { serverApi } from "@/lib/api/server";
 import { getCurrentUserProfile } from "@/lib/auth/server";
 import type { CategoriaLf } from "@/features/lost-found/types";
@@ -10,6 +12,7 @@ export default async function LostFoundHiloDetallePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  if (!(await getLostFoundAccess())) redirect("/dashboard");
   const { id } = await params;
   const [detail, matches, categorias, profile] = await Promise.all([
     getLostFoundThreadDetail(id),

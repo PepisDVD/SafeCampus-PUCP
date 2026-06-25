@@ -1,9 +1,12 @@
+import { redirect } from "next/navigation";
+
 import { LostFoundOperativo } from "@/features/lost-found/components/lost-found-operativo";
 import { LfBreadcrumb } from "@/features/lost-found/components/lf-breadcrumb";
-import { getLostFoundOperativo } from "@/features/lost-found/service";
+import { getLostFoundAccess, getLostFoundOperativo } from "@/features/lost-found/service";
 
 export default async function LostFoundOperativoPage() {
-  const { casos, custodias, kpis } = await getLostFoundOperativo();
+  if (!(await getLostFoundAccess())) redirect("/dashboard");
+  const { dashboard, categorias, initialFilters } = await getLostFoundOperativo();
   return (
     <>
       <LfBreadcrumb
@@ -13,9 +16,9 @@ export default async function LostFoundOperativoPage() {
         ]}
       />
       <LostFoundOperativo
-        initialCasos={casos}
-        initialCustodias={custodias}
-        kpis={kpis}
+        initialDashboard={dashboard}
+        categorias={categorias}
+        initialFilters={initialFilters}
       />
     </>
   );

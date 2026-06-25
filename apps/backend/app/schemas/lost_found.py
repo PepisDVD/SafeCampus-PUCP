@@ -177,6 +177,13 @@ class ComentarioLfItem(BaseModel):
     autor: UsuarioMini | None = None
     contenido: str
     imagenes: list[str] = []
+    tag: str | None = None
+    tag_prioridad: int = 0
+    fijado: bool = False
+    destacados: int = 0
+    reaccionado: bool = False
+    puede_fijar: bool = False
+    puede_reaccionar: bool = False
     visible: bool
     motivo_ocultamiento: str | None = None
     profundidad: int = 0
@@ -190,6 +197,32 @@ class ComentarioLfItem(BaseModel):
 class ComentarioLfCreateInput(BaseModel):
     contenido: str = Field(min_length=2, max_length=2000)
     parent_id: str | None = None
+    tag: str | None = Field(default=None, max_length=40)
+
+
+class ComentarioFijarInput(BaseModel):
+    fijar: bool
+
+
+class ComentarioReaccionResult(BaseModel):
+    destacados: int
+    reaccionado: bool
+
+
+class SupervisorLfItem(BaseModel):
+    id: str
+    nombre_completo: str
+    email: str | None = None
+    rol: str | None = None
+    asignado: bool = False
+
+
+class AccesoLfUpdateInput(BaseModel):
+    usuario_ids: list[str] = Field(default_factory=list)
+
+
+class AccesoLfMiResult(BaseModel):
+    acceso: bool
 
 
 class ComentarioLfEditInput(BaseModel):
@@ -252,10 +285,41 @@ class CustodiaLfCreateInput(BaseModel):
     observaciones: str | None = Field(default=None, max_length=2000)
     es_perecible: bool | None = None
 
+    @field_validator("ubicacion_custodia")
+    @classmethod
+    def _ubicacion_valida(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("La ubicacion debe tener al menos 2 caracteres.")
+        return value
+
+    @field_validator("observaciones")
+    @classmethod
+    def _normalizar_observaciones(cls, value: str | None) -> str | None:
+        value = value.strip() if value else None
+        return value or None
+
 
 class CustodiaLfUpdateInput(BaseModel):
-    ubicacion_custodia: str | None = Field(default=None, max_length=255)
+    ubicacion_custodia: str | None = Field(default=None, min_length=2, max_length=255)
     observaciones: str | None = Field(default=None, max_length=2000)
+    fecha_vencimiento: datetime | None = None
+
+    @field_validator("ubicacion_custodia")
+    @classmethod
+    def _ubicacion_valida(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("La ubicacion debe tener al menos 2 caracteres.")
+        return value
+
+    @field_validator("observaciones")
+    @classmethod
+    def _normalizar_observaciones(cls, value: str | None) -> str | None:
+        value = value.strip() if value else None
+        return value or None
 
 
 class CustodiaLfItem(BaseModel):
@@ -289,9 +353,32 @@ class DevolucionLfInput(BaseModel):
 
 
 class DescarteLfInput(BaseModel):
-    motivo: str = Field(min_length=3, max_length=1000)
+    motivo_cierre_id: str
+    motivo_otro: str | None = Field(default=None, max_length=1000)
     destino_descarte: str | None = Field(default=None, max_length=150)
     observaciones: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("motivo_cierre_id")
+    @classmethod
+    def _motivo_requerido(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Debe seleccionar un motivo.")
+        return value
+
+    @field_validator("motivo_otro", "destino_descarte", "observaciones")
+    @classmethod
+    def _normalizar_opcionales(cls, value: str | None) -> str | None:
+        value = value.strip() if value else None
+        return value or None
+
+    @model_validator(mode="after")
+    def _otro_requiere_detalle(self) -> "DescarteLfInput":
+        if self.motivo_cierre_id == "OTRO" and not self.motivo_otro:
+            raise ValueError("Debe detallar el motivo cuando selecciona Otro.")
+        if self.motivo_otro and len(self.motivo_otro) < 3:
+            raise ValueError("El motivo debe tener al menos 3 caracteres.")
+        return self
 
 
 class ComentarioVisibilidadInput(BaseModel):
@@ -386,3 +473,72 @@ class KpisLfResponse(BaseModel):
     matches_confirmados: int
     custodias_por_vencer: int
     por_zona: list[ZonaCount] = []
+
+
+class DashboardLfKpi(BaseModel):
+    valor: float
+    variacion: float | None = None
+    detalle: str | None = None
+
+
+class DashboardLfSerieItem(BaseModel):
+    fecha: str
+    registrados: int
+    devueltos: int
+
+
+class DashboardLfDistribucionItem(BaseModel):
+    clave: str
+    etiqueta: str
+    total: int
+
+
+class DashboardLfCustodiaCategoriaItem(BaseModel):
+    categoria: str
+    dias_promedio: float
+
+
+class DashboardLfAntiguedadItem(BaseModel):
+    rango: str
+    total: int
+
+
+class DashboardLfCustodiaCriticaItem(BaseModel):
+    id: str
+    caso_id: str
+    codigo: str
+    titulo: str
+    categoria: str | None = None
+    fecha_vencimiento: datetime
+    dias_restantes: int
+
+
+class DashboardLfActividadItem(BaseModel):
+    id: str
+    codigo: str
+    titulo: str
+    tipo: str
+    estado: str
+    categoria: str | None = None
+    dias_en_custodia: int | None = None
+    matching_total: int = 0
+    matching_confirmado: bool = False
+    reportante: str
+    created_at: datetime
+
+
+class DashboardLfResponse(BaseModel):
+    casos_totales: DashboardLfKpi
+    casos_activos: DashboardLfKpi
+    en_custodia: DashboardLfKpi
+    por_vencer: DashboardLfKpi
+    tasa_recuperacion: DashboardLfKpi
+    tiempo_promedio_devolucion: DashboardLfKpi
+    serie: list[DashboardLfSerieItem]
+    por_categoria: list[DashboardLfDistribucionItem]
+    por_estado: list[DashboardLfDistribucionItem]
+    por_tipo: list[DashboardLfDistribucionItem]
+    custodia_por_categoria: list[DashboardLfCustodiaCategoriaItem]
+    antiguedad: list[DashboardLfAntiguedadItem]
+    custodias_criticas: list[DashboardLfCustodiaCriticaItem]
+    actividad_reciente: list[DashboardLfActividadItem]

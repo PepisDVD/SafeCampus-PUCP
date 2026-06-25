@@ -23,6 +23,7 @@ import {
 import { ImageIcon, X } from "lucide-react";
 import { lostFoundClient } from "../client";
 import { activeMetadatoCampos, MetadatoFields, metadatosToValues, validateMetadatos, valuesToMetadatos } from "./metadato-fields";
+import { CharCounter, LF_TEXT_LIMITS } from "./text-field-help";
 import type { CasoLfDetail, CategoriaLf } from "../types";
 
 const ACCEPT_IMAGES = "image/jpeg,image/png,image/webp,image/heic,image/gif";
@@ -166,14 +167,23 @@ export function EditCaseModal({
           <DialogTitle>Editar hilo</DialogTitle>
           <DialogDescription>Actualiza los datos descriptivos de la publicación.</DialogDescription>
         </DialogHeader>
-        <div className="grid flex-1 gap-3 overflow-y-auto px-6 py-4">
+        <div className="grid min-w-0 flex-1 gap-3 overflow-y-auto overflow-x-hidden px-6 py-4">
           <div className="space-y-2">
             <Label htmlFor="edit-titulo">Título</Label>
-            <Input id="edit-titulo" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+            <Input id="edit-titulo" value={titulo} maxLength={LF_TEXT_LIMITS.titulo.max} onChange={(e) => setTitulo(e.target.value)} />
+            <CharCounter value={titulo} min={LF_TEXT_LIMITS.titulo.min} max={LF_TEXT_LIMITS.titulo.max} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-descripcion">Descripción</Label>
-            <Textarea id="edit-descripcion" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
+            <Textarea
+              id="edit-descripcion"
+              value={descripcion}
+              rows={5}
+              maxLength={LF_TEXT_LIMITS.descripcion.max}
+              className="max-h-72 min-h-28 w-full resize-y overflow-x-hidden break-all field-sizing-fixed"
+              onChange={(e) => setDescripcion(e.target.value)}
+            />
+            <CharCounter value={descripcion} min={LF_TEXT_LIMITS.descripcion.min} max={LF_TEXT_LIMITS.descripcion.max} />
           </div>
           <div className="space-y-2">
             <Label>Categoría</Label>
@@ -195,7 +205,8 @@ export function EditCaseModal({
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-lugar">Lugar de referencia</Label>
-            <Input id="edit-lugar" value={lugar} onChange={(e) => setLugar(e.target.value)} />
+            <Input id="edit-lugar" value={lugar} maxLength={LF_TEXT_LIMITS.lugar_referencia.max} onChange={(e) => setLugar(e.target.value)} />
+            <CharCounter value={lugar} min={LF_TEXT_LIMITS.lugar_referencia.min} max={LF_TEXT_LIMITS.lugar_referencia.max} />
           </div>
           <MetadatoFields campos={campos} values={metadatos} onChange={(c, v) => setMetadatos((prev) => ({ ...prev, [c]: v }))} />
 

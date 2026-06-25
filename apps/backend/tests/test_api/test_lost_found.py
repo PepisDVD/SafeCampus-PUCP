@@ -2,23 +2,72 @@ from datetime import UTC, datetime
 
 from app.api.deps import get_current_user
 from app.api.v1.lost_found import get_service
-from app.core.constants import EstadoCasoLF, TipoCasoLF
+from app.core.constants import EstadoCasoLF, TipoCasoLF, lf_tag_priority, lf_tag_valido
 from app.main import app
 from app.schemas.auth import AuthUserResponse
 from app.schemas.incidente import UsuarioMini
-from app.schemas.lost_found import CasoLfDetail, CasoLfListItem, CasoLfListResponse
+from app.schemas.lost_found import (
+    AccesoLfMiResult,
+    CasoLfDetail,
+    CasoLfListItem,
+    CasoLfListResponse,
+    ComentarioLfItem,
+    ComentarioReaccionResult,
+    SupervisorLfItem,
+)
 
 CASE_ID = "11111111-1111-1111-1111-111111111111"
 USER_ID = "00000000-0000-0000-0000-000000000001"
 
 
 class FakeLostFoundService:
-    def __init__(self) -> None:
+    def __init__(self, acceso: bool = True) -> None:
         self.feed_args = None
         self.operativo_args = None
         self.custodias_args = None
         self.upload_args = None
         self.deleted_comment = None
+        self.acceso = acceso
+        self.comentario_args = None
+        self.reaccion_args = None
+        self.fijar_args = None
+        self.acceso_set_args = None
+
+    async def tiene_acceso_lf(self, usuario_id, roles) -> bool:
+        if "administrador" in roles or "operador" in roles:
+            return True
+        return self.acceso
+
+    async def crear_comentario(self, caso_id, usuario_id, body, archivos=None) -> ComentarioLfItem:
+        self.comentario_args = (caso_id, usuario_id, body.tag, body.parent_id)
+        return ComentarioLfItem(
+            id="33333333-3333-3333-3333-333333333333",
+            caso_id=caso_id,
+            parent_id=body.parent_id,
+            autor=None,
+            contenido=body.contenido,
+            tag=body.tag,
+            visible=True,
+            created_at=datetime(2026, 6, 25, 10, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 6, 25, 10, 0, tzinfo=UTC),
+        )
+
+    async def reaccionar_comentario(self, comentario_id, usuario_id) -> ComentarioReaccionResult:
+        self.reaccion_args = (comentario_id, usuario_id)
+        return ComentarioReaccionResult(destacados=1, reaccionado=True)
+
+    async def fijar_comentario(self, comentario_id, usuario_id, roles, body) -> None:
+        self.fijar_args = (comentario_id, usuario_id, body.fijar)
+
+    async def listar_supervisores_acceso(self) -> list[SupervisorLfItem]:
+        return [SupervisorLfItem(id=USER_ID, nombre_completo="Ana Perez", email=None, rol="supervisor", asignado=False)]
+
+    async def set_acceso_supervisores(self, usuario_ids, actor_id) -> list[SupervisorLfItem]:
+        self.acceso_set_args = (usuario_ids, actor_id)
+        return [SupervisorLfItem(id=USER_ID, nombre_completo="Ana Perez", email=None, rol="supervisor", asignado=True)]
+
+    async def obtener_acceso_mi(self, usuario_id, roles) -> AccesoLfMiResult:
+        return AccesoLfMiResult(acceso=await self.tiene_acceso_lf(usuario_id, roles))
 
     async def listar_feed(self, **kwargs) -> list[CasoLfListItem]:
         self.feed_args = kwargs
@@ -94,6 +143,16 @@ def _fake_comunidad() -> AuthUserResponse:
 def _fake_operador() -> AuthUserResponse:
     user = _fake_comunidad()
     return user.model_copy(update={"roles": ["operador"]})
+
+
+def _fake_supervisor() -> AuthUserResponse:
+    user = _fake_comunidad()
+    return user.model_copy(update={"roles": ["supervisor"]})
+
+
+def _fake_admin() -> AuthUserResponse:
+    user = _fake_comunidad()
+    return user.model_copy(update={"roles": ["administrador"]})
 
 
 def test_lost_found_feed_comunidad_acepta_filtros_y_cursor(client):
@@ -191,6 +250,113 @@ def test_lost_found_custodias_acepta_filtros_multiselect(client):
         assert response.status_code == 200
         assert fake.custodias_args["estados"] == ["ACTIVA", "VENCIDA"]
         assert fake.custodias_args["vencimientos"] == ["proxima", "vencida"]
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lf_tag_catalogo_valida_por_tipo():
+    # PERDIDO acepta sus etiquetas; rechaza las de ENCONTRADO.
+    assert lf_tag_valido("PERDIDO", "POSIBLE_HALLAZGO") is True
+    assert lf_tag_valido("PERDIDO", "RECLAMO") is False
+    assert lf_tag_valido("ENCONTRADO", "RECLAMO") is True
+    # None (sin etiqueta) y GENERAL siempre válidos.
+    assert lf_tag_valido("PERDIDO", None) is True
+    assert lf_tag_valido("ENCONTRADO", "GENERAL") is True
+    # Prioridades: alta=2 para los hallazgos/reclamos, 0 para general.
+    assert lf_tag_priority("PERDIDO", "POSIBLE_HALLAZGO") == 2
+    assert lf_tag_priority("PERDIDO", "PISTA") == 1
+    assert lf_tag_priority("ENCONTRADO", "GENERAL") == 0
+
+
+def test_lost_found_crear_comentario_pasa_tag(client):
+    fake = FakeLostFoundService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_comunidad
+    try:
+        response = client.post(
+            f"/api/v1/lost-found/casos/{CASE_ID}/comentarios",
+            data={"contenido": "Creo que lo vi por la cafetería", "tag": "PISTA"},
+        )
+        assert response.status_code == 201
+        assert response.json()["tag"] == "PISTA"
+        assert fake.comentario_args == (CASE_ID, USER_ID, "PISTA", None)
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lost_found_reaccion_usa_usuario_actual(client):
+    fake = FakeLostFoundService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_comunidad
+    try:
+        response = client.post(
+            "/api/v1/lost-found/comentarios/22222222-2222-2222-2222-222222222222/reaccion"
+        )
+        assert response.status_code == 200
+        body = ComentarioReaccionResult.model_validate(response.json())
+        assert body.reaccionado is True and body.destacados == 1
+        assert fake.reaccion_args == ("22222222-2222-2222-2222-222222222222", USER_ID)
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lost_found_fijar_comentario(client):
+    fake = FakeLostFoundService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_comunidad
+    try:
+        response = client.patch(
+            "/api/v1/lost-found/comentarios/22222222-2222-2222-2222-222222222222/fijar",
+            json={"fijar": True},
+        )
+        assert response.status_code == 204
+        assert fake.fijar_args == ("22222222-2222-2222-2222-222222222222", USER_ID, True)
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lost_found_acceso_gate_bloquea_supervisor_no_asignado(client):
+    fake = FakeLostFoundService(acceso=False)
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_supervisor
+    try:
+        response = client.get("/api/v1/lost-found/casos")
+        assert response.status_code == 403
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lost_found_acceso_gate_permite_supervisor_asignado(client):
+    fake = FakeLostFoundService(acceso=True)
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_supervisor
+    try:
+        response = client.get("/api/v1/lost-found/casos")
+        assert response.status_code == 200
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lost_found_acceso_supervisores_solo_admin(client):
+    fake = FakeLostFoundService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_admin
+    try:
+        listar = client.get("/api/v1/lost-found/acceso/supervisores")
+        assert listar.status_code == 200
+        assert listar.json()[0]["rol"] == "supervisor"
+        guardar = client.put(
+            "/api/v1/lost-found/acceso/supervisores",
+            json={"usuario_ids": [USER_ID]},
+        )
+        assert guardar.status_code == 200
+        assert fake.acceso_set_args == ([USER_ID], USER_ID)
     finally:
         app.dependency_overrides.pop(get_service, None)
         app.dependency_overrides.pop(get_current_user, None)

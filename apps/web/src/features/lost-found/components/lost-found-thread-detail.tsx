@@ -5,6 +5,9 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useMemo, useState, useTransition } from "react";
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Badge,
   Button,
   Card,
@@ -22,6 +25,7 @@ import {
   DrawerHeader,
   DrawerTitle,
   Input,
+  MultiSelectFilter,
   ScrollArea,
   Select,
   SelectContent,
@@ -37,7 +41,9 @@ import {
 import { Archive, CheckCircle2, Eye, EyeOff, GitCompareArrows, History, ImageIcon, Lock, LockOpen, MapPin, MessageSquare, Pencil, Settings2, XCircle } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
-import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
+import { estadoLabel, tagsForTipo, tipoLabel } from "../presentation";
+import { COMMENT_SORT_OPTIONS, filterByTags, sortRootComments, type CommentSort } from "./comment-sorting";
+import { EstadoLfBadge } from "./estado-lf-badge";
 import { EditCaseModal } from "./edit-case-modal";
 import { CommentComposer, CommentNode, type CommentCallbacks } from "./comment-node";
 import { activeMetadatoCampos } from "./metadato-fields";
@@ -72,7 +78,11 @@ export function LostFoundThreadDetail({
   const [matches, setMatches] = useState<MatchLf[]>(initialMatches);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [commentSort, setCommentSort] = useState<CommentSort>("recientes");
+  const [tagFilters, setTagFilters] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
+
+  const commentTags = tagsForTipo(caso.tipo);
 
   const isAdmin = Boolean(currentUser?.isAdmin);
   const canEdit = Boolean(currentUser?.isAdmin || (currentUser && caso.reportante?.id === currentUser.id));
@@ -90,10 +100,11 @@ export function LostFoundThreadDetail({
   const rootComments = useMemo(() => {
     const ids = new Set(caso.comentarios.map((c) => c.id));
     // Un comentario es raíz si no tiene padre o su padre no está en el conjunto visible (huérfano).
-    return caso.comentarios.filter((c) => !c.parent_id || !ids.has(c.parent_id));
-  }, [caso.comentarios]);
+    const roots = caso.comentarios.filter((c) => !c.parent_id || !ids.has(c.parent_id));
+    return sortRootComments(filterByTags(roots, tagFilters), commentSort);
+  }, [caso.comentarios, tagFilters, commentSort]);
 
-  const submitComment = (texto: string, archivos: File[], parentId?: string | null): Promise<boolean> =>
+  const submitComment = (texto: string, archivos: File[], parentId?: string | null, tag?: string | null): Promise<boolean> =>
     new Promise((resolve) => {
       if (!canComment) {
         resolve(false);
@@ -101,7 +112,7 @@ export function LostFoundThreadDetail({
       }
       startTransition(async () => {
         try {
-          await lostFoundClient.comentar(caso.id, texto, parentId ?? null, archivos);
+          await lostFoundClient.comentar(caso.id, texto, parentId ?? null, archivos, tag ?? null);
           await reload();
           resolve(true);
         } catch (error) {
@@ -112,7 +123,7 @@ export function LostFoundThreadDetail({
     });
 
   const commentCallbacks: CommentCallbacks = {
-    onReply: (parentId, texto, archivos) => submitComment(texto, archivos, parentId),
+    onReply: (parentId, texto, archivos, tag) => submitComment(texto, archivos, parentId, tag),
     onEdit: (id, texto) =>
       new Promise((resolve) => {
         startTransition(async () => {
@@ -149,6 +160,31 @@ export function LostFoundThreadDetail({
             toast.success("Comentario eliminado");
           } catch (error) {
             toast.error(error instanceof Error ? error.message : "No se pudo eliminar el comentario");
+          }
+          resolve();
+        });
+      }),
+    onPin: (id, fijar) =>
+      new Promise((resolve) => {
+        startTransition(async () => {
+          try {
+            await lostFoundClient.fijarComentario(id, fijar);
+            await reload();
+            toast.success(fijar ? "Comentario fijado" : "Comentario desfijado");
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "No se pudo fijar el comentario");
+          }
+          resolve();
+        });
+      }),
+    onReact: (id) =>
+      new Promise((resolve) => {
+        startTransition(async () => {
+          try {
+            await lostFoundClient.reaccionarComentario(id);
+            await reload();
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "No se pudo registrar la reacción");
           }
           resolve();
         });
@@ -252,65 +288,45 @@ export function LostFoundThreadDetail({
         />
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+      <div className="grid gap-4 xl:grid-cols-[1fr_414px]">
         <Card>
           <CardHeader><CardTitle>Publicacion</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <CaseMediaTabs caso={caso} />
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>
-              <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
-              {caso.categoria_nombre && <Badge variant="outline">{caso.categoria_nombre}</Badge>}
-            </div>
-            <p className="text-sm text-slate-700">{caso.descripcion}</p>
-            {metaEntries.length > 0 && (
-              <div className="rounded-lg border bg-slate-50/60 p-3">
-                <p className="mb-2 text-xs font-semibold text-slate-600">Detalles de la categoría</p>
-                <dl className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
-                  {metaEntries.map((entry) => (
-                    <div key={entry.etiqueta} className="flex justify-between gap-3 text-sm">
-                      <dt className="text-slate-500">{entry.etiqueta}</dt>
-                      <dd className="text-right font-medium text-slate-800">{String(entry.valor)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            )}
-            <p className="text-sm text-slate-500">Reportante: {caso.reportante?.nombre_completo ?? "Usuario"}</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Gestion operativa</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <Textarea value={operativo} onChange={(e) => setOperativo(e.target.value)} placeholder="Nota operativa" />
-            <Select onValueChange={changeState}>
-              <SelectTrigger><SelectValue placeholder="Cambiar estado" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="EN_REVISION">En revision</SelectItem>
-                <SelectItem value="CONFIRMADO">Confirmado</SelectItem>
-                <SelectItem value="CERRADO">Cerrar</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input value={custodia} onChange={(e) => setCustodia(e.target.value)} placeholder="Ubicacion de custodia" />
-            <Button className="w-full" onClick={createCustody} disabled={isPending}>
-              <Archive className="mr-2 h-4 w-4" />
-              Registrar custodia
-            </Button>
-            <Button className="w-full" variant="outline" onClick={() => setHistoryOpen(true)}>
-              <History className="mr-2 h-4 w-4" />
-              Ver historial del caso
-            </Button>
-
-            <aside className="rounded-lg border bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-950">Resumen del hilo</p>
-              <dl className="mt-3 space-y-2 text-sm">
-                <div className="flex justify-between gap-3"><dt className="text-slate-500">Comentarios</dt><dd className="font-medium">{caso.comentarios.length}</dd></div>
-                <div className="flex justify-between gap-3"><dt className="text-slate-500">Estado</dt><dd className="font-medium">{estadoLabel(caso.estado)}</dd></div>
-                <div className="flex justify-between gap-3"><dt className="text-slate-500">Tipo</dt><dd className="font-medium">{tipoLabel(caso.tipo)}</dd></div>
-                <div className="flex justify-between gap-3"><dt className="text-slate-500">Lugar</dt><dd className="text-right font-medium">{caso.lugar_referencia}</dd></div>
-              </dl>
-            </aside>
+          <CardContent className="p-4">
+            <Tabs defaultValue="informacion" className="gap-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="informacion">Información del hilo</TabsTrigger>
+                <TabsTrigger value="gestion">Gestión operativa</TabsTrigger>
+              </TabsList>
+              <TabsContent value="informacion">
+                <ThreadInfoTab caso={caso} metaEntries={metaEntries} />
+              </TabsContent>
+              <TabsContent value="gestion" className="space-y-4">
+                <Textarea value={operativo} onChange={(e) => setOperativo(e.target.value)} placeholder="Nota operativa" />
+                <Select onValueChange={changeState}>
+                  <SelectTrigger><SelectValue placeholder="Cambiar estado" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EN_REVISION">En revision</SelectItem>
+                    <SelectItem value="CONFIRMADO">Confirmado</SelectItem>
+                    <SelectItem value="CERRADO">Cerrar</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input value={custodia} onChange={(e) => setCustodia(e.target.value)} placeholder="Ubicacion de custodia" />
+                <Button className="w-full" onClick={createCustody} disabled={isPending}>
+                  <Archive className="mr-2 h-4 w-4" />
+                  Registrar custodia
+                </Button>
+                <Button className="w-full" variant="outline" onClick={() => setHistoryOpen(true)}>
+                  <History className="mr-2 h-4 w-4" />
+                  Ver historial del caso
+                </Button>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
@@ -331,7 +347,7 @@ export function LostFoundThreadDetail({
                   </div>
                   <div className="pb-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className={estadoLfTone[item.estado_nuevo]}>{estadoLabel(item.estado_nuevo)}</Badge>
+                      <EstadoLfBadge estado={item.estado_nuevo} />
                       {item.estado_anterior && <span className="text-xs text-slate-500">desde {estadoLabel(item.estado_anterior)}</span>}
                     </div>
                     <p className="mt-1 text-sm font-medium text-slate-950">{item.accion}</p>
@@ -420,8 +436,31 @@ export function LostFoundThreadDetail({
               <CommentComposer
                 placeholder="Escribe un comentario… (puedes adjuntar hasta 3 imágenes)"
                 isPending={isPending}
-                onSubmit={(texto, archivos) => submitComment(texto, archivos, null)}
+                tags={commentTags}
+                onSubmit={(texto, archivos, tag) => submitComment(texto, archivos, null, tag)}
               />
+            )}
+
+            {caso.comentarios.length > 0 && (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <MultiSelectFilter
+                  className="w-full sm:w-64"
+                  placeholder="Filtrar por etiqueta"
+                  options={commentTags.map((t) => ({ value: t.value, label: t.label }))}
+                  selected={tagFilters}
+                  onChange={setTagFilters}
+                />
+                <Select value={commentSort} onValueChange={(value) => setCommentSort(value as CommentSort)}>
+                  <SelectTrigger className="w-full sm:w-48" aria-label="Ordenar comentarios">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMMENT_SORT_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
             <div className="space-y-3">
@@ -435,16 +474,102 @@ export function LostFoundThreadDetail({
                   manageMode={manageMode}
                   canComment={canComment}
                   isPending={isPending}
+                  tags={commentTags}
                   callbacks={commentCallbacks}
                 />
               ))}
             </div>
+            {caso.comentarios.length > 0 && rootComments.length === 0 && (
+              <p className="rounded-lg border border-dashed p-4 text-sm text-slate-500">No hay comentarios con la etiqueta seleccionada.</p>
+            )}
             {caso.comentarios.length === 0 && (
               <p className="rounded-lg border border-dashed p-4 text-sm text-slate-500">Este hilo aun no tiene comentarios.</p>
             )}
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function reportanteInitials(name?: string | null) {
+  return (name ?? "U").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function DescripcionVerMas({ texto }: { texto: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = texto.length > 180;
+  return (
+    <div>
+      <p className={`whitespace-pre-wrap wrap-break-word text-sm text-slate-700 ${!expanded && isLong ? "line-clamp-4" : ""}`}>
+        {texto}
+      </p>
+      {isLong && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 text-xs font-medium text-sky-600 hover:underline"
+        >
+          {expanded ? "Ver menos" : "Ver más"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ThreadInfoTab({
+  caso,
+  metaEntries,
+}: {
+  caso: CasoLfDetail;
+  metaEntries: { etiqueta: string; valor: unknown }[];
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="mb-2 text-sm font-semibold text-slate-900">Descripción</p>
+        <DescripcionVerMas texto={caso.descripcion} />
+        <div className="mt-3 flex items-center gap-2">
+          <Avatar className="h-7 w-7">
+            <AvatarImage src={caso.reportante?.avatar_url ?? undefined} />
+            <AvatarFallback className="text-[10px]">{reportanteInitials(caso.reportante?.nombre_completo)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-500">Reportante</p>
+            <p className="truncate text-sm font-medium text-slate-800">{caso.reportante?.nombre_completo ?? "Usuario"}</p>
+          </div>
+        </div>
+      </div>
+      <div className="border-t pt-4">
+        <p className="mb-3 text-sm font-semibold text-slate-900">Datos generales</p>
+        <dl className="space-y-2 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-slate-500">Estado</dt>
+            <dd><EstadoLfBadge estado={caso.estado} /></dd>
+          </div>
+          <div className="flex justify-between gap-3"><dt className="text-slate-500">Tipo</dt><dd className="font-medium text-slate-800">{tipoLabel(caso.tipo)}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-slate-500">Categoría</dt><dd className="text-right font-medium text-slate-800">{caso.categoria_nombre ?? "—"}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-slate-500">Lugar</dt><dd className="text-right font-medium text-slate-800">{caso.lugar_referencia ?? "—"}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-slate-500">Comentarios</dt><dd className="font-medium text-slate-800">{caso.comentarios.length}</dd></div>
+        </dl>
+      </div>
+      <div className="border-t pt-4">
+        <p className="mb-3 text-sm font-semibold text-slate-900">Detalle de categoría</p>
+        {metaEntries.length === 0 ? (
+          <p className="text-sm text-slate-500">Esta categoría no tiene detalles adicionales.</p>
+        ) : (
+          <ScrollArea className="max-h-48 pr-3">
+            <dl className="space-y-2 text-sm">
+              {metaEntries.map((entry) => (
+                <div key={entry.etiqueta} className="flex justify-between gap-3">
+                  <dt className="text-slate-500">{entry.etiqueta}</dt>
+                  <dd className="text-right font-medium text-slate-800">{String(entry.valor)}</dd>
+                </div>
+              ))}
+            </dl>
+          </ScrollArea>
+        )}
+      </div>
     </div>
   );
 }
@@ -480,12 +605,12 @@ function CaseMediaTabs({ caso }: { caso: CasoLfDetail }) {
             <Image src={photos[0]!} alt="" fill unoptimized className="object-cover" />
           </div>
         ) : (
-          <div className="px-10">
+          <div className="mx-auto max-w-2xl px-12">
             <Carousel className="w-full" opts={{ loop: true }}>
               <CarouselContent>
                 {photos.map((url) => (
                   <CarouselItem key={url}>
-                    <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-slate-50">
+                    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg border bg-slate-50">
                       <Image src={url} alt="" fill unoptimized className="object-cover" />
                     </div>
                   </CarouselItem>
@@ -531,7 +656,7 @@ function HistoryDrawer({ open, onOpenChange, caso }: { open: boolean; onOpenChan
                   </div>
                   <div className="pb-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className={estadoLfTone[item.estado_nuevo]}>{estadoLabel(item.estado_nuevo)}</Badge>
+                      <EstadoLfBadge estado={item.estado_nuevo} />
                       {item.estado_anterior && <span className="text-xs text-slate-500">desde {estadoLabel(item.estado_anterior)}</span>}
                     </div>
                     <p className="mt-1 text-sm font-medium text-slate-950">{item.accion}</p>

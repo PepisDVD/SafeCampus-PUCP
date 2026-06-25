@@ -44,7 +44,8 @@ import {
 import { Eye, Grid2X2, List, MapPin, MessageSquare, PackageSearch, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
-import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
+import { tipoLabel } from "../presentation";
+import { EstadoLfBadge } from "./estado-lf-badge";
 import { activeMetadatoCampos, MetadatoFields, validateMetadatos, valuesToMetadatos } from "./metadato-fields";
 import type { CasoLfListItem, CategoriaLf, UbicacionMaestra } from "../types";
 
@@ -315,7 +316,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
     <div className="space-y-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950">Hilos Lost & Found</h1>
+          <h1 className="text-2xl font-semibold text-slate-950">Hilos</h1>
           <p className="text-sm text-slate-500">Publicaciones, conversaciones y seguimiento comunitario.</p>
         </div>
         <Button onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Crear hilo</Button>
@@ -591,7 +592,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
                   </div>
                   <p className="text-sm text-slate-600">{truncateText(caso.ultimo_comentario ?? caso.descripcion, 120)}</p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>
+                    <EstadoLfBadge estado={caso.estado} />
                     <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
                     {caso.categoria_nombre && <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">{caso.categoria_nombre}</Badge>}
                     <span className="ml-auto flex items-center gap-1 text-sm text-slate-500"><MessageSquare className="h-4 w-4" />{caso.conteo_comentarios}</span>
@@ -628,7 +629,7 @@ function ThreadCard({ caso, viewMode }: { caso: CasoLfListItem; viewMode: "grid"
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="truncate font-semibold text-slate-950">{caso.titulo}</p>
-                <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>
+                <EstadoLfBadge estado={caso.estado} />
                 <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
                 {caso.categoria_nombre && <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">{caso.categoria_nombre}</Badge>}
               </div>
@@ -657,7 +658,7 @@ function ThreadCard({ caso, viewMode }: { caso: CasoLfListItem; viewMode: "grid"
         <CardContent className={hasPhoto ? "grid h-full min-h-64 grid-cols-[minmax(132px,42%)_minmax(0,1fr)] p-0 last:pb-0" : "flex h-full min-h-64 flex-col p-4 last:pb-4"}>
           {hasPhoto && (
             <div className="relative min-h-full">
-              <Badge variant="outline" className={`absolute left-3 top-3 z-10 bg-white/95 ${estadoLfTone[caso.estado]}`}>{estadoLabel(caso.estado)}</Badge>
+              <EstadoLfBadge estado={caso.estado} className="absolute left-3 top-3 z-10 bg-white/95" />
               <CaseThumbnail caso={caso} compact={false} />
             </div>
           )}
@@ -665,7 +666,7 @@ function ThreadCard({ caso, viewMode }: { caso: CasoLfListItem; viewMode: "grid"
             <div className="min-w-0">
               <p className="line-clamp-1 text-lg font-semibold text-slate-950">{caso.titulo}</p>
               <div className="mt-1 flex flex-wrap gap-2">
-                {!hasPhoto && <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>}
+                {!hasPhoto && <EstadoLfBadge estado={caso.estado} />}
                 <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
                 {caso.categoria_nombre && <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">{caso.categoria_nombre}</Badge>}
               </div>

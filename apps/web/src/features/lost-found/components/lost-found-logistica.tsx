@@ -1,21 +1,38 @@
 "use client";
 
 import Link from "next/link";
+import { es } from "date-fns/locale";
 import type { ReactNode } from "react";
 import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import {
-  Badge,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Button,
+  Calendar,
   Drawer,
   DrawerContent,
   DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   FilterBar,
   Input,
   Label,
   MultiSelectFilter,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   SearchInput,
   Select,
   SelectContent,
@@ -32,17 +49,20 @@ import {
   TablePaginationBar,
   Textarea,
 } from "@safecampus/ui-kit";
-import { CheckCircle2, Edit3, Eye, PackageCheck, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock3, Edit3, Eye, MoreHorizontal, PackageCheck, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
-import { estadoLabel, estadoLfTone } from "../presentation";
-import type { CasoLfDetail, CasoLfListItem, CustodiaLf, ListResponse } from "../types";
+import { estadoLabel, formatDateTimePe } from "../presentation";
+import { EstadoLfBadge } from "./estado-lf-badge";
+import { CharCounter, LF_TEXT_LIMITS } from "./text-field-help";
+import type { CasoLfDetail, CasoLfListItem, CustodiaLf, ListResponse, MotivoCierreLf } from "../types";
 
 type CustodiaPage = ListResponse<CustodiaLf> & { page: number; per_page: number };
 
 type Props = {
   initialCustodias: CustodiaPage;
   casos: CasoLfListItem[];
+  motivosDescarte: MotivoCierreLf[];
 };
 
 const ESTADOS = ["ACTIVA", "PROXIMA_VENCER", "VENCIDA", "DEVUELTA", "DESCARTADA"] as const;
@@ -52,7 +72,7 @@ const VENCIMIENTOS = [
   { value: "vencida", label: "Vencidas" },
 ] as const;
 
-export function LostFoundLogistica({ initialCustodias, casos }: Props) {
+export function LostFoundLogistica({ initialCustodias, casos, motivosDescarte }: Props) {
   const [data, setData] = useState(initialCustodias);
   const [search, setSearch] = useState("");
   const [estados, setEstados] = useState<string[]>(["ACTIVA"]);
@@ -62,8 +82,10 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
   const [selected, setSelected] = useState<CustodiaLf | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // Excluye los casos que ya tienen custodia: al registrar custodia el caso pasa
+  // a EN_CUSTODIA, y volver a asignarlo rompe el UNIQUE de custodia por caso.
   const candidatos = useMemo(
-    () => casos.filter((caso) => caso.tipo === "ENCONTRADO" && !["CERRADO", "DEVUELTO", "DESCARTADO"].includes(caso.estado)),
+    () => casos.filter((caso) => caso.tipo === "ENCONTRADO" && !["EN_CUSTODIA", "CERRADO", "DEVUELTO", "DESCARTADO"].includes(caso.estado)),
     [casos],
   );
 
@@ -96,7 +118,7 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
     <div className="space-y-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950">Logística Lost & Found</h1>
+          <h1 className="text-2xl font-semibold text-slate-950">Logística</h1>
           <p className="text-sm text-slate-500">Custodia física, devoluciones y descarte de objetos encontrados.</p>
         </div>
         <div className="flex gap-2">
@@ -137,16 +159,16 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
       </FilterBar>
 
       <section className="overflow-hidden rounded-lg border bg-white">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead>Caso</TableHead>
-              <TableHead>Objeto</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Ubicación</TableHead>
-              <TableHead>Recepción</TableHead>
-              <TableHead>Vencimiento</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
+              <TableHead className="w-36">Caso</TableHead>
+              <TableHead className="w-52">Objeto</TableHead>
+              <TableHead className="w-28">Estado</TableHead>
+              <TableHead className="w-64">Ubicación</TableHead>
+              <TableHead className="w-44">Recepción</TableHead>
+              <TableHead className="w-48">Vencimiento de custodia</TableHead>
+              <TableHead className="w-16 text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -164,32 +186,46 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline" className={estadoLfTone[custodia.estado] ?? "border-slate-200 bg-slate-50 text-slate-600"}>
-                    {estadoLabel(custodia.estado)}
-                  </Badge>
+                  <EstadoLfBadge estado={custodia.estado} />
                 </TableCell>
-                <TableCell>{custodia.ubicacion_custodia}</TableCell>
-                <TableCell>{formatDate(custodia.fecha_recepcion)}</TableCell>
+                <TableCell className="max-w-64">
+                  <p className="truncate" title={custodia.ubicacion_custodia}>
+                    {custodia.ubicacion_custodia}
+                  </p>
+                </TableCell>
+                <TableCell>{formatDateTimePe(custodia.fecha_recepcion)}</TableCell>
                 <TableCell>
                   <span className={isExpired(custodia.fecha_vencimiento) && custodia.estado === "ACTIVA" ? "font-medium text-rose-700" : ""}>
-                    {formatDate(custodia.fecha_vencimiento)}
+                    {formatDateTimePe(custodia.fecha_vencimiento)}
                   </span>
                 </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openAction("editar", custodia)}>
-                      <Edit3 className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => openAction("trazabilidad", custodia)}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" onClick={() => openAction("devolver", custodia)}>
-                      <PackageCheck className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => openAction("descartar", custodia)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Acciones para ${custodia.codigo ?? custodia.titulo ?? "custodia"}`}>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuItem onSelect={() => openAction("editar", custodia)}>
+                        <Edit3 />
+                        Editar custodia
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openAction("trazabilidad", custodia)}>
+                        <Eye />
+                        Ver trazabilidad
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openAction("devolver", custodia)}>
+                        <PackageCheck />
+                        Registrar devolución
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onSelect={() => openAction("descartar", custodia)}>
+                        <Trash2 />
+                        Eliminar por descarte
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}
@@ -214,9 +250,11 @@ export function LostFoundLogistica({ initialCustodias, casos }: Props) {
       </section>
 
       <CustodiaDrawer
+        key={`${drawer ?? "closed"}-${selected?.id ?? "new"}`}
         mode={drawer}
         custodia={selected}
         candidatos={candidatos}
+        motivosDescarte={motivosDescarte}
         onClose={closeDrawer}
         onDone={() => {
           closeDrawer();
@@ -231,23 +269,38 @@ function CustodiaDrawer({
   mode,
   custodia,
   candidatos,
+  motivosDescarte,
   onClose,
   onDone,
 }: {
   mode: "crear" | "editar" | "devolver" | "descartar" | "trazabilidad" | null;
   custodia: CustodiaLf | null;
   candidatos: CasoLfListItem[];
+  motivosDescarte: MotivoCierreLf[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const [casoId, setCasoId] = useState(candidatos[0]?.id ?? "");
   const [trace, setTrace] = useState<{ casoId: string; data: CasoLfDetail } | null>(null);
-  const [observacionesDraft, setObservacionesDraft] = useState(() => selectedCaseSummary(candidatos[0]));
+  const [ubicacion, setUbicacion] = useState(custodia?.ubicacion_custodia ?? "");
+  const [observacionesDraft, setObservacionesDraft] = useState(
+    mode === "crear" ? selectedCaseSummary(candidatos[0]) : (custodia?.observaciones ?? ""),
+  );
+  const [esPerecible, setEsPerecible] = useState(custodia?.es_perecible ? "true" : "false");
+  const [fechaVencimiento, setFechaVencimiento] = useState(
+    custodia ? toDateTimeLocalValue(custodia.fecha_vencimiento) : "",
+  );
+  const [motivoId, setMotivoId] = useState("");
+  const [motivoOtro, setMotivoOtro] = useState("");
+  const [destinoDescarte, setDestinoDescarte] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const selectedCase = candidatos.find((caso) => caso.id === casoId);
+  const selectedMotivo = motivosDescarte.find((motivo) => motivo.id === motivoId);
   const traceCase = custodia && trace?.casoId === custodia.caso_id ? trace.data : null;
-  const isCaseLoading = false;
-  const title = mode === "crear" ? "Registrar objeto en custodia" : mode === "editar" ? "Editar custodia" : mode === "devolver" ? "Registrar devolucion" : mode === "trazabilidad" ? "Trazabilidad del objeto" : "Registrar descarte";
+  const title = mode === "crear" ? "Registrar objeto en custodia" : mode === "editar" ? "Editar custodia" : mode === "devolver" ? "Registrar devolución" : mode === "trazabilidad" ? "Trazabilidad del objeto" : "Registrar descarte";
 
   useEffect(() => {
     if (mode !== "trazabilidad" || !custodia) return;
@@ -257,53 +310,83 @@ function CustodiaDrawer({
     });
   }, [custodia, mode]);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
+  const formErrors = validateCustodiaForm({
+    mode,
+    casoId,
+    ubicacion,
+    observaciones: observacionesDraft,
+    fechaVencimiento,
+    motivoId,
+    motivoOtro,
+    destinoDescarte,
+    motivoRequiereObservacion: selectedMotivo?.requiere_observacion ?? false,
+  });
+  const errorFor = (field: string) => submitted || touched[field] ? formErrors[field] : undefined;
+  const touch = (field: string) => setTouched((current) => ({ ...current, [field]: true }));
+
+  const executeSubmit = (form?: HTMLFormElement | null) => {
     startTransition(async () => {
       try {
         if (mode === "crear") {
           await lostFoundClient.registrarCustodia(casoId, {
-            ubicacion_custodia: String(form.get("ubicacion_custodia")),
+            ubicacion_custodia: ubicacion.trim(),
             observaciones: optional(observacionesDraft),
-            es_perecible: form.get("es_perecible") === "true",
+            es_perecible: esPerecible === "true",
           });
         } else if (mode === "editar" && custodia) {
           await lostFoundClient.actualizarCustodia(custodia.id, {
-            ubicacion_custodia: optional(form.get("ubicacion_custodia")),
-            observaciones: optional(form.get("observaciones")),
+            ubicacion_custodia: ubicacion.trim(),
+            observaciones: observacionesDraft.trim() || null,
+            fecha_vencimiento: new Date(fechaVencimiento).toISOString(),
           });
-        } else if (mode === "devolver" && custodia) {
+        } else if (mode === "devolver" && custodia && form) {
+          const formData = new FormData(form);
           await lostFoundClient.devolver(custodia.id, {
-            reclamante_id: String(form.get("reclamante_id")),
-            metodo_verificacion: String(form.get("metodo_verificacion")),
-            observaciones: optional(form.get("observaciones")),
+            reclamante_id: String(formData.get("reclamante_id")),
+            metodo_verificacion: String(formData.get("metodo_verificacion")),
+            observaciones: optional(formData.get("observaciones")),
           });
         } else if (mode === "descartar" && custodia) {
           await lostFoundClient.descartar(custodia.id, {
-            motivo: String(form.get("motivo")),
-            destino_descarte: optional(form.get("destino_descarte")),
-            observaciones: optional(form.get("observaciones")),
+            motivo_cierre_id: motivoId,
+            motivo_otro: optional(motivoOtro),
+            destino_descarte: optional(destinoDescarte),
+            observaciones: optional(observacionesDraft),
           });
         }
-        toast.success("Operacion registrada");
+        toast.success(mode === "descartar" ? "Objeto eliminado por descarte" : "Operación registrada");
+        setDiscardConfirmOpen(false);
         onDone();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "No se pudo registrar la operacion");
+        toast.error(error instanceof Error ? error.message : "No se pudo registrar la operación");
       }
     });
+  };
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitted(true);
+    if (Object.keys(formErrors).length > 0) {
+      toast.error("Revisa los campos marcados antes de continuar.");
+      return;
+    }
+    if (mode === "descartar") {
+      setDiscardConfirmOpen(true);
+      return;
+    }
+    executeSubmit(event.currentTarget);
   };
 
   return (
     <Drawer open={mode !== null} onOpenChange={(open) => !open && onClose()} direction="right">
       <DrawerContent className="h-full overflow-hidden p-0 sm:max-w-xl">
-        <form onSubmit={submit} className="flex min-h-full flex-col">
+        <form id="custodia-drawer-form" onSubmit={submit} className="flex min-h-full flex-col">
           <DrawerHeader className="border-b px-6 py-5 text-left">
             <DrawerTitle>{title}</DrawerTitle>
             <DrawerDescription>Actualiza la trazabilidad física del objeto encontrado.</DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex-1 space-y-4 px-6 py-5">
+          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
             {mode === "crear" && (
               <>
                 <Field label="Caso encontrado">
@@ -313,44 +396,19 @@ function CustodiaDrawer({
                       setCasoId(value);
                       setObservacionesDraft(selectedCaseSummary(candidatos.find((caso) => caso.id === value)));
                     }}
-                    required
                   >
-                    <SelectTrigger><SelectValue placeholder="Selecciona un caso" /></SelectTrigger>
+                    <SelectTrigger aria-invalid={Boolean(errorFor("casoId"))} onBlur={() => touch("casoId")}><SelectValue placeholder="Selecciona un caso" /></SelectTrigger>
                     <SelectContent>
                       {candidatos.map((caso) => (
                         <SelectItem key={caso.id} value={caso.id}>{caso.codigo} · {caso.titulo}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <FieldError message={errorFor("casoId")} />
                 </Field>
-                {selectedCase && (
-                  <div className="rounded-lg border bg-slate-50 p-3 text-sm">
-                    {isCaseLoading ? (
-                      <div className="space-y-2">
-                        <Skeleton className="h-5 w-2/3" />
-                        <Skeleton className="h-4 w-full" />
-                        <Skeleton className="h-4 w-5/6" />
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <Skeleton className="h-10 w-full" />
-                          <Skeleton className="h-10 w-full" />
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <p className="font-medium text-slate-950">{selectedCase.titulo}</p>
-                        <p className="mt-1 line-clamp-3 text-slate-600">{selectedCase.descripcion}</p>
-                        <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-                          <div><dt className="text-xs text-slate-500">Código</dt><dd>{selectedCase.codigo}</dd></div>
-                          <div><dt className="text-xs text-slate-500">Categoría</dt><dd>{selectedCase.categoria_nombre ?? "Sin categoría"}</dd></div>
-                          <div><dt className="text-xs text-slate-500">Lugar reportado</dt><dd>{selectedCase.lugar_referencia}</dd></div>
-                          <div><dt className="text-xs text-slate-500">Marca/color</dt><dd>{[selectedCase.marca, selectedCase.color_principal].filter(Boolean).join(" · ") || "No indicado"}</dd></div>
-                        </dl>
-                      </>
-                    )}
-                  </div>
-                )}
+                {selectedCase && <CaseSummary caso={selectedCase} />}
                 <Field label="Tipo de objeto">
-                  <Select name="es_perecible" defaultValue="false">
+                  <Select value={esPerecible} onValueChange={setEsPerecible}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="false">Regular</SelectItem>
@@ -364,31 +422,50 @@ function CustodiaDrawer({
             {(mode === "crear" || mode === "editar") && (
               <>
                 <Field label="Ubicación física">
-                  <Input name="ubicacion_custodia" defaultValue={custodia?.ubicacion_custodia ?? ""} required placeholder="Ej. Estante B, casillero 04" />
+                  <Textarea
+                    value={ubicacion}
+                    onChange={(event) => setUbicacion(event.target.value)}
+                    onBlur={() => touch("ubicacion")}
+                    maxLength={LF_TEXT_LIMITS.custodia_ubicacion.max}
+                    aria-invalid={Boolean(errorFor("ubicacion"))}
+                    rows={3}
+                    placeholder="Ej. Estante B, casillero 04"
+                  />
+                  <CharCounter value={ubicacion} {...LF_TEXT_LIMITS.custodia_ubicacion} />
+                  <FieldError message={errorFor("ubicacion")} />
                 </Field>
                 <Field label="Observaciones">
-                  {isCaseLoading ? (
-                    <div className="space-y-2">
-                      <Skeleton className="h-20 w-full" />
-                    </div>
-                  ) : (
-                    <Textarea
-                      name="observaciones"
-                      value={mode === "crear" ? observacionesDraft : (custodia?.observaciones ?? "")}
-                      onChange={(event) => {
-                        if (mode === "crear") {
-                          setObservacionesDraft(event.target.value);
-                        }
-                      }}
-                      placeholder="Estado del objeto, embalaje, evidencia de recepcion"
-                    />
-                  )}
+                  <Textarea
+                    value={observacionesDraft}
+                    onChange={(event) => setObservacionesDraft(event.target.value)}
+                    onBlur={() => touch("observaciones")}
+                    maxLength={LF_TEXT_LIMITS.custodia_observaciones.max}
+                    aria-invalid={Boolean(errorFor("observaciones"))}
+                    rows={5}
+                    placeholder="Estado del objeto, embalaje, evidencia de recepción"
+                  />
+                  <CharCounter value={observacionesDraft} {...LF_TEXT_LIMITS.custodia_observaciones} />
+                  <FieldError message={errorFor("observaciones")} />
                 </Field>
+                {mode === "editar" && (
+                  <Field label="Fecha de vencimiento de custodia">
+                    <CustodyDateTimePicker
+                      value={fechaVencimiento}
+                      onChange={setFechaVencimiento}
+                      onBlur={() => touch("fechaVencimiento")}
+                      invalid={Boolean(errorFor("fechaVencimiento"))}
+                    />
+                    <p className="text-xs text-slate-500">El estado se recalculará según la fecha y la política vigente de custodia.</p>
+                    <FieldError message={errorFor("fechaVencimiento")} />
+                  </Field>
+                )}
               </>
             )}
 
             {mode === "trazabilidad" && custodia && (
-              <TraceTimeline custodia={custodia} caso={traceCase} loading={isPending && !traceCase} />
+              traceCase
+                ? <TraceTimeline custodia={custodia} caso={traceCase} />
+                : <TraceTimelineSkeleton />
             )}
 
             {mode === "devolver" && (
@@ -396,11 +473,11 @@ function CustodiaDrawer({
                 <Field label="ID del reclamante verificado">
                   <Input name="reclamante_id" required placeholder="UUID del usuario validado" />
                 </Field>
-                <Field label="Metodo de verificacion">
+                <Field label="Método de verificación">
                   <Input name="metodo_verificacion" required defaultValue="SSO_PUCP_CARNET" />
                 </Field>
                 <Field label="Observaciones">
-                  <Textarea name="observaciones" placeholder="Detalle de verificacion y entrega" />
+                  <Textarea name="observaciones" maxLength={2000} placeholder="Detalle de verificación y entrega" />
                 </Field>
               </>
             )}
@@ -408,13 +485,58 @@ function CustodiaDrawer({
             {mode === "descartar" && (
               <>
                 <Field label="Motivo">
-                  <Textarea name="motivo" required placeholder="Vencimiento, deterioro, donacion autorizada..." />
+                  <Select value={motivoId} onValueChange={setMotivoId}>
+                    <SelectTrigger aria-invalid={Boolean(errorFor("motivoId"))} onBlur={() => touch("motivoId")}>
+                      <SelectValue placeholder="Selecciona un motivo configurado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {motivosDescarte.map((motivo) => (
+                        <SelectItem key={motivo.id} value={motivo.id}>{motivo.nombre}</SelectItem>
+                      ))}
+                      <SelectItem value="OTRO">Otro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FieldError message={errorFor("motivoId")} />
                 </Field>
+                {motivoId === "OTRO" && (
+                  <Field label="Detalle del motivo">
+                    <Textarea
+                      value={motivoOtro}
+                      onChange={(event) => setMotivoOtro(event.target.value)}
+                      onBlur={() => touch("motivoOtro")}
+                      maxLength={LF_TEXT_LIMITS.descarte_motivo_otro.max}
+                      aria-invalid={Boolean(errorFor("motivoOtro"))}
+                      rows={4}
+                      placeholder="Describe el motivo del descarte"
+                    />
+                    <CharCounter value={motivoOtro} {...LF_TEXT_LIMITS.descarte_motivo_otro} />
+                    <FieldError message={errorFor("motivoOtro")} />
+                  </Field>
+                )}
                 <Field label="Destino">
-                  <Input name="destino_descarte" placeholder="Donacion, reciclaje, Oficina de Hallazgos" />
+                  <Textarea
+                    value={destinoDescarte}
+                    onChange={(event) => setDestinoDescarte(event.target.value)}
+                    onBlur={() => touch("destinoDescarte")}
+                    maxLength={LF_TEXT_LIMITS.descarte_destino.max}
+                    aria-invalid={Boolean(errorFor("destinoDescarte"))}
+                    rows={3}
+                    placeholder="Donación, reciclaje, Oficina de Hallazgos"
+                  />
+                  <CharCounter value={destinoDescarte} {...LF_TEXT_LIMITS.descarte_destino} />
+                  <FieldError message={errorFor("destinoDescarte")} />
                 </Field>
                 <Field label="Observaciones">
-                  <Textarea name="observaciones" />
+                  <Textarea
+                    value={observacionesDraft}
+                    onChange={(event) => setObservacionesDraft(event.target.value)}
+                    onBlur={() => touch("observaciones")}
+                    maxLength={LF_TEXT_LIMITS.descarte_observaciones.max}
+                    aria-invalid={Boolean(errorFor("observaciones"))}
+                    rows={5}
+                  />
+                  <CharCounter value={observacionesDraft} {...LF_TEXT_LIMITS.descarte_observaciones} />
+                  <FieldError message={errorFor("observaciones")} />
                 </Field>
               </>
             )}
@@ -423,28 +545,141 @@ function CustodiaDrawer({
           <DrawerFooter className="mt-auto border-t px-6 py-4">
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
             {mode !== "trazabilidad" && (
-              <Button type="submit" disabled={isPending}>
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Guardar
+              <Button type="submit" disabled={isPending} variant={mode === "descartar" ? "destructive" : "default"}>
+                {mode === "descartar" ? <Trash2 className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                {mode === "descartar" ? "Eliminar" : "Guardar"}
               </Button>
             )}
           </DrawerFooter>
         </form>
+        <AlertDialog open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar descarte del objeto</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción marcará la custodia como descartada y cerrará el caso asociado. La trazabilidad se conservará.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isPending}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => executeSubmit()} disabled={isPending} className="bg-rose-600 hover:bg-rose-700">
+                Eliminar objeto
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DrawerContent>
     </Drawer>
   );
 }
 
-function TraceTimeline({ custodia, caso, loading }: { custodia: CustodiaLf; caso: CasoLfDetail | null; loading?: boolean }) {
+function CaseSummary({ caso }: { caso: CasoLfListItem }) {
+  return (
+    <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+      <p className="font-medium text-slate-950">{caso.titulo}</p>
+      <p className="mt-1 line-clamp-3 text-slate-600">{caso.descripcion}</p>
+      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+        <div><dt className="text-xs text-slate-500">Código</dt><dd>{caso.codigo}</dd></div>
+        <div><dt className="text-xs text-slate-500">Categoría</dt><dd>{caso.categoria_nombre ?? "Sin categoría"}</dd></div>
+        <div><dt className="text-xs text-slate-500">Lugar reportado</dt><dd>{caso.lugar_referencia}</dd></div>
+        <div><dt className="text-xs text-slate-500">Marca/color</dt><dd>{[caso.marca, caso.color_principal].filter(Boolean).join(" · ") || "No indicado"}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+function CustodyDateTimePicker({
+  value,
+  onChange,
+  onBlur,
+  invalid,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  invalid?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedDate = parseDateTimeLocal(value);
+  const time = value.slice(11, 16) || "00:00";
+
+  const selectDate = (date?: Date) => {
+    if (!date) return;
+    const current = selectedDate ?? new Date();
+    date.setHours(current.getHours(), current.getMinutes(), 0, 0);
+    onChange(toDateTimeLocalValue(date));
+    setOpen(false);
+    onBlur();
+  };
+
+  const selectTime = (nextTime: string) => {
+    const [hours, minutes] = nextTime.split(":").map(Number);
+    const date = selectedDate ?? new Date();
+    date.setHours(hours || 0, minutes || 0, 0, 0);
+    onChange(toDateTimeLocalValue(date));
+  };
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem]">
+      <Popover
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (!nextOpen) onBlur();
+        }}
+      >
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            aria-invalid={invalid}
+            className="justify-start text-left font-normal aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
+          >
+            <CalendarDays className="mr-2 h-4 w-4 text-slate-500" />
+            {selectedDate ? formatPickerDate(selectedDate) : "Seleccionar fecha"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={selectDate}
+            defaultMonth={selectedDate}
+            locale={es}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+      <div className="relative">
+        <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+        <Input
+          type="time"
+          value={time}
+          onChange={(event) => selectTime(event.target.value)}
+          onBlur={onBlur}
+          aria-invalid={invalid}
+          className="pl-9"
+        />
+      </div>
+    </div>
+  );
+}
+
+function TraceTimeline({ custodia, caso }: { custodia: CustodiaLf; caso: CasoLfDetail }) {
   const events = [
-    { title: "Caso publicado", detail: caso ? `${caso.codigo} · ${caso.titulo}` : custodia.codigo ?? custodia.caso_id, at: caso?.created_at ?? custodia.created_at },
-    { title: "Ingreso a custodia", detail: custodia.ubicacion_custodia, at: custodia.fecha_recepcion },
-    ...(caso?.historial ?? []).map((item) => ({
+    { title: "Caso publicado", detail: `${caso.codigo} · ${caso.titulo}`, at: caso.created_at },
+    { estado: "EN_CUSTODIA", detail: custodia.ubicacion_custodia, at: custodia.fecha_recepcion },
+    ...caso.historial.map((item) => ({
+      estado: item.estado_nuevo,
       title: estadoLabel(item.estado_nuevo),
       detail: item.comentario || item.accion,
       at: item.created_at,
     })),
-    ...(custodia.reclamante_id ? [{ title: "Devolucion registrada", detail: custodia.metodo_verificacion ?? "Verificacion operativa", at: custodia.updated_at }] : []),
+    ...(custodia.reclamante_id ? [{
+      estado: "DEVUELTO",
+      detail: custodia.metodo_verificacion ?? "Verificación operativa",
+      at: custodia.updated_at,
+    }] : []),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
   return (
@@ -452,26 +687,45 @@ function TraceTimeline({ custodia, caso, loading }: { custodia: CustodiaLf; caso
       <div className="rounded-lg border bg-slate-50 p-3 text-sm">
         <p className="font-medium text-slate-950">{custodia.codigo ?? custodia.caso_id}</p>
         <p className="text-slate-600">{custodia.titulo ?? "Objeto encontrado"}</p>
-        <p className="mt-2 text-xs text-slate-500">Vence: {formatDate(custodia.fecha_vencimiento)}</p>
+        <p className="mt-2 text-xs text-slate-500">Vence: {formatDateTimePe(custodia.fecha_vencimiento)}</p>
       </div>
-      {loading && (
-        <div className="space-y-2">
-          <Skeleton className="h-5 w-2/3" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-5/6" />
-        </div>
-      )}
       <div className="space-y-0">
         {events.map((event, index) => (
-          <div key={`${event.title}-${event.at}-${index}`} className="grid grid-cols-[18px_1fr] gap-3">
+          <div key={`${event.estado ?? event.title}-${event.at}-${index}`} className="grid grid-cols-[18px_1fr] gap-3">
             <div className="flex flex-col items-center">
               <span className="mt-1 h-3 w-3 rounded-full bg-[#001C55]" />
               {index < events.length - 1 && <span className="h-full min-h-10 w-px bg-slate-200" />}
             </div>
             <div className="pb-4">
-              <p className="text-sm font-medium text-slate-950">{event.title}</p>
+              {event.estado
+                ? <EstadoLfBadge estado={event.estado} />
+                : <p className="text-sm font-medium text-slate-950">{event.title}</p>}
               <p className="text-sm text-slate-600">{event.detail}</p>
-              <p className="mt-1 text-xs text-slate-500">{formatDate(event.at)}</p>
+              <p className="mt-1 text-xs text-slate-500">{formatDateTimePe(event.at)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TraceTimelineSkeleton() {
+  return (
+    <div className="space-y-5" aria-label="Cargando trazabilidad">
+      <div className="space-y-2 rounded-lg border bg-slate-50 p-3">
+        <Skeleton className="h-5 w-36" />
+        <Skeleton className="h-4 w-4/5" />
+        <Skeleton className="h-3 w-44" />
+      </div>
+      <div className="space-y-5">
+        {[0, 1, 2, 3].map((item) => (
+          <div key={item} className="grid grid-cols-[18px_1fr] gap-3">
+            <Skeleton className="mt-1 h-3 w-3 rounded-full" />
+            <div className="space-y-2 pb-3">
+              <Skeleton className="h-5 w-28 rounded-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-32" />
             </div>
           </div>
         ))}
@@ -487,6 +741,57 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </div>
   );
+}
+
+function FieldError({ message }: { message?: string }) {
+  return message ? <p className="text-xs font-medium text-rose-600">{message}</p> : null;
+}
+
+function validateCustodiaForm({
+  mode,
+  casoId,
+  ubicacion,
+  observaciones,
+  fechaVencimiento,
+  motivoId,
+  motivoOtro,
+  destinoDescarte,
+  motivoRequiereObservacion,
+}: {
+  mode: "crear" | "editar" | "devolver" | "descartar" | "trazabilidad" | null;
+  casoId: string;
+  ubicacion: string;
+  observaciones: string;
+  fechaVencimiento: string;
+  motivoId: string;
+  motivoOtro: string;
+  destinoDescarte: string;
+  motivoRequiereObservacion: boolean;
+}) {
+  const errors: Record<string, string> = {};
+  if (mode === "crear" && !casoId) errors.casoId = "Selecciona un caso encontrado.";
+  if (mode === "crear" || mode === "editar") {
+    const locationLength = ubicacion.trim().length;
+    if (locationLength < LF_TEXT_LIMITS.custodia_ubicacion.min) {
+      errors.ubicacion = `La ubicación debe tener al menos ${LF_TEXT_LIMITS.custodia_ubicacion.min} caracteres.`;
+    }
+    if (ubicacion.length > LF_TEXT_LIMITS.custodia_ubicacion.max) errors.ubicacion = "La ubicación supera el límite permitido.";
+    if (observaciones.length > LF_TEXT_LIMITS.custodia_observaciones.max) errors.observaciones = "Las observaciones superan el límite permitido.";
+  }
+  if (mode === "editar" && (!fechaVencimiento || Number.isNaN(new Date(fechaVencimiento).getTime()))) {
+    errors.fechaVencimiento = "Ingresa una fecha de vencimiento válida.";
+  }
+  if (mode === "descartar") {
+    if (!motivoId) errors.motivoId = "Selecciona un motivo de descarte.";
+    if (motivoId === "OTRO" && motivoOtro.trim().length < LF_TEXT_LIMITS.descarte_motivo_otro.min) {
+      errors.motivoOtro = `Detalla el motivo con al menos ${LF_TEXT_LIMITS.descarte_motivo_otro.min} caracteres.`;
+    }
+    if (motivoOtro.length > LF_TEXT_LIMITS.descarte_motivo_otro.max) errors.motivoOtro = "El motivo supera el límite permitido.";
+    if (destinoDescarte.length > LF_TEXT_LIMITS.descarte_destino.max) errors.destinoDescarte = "El destino supera el límite permitido.";
+    if (observaciones.length > LF_TEXT_LIMITS.descarte_observaciones.max) errors.observaciones = "Las observaciones superan el límite permitido.";
+    if (motivoRequiereObservacion && !observaciones.trim()) errors.observaciones = "Este motivo configurado requiere observaciones.";
+  }
+  return errors;
 }
 
 function selectedCaseSummary(caso?: CasoLfListItem) {
@@ -508,8 +813,25 @@ function optional(value: FormDataEntryValue | null) {
   return text || undefined;
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" });
+function parseDateTimeLocal(value: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function formatPickerDate(date: Date) {
+  return new Intl.DateTimeFormat("es-PE", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function toDateTimeLocalValue(value: string | Date) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
 }
 
 function isExpired(value: string) {
