@@ -106,6 +106,18 @@ export interface AlertaListResponse {
   total: number;
 }
 
+export interface AlertaDestinatarioItem {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+}
+
+export interface AlertaDestinatariosResponse {
+  items: AlertaDestinatarioItem[];
+  total: number;
+}
+
 export interface AlertaPublishResponse {
   alerta: AlertaDetail;
   destinatarios: number;

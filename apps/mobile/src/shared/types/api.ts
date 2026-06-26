@@ -40,6 +40,9 @@ export type IncidentListItem = {
   lugar_referencia?: string | null;
   latitud?: number | null;
   longitud?: number | null;
+  live_location_enabled?: boolean;
+  live_location_updated_at?: string | null;
+  live_location_expires_at?: string | null;
   canal_origen: "WEB" | "MOVIL" | "MENSAJERIA";
   operador_nombre?: string | null;
   operador_avatar_url?: string | null;
@@ -74,6 +77,7 @@ export type IncidentDetail = IncidentListItem & {
   }>;
   comentarios: Array<{
     id: string;
+    autor?: { id: string; nombre_completo: string; email?: string | null } | null;
     contenido: string;
     es_interno: boolean;
     created_at: string;

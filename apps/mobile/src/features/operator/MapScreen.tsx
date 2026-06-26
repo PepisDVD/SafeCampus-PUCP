@@ -1,16 +1,62 @@
+import { useMemo, useRef } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { Badge, Card, Label, SectionHeader, colors, spacing } from "@safecampus/ui-native";
+import MapView, { Marker, type Region } from "react-native-maps";
+import { Badge, Button, Card, Label, SectionHeader, colors, spacing } from "@safecampus/ui-native";
 
 import { IncidentCard } from "./IncidentCard";
 import { severityTone } from "./operator-format";
+import { useOperatorLocation } from "./use-operator-location";
 import type { useOperatorData } from "./use-operator-data";
 
 type OperatorData = ReturnType<typeof useOperatorData>;
 
+/** Centro por defecto (PUCP, Lima) cuando aún no hay lectura de GPS. */
+const FALLBACK_REGION: Region = {
+  latitude: -12.06861,
+  longitude: -77.07972,
+  latitudeDelta: 0.02,
+  longitudeDelta: 0.02,
+};
+
+const PIN_COLORS: Record<string, string> = {
+  danger: colors.danger,
+  warning: colors.warning,
+  info: colors.info,
+  success: colors.success,
+};
+
 export function MapScreen({ data }: { data: OperatorData }) {
+  const location = useOperatorLocation();
+  const mapRef = useRef<MapView | null>(null);
+
   const geocoded = data.activeIncidents.filter(
     (item) => item.latitud !== null && item.latitud !== undefined && item.longitud !== null && item.longitud !== undefined,
   );
+
+  const initialRegion = useMemo<Region>(() => {
+    if (location.coords) {
+      return {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+    }
+    return FALLBACK_REGION;
+  }, [location.coords]);
+
+  const centerOnMe = () => {
+    if (!location.coords) return;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      },
+      500,
+    );
+  };
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -19,29 +65,52 @@ export function MapScreen({ data }: { data: OperatorData }) {
         <Label tone="muted">{geocoded.length} incidentes con coordenadas</Label>
       </View>
 
-      <Card style={styles.map}>
-        <View style={styles.mapGrid}>
-          {geocoded.map((incident, index) => (
-            <View
-              key={incident.id}
-              style={[
-                styles.pin,
-                styles[`pin_${severityTone(incident.severidad)}`],
-                {
-                  left: `${18 + ((index * 23) % 64)}%`,
-                  top: `${18 + ((index * 31) % 56)}%`,
-                },
-              ]}
-            >
-              <Label size="xs" weight="900">!</Label>
-            </View>
-          ))}
-          <View style={styles.location}>
-            <View style={styles.locationDot} />
-            <Label size="xs" tone="info" weight="800">Mi posicion</Label>
+      {location.permission === "granted" ? (
+        <Card style={styles.map}>
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFill}
+            initialRegion={initialRegion}
+            showsUserLocation
+            showsMyLocationButton={false}
+            showsCompass
+          >
+            {geocoded.map((incident) => (
+              <Marker
+                key={incident.id}
+                coordinate={{ latitude: incident.latitud as number, longitude: incident.longitud as number }}
+                title={incident.titulo}
+                description={incident.lugar_referencia ?? incident.codigo}
+                pinColor={PIN_COLORS[severityTone(incident.severidad)] ?? colors.info}
+                onCalloutPress={() => data.openIncident(incident)}
+              />
+            ))}
+          </MapView>
+          <View style={styles.mapActions}>
+            <Button variant="primary" onPress={centerOnMe} style={styles.locateButton}>
+              <Label size="xs" weight="800">Mi ubicacion</Label>
+            </Button>
           </View>
-        </View>
-      </Card>
+        </Card>
+      ) : (
+        <Card style={styles.permissionCard}>
+          <Label weight="800">Ubicacion desactivada</Label>
+          <Label tone="muted" size="sm">
+            {location.permission === "blocked"
+              ? "El permiso de ubicacion esta bloqueado. Habilitalo desde los ajustes del sistema."
+              : "Necesitamos tu ubicacion para mostrarte el mapa y los incidentes cercanos."}
+          </Label>
+          {location.permission === "blocked" ? (
+            <Button variant="primary" onPress={() => void location.openSettings()}>
+              <Label size="sm" weight="800">Abrir ajustes</Label>
+            </Button>
+          ) : (
+            <Button variant="primary" onPress={() => void location.request()}>
+              <Label size="sm" weight="800">Permitir ubicacion</Label>
+            </Button>
+          )}
+        </Card>
+      )}
 
       <View style={styles.legend}>
         <Badge tone="danger">Critico</Badge>
@@ -76,47 +145,19 @@ const styles = StyleSheet.create({
     height: 330,
     overflow: "hidden",
     padding: 0,
-  },
-  mapGrid: {
-    backgroundColor: "#122033",
-    flex: 1,
     position: "relative",
   },
-  pin: {
-    alignItems: "center",
-    borderColor: colors.text,
-    borderRadius: 999,
-    borderWidth: 2,
-    height: 28,
-    justifyContent: "center",
+  mapActions: {
+    bottom: spacing.sm,
     position: "absolute",
-    width: 28,
+    right: spacing.sm,
   },
-  pin_danger: {
-    backgroundColor: colors.danger,
+  locateButton: {
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
   },
-  pin_warning: {
-    backgroundColor: colors.warning,
-  },
-  pin_info: {
-    backgroundColor: colors.info,
-  },
-  pin_success: {
-    backgroundColor: colors.success,
-  },
-  location: {
-    alignItems: "center",
-    left: "47%",
-    position: "absolute",
-    top: "48%",
-  },
-  locationDot: {
-    backgroundColor: colors.info,
-    borderColor: colors.text,
-    borderRadius: 999,
-    borderWidth: 2,
-    height: 18,
-    width: 18,
+  permissionCard: {
+    gap: spacing.sm,
   },
   legend: {
     flexDirection: "row",

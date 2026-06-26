@@ -17,6 +17,8 @@ from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.notificacion_repository import NotificacionRepository
 from app.schemas.alerta import (
     AlertaCreateInput,
+    AlertaDestinatarioItem,
+    AlertaDestinatariosResponse,
     AlertaDetail,
     AlertaEntregaItem,
     AlertaEventoItem,
@@ -51,6 +53,23 @@ class AlertaService:
             limit=max(1, min(limit, 200)),
         )
         return AlertaListResponse(items=[self._map_list_item(row) for row in rows], total=len(rows))
+
+    async def listar_destinatarios(
+        self, *, search: str | None = None, limit: int = 100
+    ) -> AlertaDestinatariosResponse:
+        rows = await self._repo.list_usuarios_comunidad(
+            search=search, limit=max(1, min(limit, 200))
+        )
+        items = [
+            AlertaDestinatarioItem(
+                id=str(row["id"]),
+                nombre=row["nombre"],
+                apellido=row["apellido"],
+                email=row["email"],
+            )
+            for row in rows
+        ]
+        return AlertaDestinatariosResponse(items=items, total=len(items))
 
     async def obtener(self, alerta_id: str) -> AlertaDetail:
         self._validate_uuid(alerta_id)

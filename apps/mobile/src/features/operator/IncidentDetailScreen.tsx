@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
+import MapView, { Marker, type Region } from "react-native-maps";
 import { Badge, Button, Card, Field, Label, SectionHeader, colors, spacing } from "@safecampus/ui-native";
 
 import type { IncidentDetail, IncidentStatus } from "../../shared/types/api";
@@ -18,6 +19,20 @@ export function IncidentDetailScreen({
 }) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const hasCoordinates =
+    typeof incident.latitud === "number" && typeof incident.longitud === "number";
+  const incidentRegion: Region | null = hasCoordinates
+    ? {
+        latitude: incident.latitud as number,
+        longitude: incident.longitud as number,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
+      }
+    : null;
+  const liveLocationIsFresh =
+    incident.live_location_enabled &&
+    (!incident.live_location_expires_at ||
+      Date.parse(incident.live_location_expires_at) > Date.now());
 
   const saveNote = async () => {
     setSaving(true);
@@ -52,17 +67,69 @@ export function IncidentDetailScreen({
             {incident.severidad ? severityLabel[incident.severidad] : "Sin severidad"}
           </Badge>
           <Badge tone="info">{statusLabel[incident.estado]}</Badge>
+          {liveLocationIsFresh ? (
+            <Badge tone="success">Ubicacion en vivo</Badge>
+          ) : null}
         </View>
       </Card>
 
       <Card style={styles.block}>
         <Info label="Ubicacion" value={incident.lugar_referencia ?? "Sin referencia"} />
+        <Info
+          label="Coordenadas"
+          value={
+            hasCoordinates
+              ? `${(incident.latitud as number).toFixed(6)}, ${(incident.longitud as number).toFixed(6)}`
+              : "No disponibles"
+          }
+        />
         <Info label="Categoria" value={incident.categoria ?? "Sin categoria"} />
         <Info label="Canal" value={incident.canal_origen} />
         <Info label="Reportante" value={incident.reportante?.nombre_completo ?? "No disponible"} />
         <Info label="Operador" value={incident.operador_asignado?.nombre_completo ?? "Sin asignar"} />
+        <Info
+          label="Ultima ubicacion"
+          value={
+            incident.live_location_updated_at
+              ? formatTime(incident.live_location_updated_at)
+              : "No registrada"
+          }
+        />
         <Info label="Hora" value={formatTime(incident.created_at)} />
       </Card>
+
+      <SectionHeader title="Ubicacion del reportante" />
+      {incidentRegion ? (
+        <Card style={styles.mapCard}>
+          <MapView
+            style={StyleSheet.absoluteFill}
+            initialRegion={incidentRegion}
+            region={incidentRegion}
+            scrollEnabled={false}
+            rotateEnabled={false}
+            pitchEnabled={false}
+            zoomEnabled={false}
+            showsCompass={false}
+          >
+            <Marker
+              coordinate={{
+                latitude: incidentRegion.latitude,
+                longitude: incidentRegion.longitude,
+              }}
+              title={incident.titulo}
+              description={incident.lugar_referencia ?? incident.codigo}
+              pinColor={colors.danger}
+            />
+          </MapView>
+        </Card>
+      ) : (
+        <Card style={styles.emptyLocation}>
+          <Label weight="800">Sin coordenadas</Label>
+          <Label tone="muted" size="sm">
+            Este reporte no incluye ubicacion GPS o zona georreferenciada.
+          </Label>
+        </Card>
+      )}
 
       <Card>
         <Label size="xs" tone="muted" weight="800">DESCRIPCION</Label>
@@ -95,19 +162,32 @@ export function IncidentDetailScreen({
         <Label weight="900">Guardar nota</Label>
       </Button>
 
+      <SectionHeader title={`Comunicacion (${incident.comentarios.length})`} />
+      {incident.comentarios.length === 0 ? (
+        <Label tone="muted" size="sm">Sin mensajes en este incidente.</Label>
+      ) : (
+        incident.comentarios.map((comment) => (
+          <Card key={comment.id} style={styles.timelineItem}>
+            <View style={styles.commentHeader}>
+              <Label weight="800" size="sm">
+                {comment.autor?.nombre_completo ?? "Sistema"}
+              </Label>
+              <Badge tone={comment.es_interno ? "warning" : "info"}>
+                {comment.es_interno ? "Interno" : "Publico"}
+              </Badge>
+            </View>
+            <Label tone="muted" size="xs">{formatTime(comment.created_at)}</Label>
+            <Label size="sm">{comment.contenido}</Label>
+          </Card>
+        ))
+      )}
+
       <SectionHeader title="Historial" />
       {incident.historial.map((event) => (
         <Card key={event.id} style={styles.timelineItem}>
           <Label weight="800">{event.accion}</Label>
           <Label tone="muted" size="xs">{formatTime(event.created_at)} - {statusLabel[event.estado_nuevo]}</Label>
           {event.comentario ? <Label size="sm">{event.comentario}</Label> : null}
-        </Card>
-      ))}
-
-      {incident.comentarios.map((comment) => (
-        <Card key={comment.id} style={styles.timelineItem}>
-          <Label tone="muted" size="xs">Nota interna - {formatTime(comment.created_at)}</Label>
-          <Label size="sm">{comment.contenido}</Label>
         </Card>
       ))}
     </ScrollView>
@@ -146,6 +226,9 @@ const styles = StyleSheet.create({
   block: {
     gap: spacing.sm,
   },
+  emptyLocation: {
+    gap: spacing.xs,
+  },
   infoRow: {
     flexDirection: "row",
     gap: spacing.md,
@@ -167,8 +250,19 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     textAlignVertical: "top",
   },
+  mapCard: {
+    height: 240,
+    overflow: "hidden",
+    padding: 0,
+  },
   timelineItem: {
     gap: spacing.xs,
     padding: spacing.md,
+  },
+  commentHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "space-between",
   },
 });

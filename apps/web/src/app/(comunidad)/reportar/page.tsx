@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -42,6 +42,7 @@ import {
   type CampusZoneLocation,
   type IncidenteCreated,
   type IncidenteCreateInput,
+  type IncidenteLiveLocationUpdate,
   type UbicacionMaestra,
 } from "@safecampus/shared-types";
 
@@ -100,7 +101,7 @@ function toZoneLocation(u: UbicacionMaestra): CampusZoneLocation {
   return { id: u.id, label: u.nombre, latitud: u.latitud, longitud: u.longitud };
 }
 
-type LocationSource = "zona" | "gps";
+type LocationSource = "zona" | "gps" | "live";
 
 export default function ReportarPage() {
   const router = useRouter();
@@ -108,7 +109,11 @@ export default function ReportarPage() {
     location,
     loading: ubicando,
     error: ubicacionError,
+    watching: ubicacionEnVivo,
+    lastUpdatedAt: ubicacionActualizadaEn,
     requestLocation,
+    startLiveLocation,
+    stopLiveLocation,
     clearLocation,
   } = useGeolocation();
   const [step, setStep] = useState<Step>(0);
@@ -121,8 +126,15 @@ export default function ReportarPage() {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creado, setCreado] = useState<IncidenteCreated | null>(null);
+  const [liveTrackingActive, setLiveTrackingActive] = useState(false);
+  const [liveTrackingError, setLiveTrackingError] = useState<string | null>(null);
   const [zonasCampus, setZonasCampus] =
     useState<CampusZoneLocation[]>(FALLBACK_ZONAS);
+  const latestLocationRef = useRef(location);
+
+  useEffect(() => {
+    latestLocationRef.current = location;
+  }, [location]);
 
   useEffect(() => {
     api
@@ -138,13 +150,44 @@ export default function ReportarPage() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!creado || !liveTrackingActive) return undefined;
+
+    const sendCurrentLocation = async () => {
+      const currentLocation = latestLocationRef.current;
+      if (!currentLocation) return;
+      const payload: IncidenteLiveLocationUpdate = {
+        latitud: currentLocation.latitud,
+        longitud: currentLocation.longitud,
+        precision_metros: currentLocation.precision_metros,
+        activo: true,
+      };
+      try {
+        await api.patch(`/incidentes/${creado.id}/ubicacion-live`, payload);
+        setLiveTrackingError(null);
+      } catch (e) {
+        setLiveTrackingError(
+          e instanceof Error
+            ? e.message
+            : "No se pudo actualizar tu ubicacion en vivo.",
+        );
+      }
+    };
+
+    void sendCurrentLocation();
+    const interval = window.setInterval(() => void sendCurrentLocation(), 5000);
+    return () => window.clearInterval(interval);
+  }, [creado, liveTrackingActive]);
+
   const puedeContinuar = useMemo(() => {
     if (step === 0) return Boolean(tipo);
     if (step === 1) return true;
     if (step === 2) return true;
-    if (step === 3) return Boolean(zona);
+    if (step === 3) {
+      return Boolean(zona) || (locationSource === "live" && Boolean(location));
+    }
     return true;
-  }, [step, tipo, zona]);
+  }, [location, locationSource, step, tipo, zona]);
 
   const siguiente = () => {
     if (!puedeContinuar || step === 4) return;
@@ -163,6 +206,9 @@ export default function ReportarPage() {
     setDescripcion("");
     setZona("");
     setLocationSource("zona");
+    stopLiveLocation();
+    setLiveTrackingActive(false);
+    setLiveTrackingError(null);
     setReferencia("");
     setError(null);
     setCreado(null);
@@ -176,7 +222,7 @@ export default function ReportarPage() {
     const tipoSeleccionado = tiposIncidente.find((t) => t.id === tipo);
     const zonaSeleccionada = zonasCampus.find((item) => item.id === zona);
     const activeLocation =
-      locationSource === "gps" && location
+      (locationSource === "gps" || locationSource === "live") && location
         ? {
             latitud: location.latitud,
             longitud: location.longitud,
@@ -185,11 +231,14 @@ export default function ReportarPage() {
           ? {
               latitud: zonaSeleccionada.latitud,
               longitud: zonaSeleccionada.longitud,
-            }
-          : null;
+          }
+        : null;
+    const lugarBase =
+      zonaSeleccionada?.label ??
+      (locationSource === "live" ? "Ubicacion GPS en vivo" : zona);
     const lugar = referencia.trim()
-      ? `${zonaSeleccionada?.label ?? zona} - ${referencia.trim()}`
-      : (zonaSeleccionada?.label ?? zona);
+      ? `${lugarBase} - ${referencia.trim()}`
+      : lugarBase;
 
     const payload: IncidenteCreateInput = {
       titulo: tipoSeleccionado?.titulo ?? "Incidente reportado",
@@ -203,6 +252,9 @@ export default function ReportarPage() {
 
     try {
       const result = await api.post<IncidenteCreated>("/incidentes/", payload);
+      if (locationSource === "live" && location) {
+        setLiveTrackingActive(true);
+      }
       setCreado(result);
       setStep(4);
       router.refresh();
@@ -210,6 +262,22 @@ export default function ReportarPage() {
       setError(e instanceof Error ? e.message : "No se pudo registrar el reporte.");
     } finally {
       setEnviando(false);
+    }
+  };
+
+  const detenerUbicacionEnVivo = async () => {
+    if (!creado) return;
+    setLiveTrackingActive(false);
+    stopLiveLocation();
+    try {
+      await api.post(`/incidentes/${creado.id}/ubicacion-live/stop`);
+      setLiveTrackingError(null);
+    } catch (e) {
+      setLiveTrackingError(
+        e instanceof Error
+          ? e.message
+          : "No se pudo detener la ubicacion en vivo en el servidor.",
+      );
     }
   };
 
@@ -228,6 +296,36 @@ export default function ReportarPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            {liveTrackingActive && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                <p className="font-medium">Ubicacion en vivo activa</p>
+                <p className="text-xs">
+                  El operador vera tu ultima posicion mientras esta pantalla siga
+                  abierta.
+                </p>
+                {location && (
+                  <p className="mt-1 text-xs">
+                    Ultimo punto: {location.latitud.toFixed(6)},{" "}
+                    {location.longitud.toFixed(6)}
+                  </p>
+                )}
+              </div>
+            )}
+            {liveTrackingError && (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                {liveTrackingError}
+              </p>
+            )}
+            {liveTrackingActive && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={detenerUbicacionEnVivo}
+              >
+                Detener ubicacion en vivo
+              </Button>
+            )}
             <Button asChild className="w-full bg-[#001C55] hover:bg-[#032E84]">
               <Link href="/mis-casos">Ver mis casos</Link>
             </Button>
@@ -371,6 +469,7 @@ export default function ReportarPage() {
                   value={zona}
                   onValueChange={(value) => {
                     setZona(value);
+                    stopLiveLocation();
                     setLocationSource("zona");
                   }}
                 >
@@ -403,28 +502,53 @@ export default function ReportarPage() {
                       Ubicacion del incidente
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      La zona seleccionada se usara como ubicacion aproximada.
-                      Puedes reemplazarla con tu GPS actual.
+                      Puedes seleccionar una zona o compartir tu GPS en vivo.
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      const result = await requestLocation();
-                      if (result) setLocationSource("gps");
-                    }}
-                    disabled={ubicando}
-                    className="gap-1.5"
-                  >
-                    {ubicando ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Navigation className="h-4 w-4" />
-                    )}
-                    Usar mi ubicacion
-                  </Button>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        stopLiveLocation();
+                        const result = await requestLocation();
+                        if (result) setLocationSource("gps");
+                      }}
+                      disabled={ubicando}
+                      className="gap-1.5"
+                    >
+                      {ubicando && !ubicacionEnVivo ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Navigation className="h-4 w-4" />
+                      )}
+                      GPS actual
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={ubicacionEnVivo ? "secondary" : "outline"}
+                      size="sm"
+                      onClick={async () => {
+                        if (ubicacionEnVivo) {
+                          stopLiveLocation();
+                          setLocationSource(location ? "gps" : "zona");
+                          return;
+                        }
+                        const result = await startLiveLocation();
+                        if (result) setLocationSource("live");
+                      }}
+                      disabled={ubicando && !ubicacionEnVivo}
+                      className="gap-1.5"
+                    >
+                      {ubicando && !ubicacionEnVivo ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Navigation className="h-4 w-4" />
+                      )}
+                      {ubicacionEnVivo ? "Detener en vivo" : "GPS en vivo"}
+                    </Button>
+                  </div>
                 </div>
                 {zona && (
                   <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
@@ -435,13 +559,23 @@ export default function ReportarPage() {
                 {location && (
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
                     <span>
-                      GPS capturado: {location.latitud.toFixed(6)},{" "}
+                      {locationSource === "live" ? "GPS en vivo" : "GPS capturado"}
+                      : {location.latitud.toFixed(6)},{" "}
                       {location.longitud.toFixed(6)}
                       {location.precision_metros
                         ? ` (${Math.round(location.precision_metros)} m aprox.)`
                         : ""}
+                      {locationSource === "live" && ubicacionActualizadaEn
+                        ? ` - actualizado ${new Date(
+                            ubicacionActualizadaEn,
+                          ).toLocaleTimeString("es-PE", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}`
+                        : ""}
                     </span>
-                    {locationSource === "gps" ? (
+                    {locationSource === "gps" || locationSource === "live" ? (
                       <Button
                         type="button"
                         variant="ghost"
@@ -460,10 +594,10 @@ export default function ReportarPage() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => setLocationSource("gps")}
+                        onClick={() => setLocationSource(ubicacionEnVivo ? "live" : "gps")}
                         className="h-7 px-2 text-emerald-800"
                       >
-                        Usar GPS
+                        {ubicacionEnVivo ? "Usar en vivo" : "Usar GPS"}
                       </Button>
                     )}
                   </div>
@@ -494,11 +628,17 @@ export default function ReportarPage() {
                       (item) => item.id === zona,
                     );
                     const activeLocation =
-                      locationSource === "gps" && location
+                      (locationSource === "gps" || locationSource === "live") && location
                         ? location
                         : zonaSeleccionada;
+                    const sourceLabel =
+                      locationSource === "live"
+                        ? "GPS en vivo"
+                        : locationSource === "gps"
+                          ? "GPS"
+                          : "zona";
                     return activeLocation
-                      ? `${activeLocation.latitud.toFixed(5)}, ${activeLocation.longitud.toFixed(5)} (${locationSource === "gps" ? "GPS" : "zona"})`
+                      ? `${activeLocation.latitud.toFixed(5)}, ${activeLocation.longitud.toFixed(5)} (${sourceLabel})`
                       : "Sin coordenadas";
                   })()}
                 </p>

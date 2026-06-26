@@ -95,6 +95,18 @@ export function buildMockDetail(item: IncidentListItem): IncidentDetail {
         created_at: item.created_at ?? new Date().toISOString(),
       },
     ],
-    comentarios: [],
+    comentarios: [
+      {
+        id: "com-1",
+        autor: {
+          id: "supervisor",
+          nombre_completo: "Maria Flores (Supervisor)",
+          email: "supervisor.seguridad@example.com",
+        },
+        contenido: "Operador, prioriza este caso y confirma cuando llegues al punto.",
+        es_interno: true,
+        created_at: item.created_at ?? new Date().toISOString(),
+      },
+    ],
   };
 }
