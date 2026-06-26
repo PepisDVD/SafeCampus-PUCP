@@ -53,6 +53,10 @@ import {
   TableHeader,
   TableRow,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@safecampus/ui-kit";
 import { toast } from "@safecampus/ui-kit";
@@ -120,6 +124,29 @@ const SEVERIDADES = [
   NivelSeveridad.ALTO,
   NivelSeveridad.CRITICO,
 ];
+
+// Estados en los que cada accion tiene sentido (reglas de negocio del backend).
+const ESTADOS_EDITABLES = new Set<EstadoAlertaCampus>([
+  EstadoAlertaCampus.BORRADOR,
+  EstadoAlertaCampus.PROGRAMADA,
+  EstadoAlertaCampus.PENDIENTE_APROBACION,
+]);
+const ESTADOS_PUBLICABLES = new Set<EstadoAlertaCampus>([
+  EstadoAlertaCampus.BORRADOR,
+  EstadoAlertaCampus.PROGRAMADA,
+  EstadoAlertaCampus.PENDIENTE_APROBACION,
+]);
+const ESTADOS_ACTIVOS = new Set<EstadoAlertaCampus>([
+  EstadoAlertaCampus.ACTIVA,
+  EstadoAlertaCampus.EN_ATENCION,
+  EstadoAlertaCampus.ENVIADA,
+]);
+const ESTADOS_TERMINALES = new Set<EstadoAlertaCampus>([
+  EstadoAlertaCampus.ATENDIDA,
+  EstadoAlertaCampus.FINALIZADA,
+  EstadoAlertaCampus.CANCELADA,
+  EstadoAlertaCampus.EXPIRADA,
+]);
 
 function splitValues(value: string): string[] {
   return value
@@ -276,6 +303,7 @@ export function AlertasClient({ initialData, ubicaciones }: Props) {
   };
 
   return (
+    <TooltipProvider delayDuration={200}>
     <div className="space-y-5 p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -390,21 +418,53 @@ export function AlertasClient({ initialData, ubicaciones }: Props) {
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => openDetail(item)}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => openEdit(item)} disabled={isPending}>
-                          <SquarePen className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => runAction(item, "publicar")} disabled={isPending}>
-                          <Send className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => runAction(item, "finalizar")} disabled={isPending}>
-                          <CheckCircle2 className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="text-red-600" onClick={() => runAction(item, "cancelar")} disabled={isPending}>
-                          <XCircle className="h-4 w-4" />
-                        </Button>
+                        <ActionButton
+                          icon={Eye}
+                          label="Ver detalle"
+                          onClick={() => openDetail(item)}
+                          disabled={isPending}
+                        />
+                        <ActionButton
+                          icon={SquarePen}
+                          label={
+                            ESTADOS_EDITABLES.has(item.estado)
+                              ? "Editar"
+                              : "Editar — solo disponible en borrador"
+                          }
+                          onClick={() => openEdit(item)}
+                          disabled={isPending || !ESTADOS_EDITABLES.has(item.estado)}
+                        />
+                        <ActionButton
+                          icon={Send}
+                          label={
+                            ESTADOS_PUBLICABLES.has(item.estado)
+                              ? "Publicar (enviar)"
+                              : "Publicar — la alerta ya fue publicada o está cerrada"
+                          }
+                          onClick={() => runAction(item, "publicar")}
+                          disabled={isPending || !ESTADOS_PUBLICABLES.has(item.estado)}
+                        />
+                        <ActionButton
+                          icon={CheckCircle2}
+                          label={
+                            ESTADOS_ACTIVOS.has(item.estado)
+                              ? "Finalizar alerta"
+                              : "Finalizar — solo disponible para alertas activas"
+                          }
+                          onClick={() => runAction(item, "finalizar")}
+                          disabled={isPending || !ESTADOS_ACTIVOS.has(item.estado)}
+                        />
+                        <ActionButton
+                          icon={XCircle}
+                          label={
+                            ESTADOS_TERMINALES.has(item.estado)
+                              ? "Cancelar — la alerta ya está cerrada"
+                              : "Cancelar alerta"
+                          }
+                          onClick={() => runAction(item, "cancelar")}
+                          disabled={isPending || ESTADOS_TERMINALES.has(item.estado)}
+                          className="text-red-600"
+                        />
                       </div>
                     </TableCell>
                   </TableRow>
@@ -550,6 +610,41 @@ export function AlertasClient({ initialData, ubicaciones }: Props) {
         </DrawerContent>
       </Drawer>
     </div>
+    </TooltipProvider>
+  );
+}
+
+function ActionButton({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+  className,
+}: {
+  icon: typeof Eye;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* span envuelve al boton para que el tooltip funcione tambien cuando esta deshabilitado */}
+        <span className="inline-flex">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={onClick}
+            disabled={disabled}
+            className={className}
+          >
+            <Icon className="h-4 w-4" />
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
