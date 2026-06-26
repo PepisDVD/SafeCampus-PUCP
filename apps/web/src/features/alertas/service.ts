@@ -1,6 +1,7 @@
 import "server-only";
 
 import type {
+  AlertaDestinatariosResponse,
   AlertaDetail,
   AlertaListResponse,
   AlertasStatsResponse,
@@ -34,6 +35,14 @@ export async function obtenerAlerta(alertaId: string): Promise<AlertaDetail> {
 
 export async function obtenerAlertasStats(): Promise<AlertasStatsResponse> {
   return serverApi.get<AlertasStatsResponse>("/alertas/stats");
+}
+
+export async function listarDestinatarios(filters: { search?: string; limit?: number } = {}): Promise<AlertaDestinatariosResponse> {
+  const params: Record<string, string> = {
+    limit: String(filters.limit ?? 200),
+  };
+  if (filters.search) params.search = filters.search;
+  return serverApi.get<AlertaDestinatariosResponse>("/alertas/destinatarios", params);
 }
 
 export async function consultarGisHeatmap(tipo: "incidentes" | "alertas" = "alertas"): Promise<GisHeatmapResponse> {

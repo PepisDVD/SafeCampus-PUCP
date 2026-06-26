@@ -6,7 +6,10 @@
       "Bash(python generate_word_doc.py)",
       "Bash(unzip -q \"Catalogo de Pruebas - Gestion de Usuarios.xlsx\" -d /tmp/excel_usuarios)",
       "Read(//tmp/**)",
-      "Bash(python \"/c/Users/Usuario/AppData/Local/Temp/claude/d--PUCP--ltimo-ciclo-Tesis-SafeCampus-PUCP/03e3aaeb-3360-4dda-8492-a8e6e23e8c68/scratchpad/dump_sprint6.py\")"
+      "Bash(python \"/c/Users/Usuario/AppData/Local/Temp/claude/d--PUCP--ltimo-ciclo-Tesis-SafeCampus-PUCP/03e3aaeb-3360-4dda-8492-a8e6e23e8c68/scratchpad/dump_sprint6.py\")",
+      "Bash(pnpm exec *)",
+      "PowerShell(\\(Get-Command npx -ErrorAction SilentlyContinue\\).Source; \\(Get-Command node -ErrorAction SilentlyContinue\\).Source; npm ls pnpm -g 2>$null)",
+      "PowerShell(Set-Location \"d:\\\\PUCP\\\\Último ciclo\\\\Tesis\\\\SafeCampus-PUCP\\\\apps\\\\backend\"; $py = if \\(Test-Path \".\\\\.venv\\\\Scripts\\\\python.exe\"\\) { \".\\\\.venv\\\\Scripts\\\\python.exe\" } else { \"python\" }; & $py -c \"from app.schemas.alerta import AlertaDestinatarioItem, AlertaDestinatariosResponse; from app.repositories.alerta_repository import ROLES_COMUNIDAD, AlertaRepository; print\\('IMPORT_OK', sorted\\(ROLES_COMUNIDAD\\)\\)\")"
     ]
   }
 }

@@ -62,6 +62,18 @@ class AlertaEstadoInput(BaseModel):
     comentario: str | None = Field(default=None, max_length=800)
 
 
+class AlertaDestinatarioItem(BaseModel):
+    id: str
+    nombre: str
+    apellido: str
+    email: str
+
+
+class AlertaDestinatariosResponse(BaseModel):
+    items: list[AlertaDestinatarioItem]
+    total: int
+
+
 class AlertaSegmentoItem(BaseModel):
     id: str
     tipo: TipoSegmentoAlerta
