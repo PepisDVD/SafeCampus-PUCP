@@ -20,8 +20,11 @@ class ApiClient {
 
     let url = `${this.baseUrl}${endpoint}`;
     if (params) {
-      const searchParams = new URLSearchParams(params);
-      url += `?${searchParams.toString()}`;
+      const searchParams = new URLSearchParams(
+        Object.entries(params).filter(([, value]) => value !== ""),
+      );
+      const query = searchParams.toString();
+      if (query) url += `?${query}`;
     }
 
     const headers: HeadersInit = {

@@ -27,16 +27,6 @@ import { signOut } from "@/lib/auth";
 const OPERATIVO_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/incidentes", label: "Incidentes", icon: ShieldCheck },
-  {
-    href: "/lost-found-operaciones",
-    label: "Lost & Found",
-    icon: PackageSearch,
-    children: [
-      { href: "/lost-found-operaciones", label: "Dashboard", icon: BarChart3 },
-      { href: "/lost-found-hilos", label: "Hilos", icon: MessageSquare },
-      { href: "/lost-found-logistica", label: "Logistica", icon: PackageCheck },
-    ],
-  },
   { href: "/mapa", label: "Mapa", icon: MapPinned },
   {
     href: "/alertas",
@@ -48,17 +38,33 @@ const OPERATIVO_NAV: NavItem[] = [
     ],
   },
   { href: "/kpis", label: "KPIs", icon: BarChart3 },
+  {
+    href: "/lost-found-operaciones",
+    label: "Lost & Found",
+    icon: PackageSearch,
+    children: [
+      { href: "/lost-found-operaciones", label: "Dashboard", icon: BarChart3 },
+      { href: "/lost-found-hilos", label: "Hilos", icon: MessageSquare },
+      { href: "/lost-found-logistica", label: "Logistica", icon: PackageCheck },
+    ],
+  },
   { href: "/mensajes", label: "Mensajes", icon: MessageSquare },
 ];
 
 type OperativoShellProps = {
   user?: UserNavUser;
+  lostFoundEnabled?: boolean;
   children: React.ReactNode;
 };
 
-export function OperativoShell({ user, children }: OperativoShellProps) {
+export function OperativoShell({ user, lostFoundEnabled = false, children }: OperativoShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+
+  // El módulo Lost & Found solo aparece para supervisores asignados.
+  const navItems = lostFoundEnabled
+    ? OPERATIVO_NAV
+    : OPERATIVO_NAV.filter((item) => item.href !== "/lost-found-operaciones");
 
   const handleLogout = async () => {
     try {
@@ -76,14 +82,14 @@ export function OperativoShell({ user, children }: OperativoShellProps) {
       <AppSidebar
         appName="SafeCampus Operativo"
         AppLogo={OfficialLogoMark}
-        navItems={OPERATIVO_NAV}
+        navItems={navItems}
         pathname={pathname}
         user={user}
         onLogout={handleLogout}
         editProfileHref="/perfil"
         LinkComponent={Link}
       />
-      <SidebarInset className="bg-[#f7f8fb]">
+      <SidebarInset className="min-w-0 bg-[#f7f8fb]">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1 size-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-[#001C55]" />
           <div className="min-w-0">
@@ -97,7 +103,7 @@ export function OperativoShell({ user, children }: OperativoShellProps) {
           <div className="flex-1" />
           <NotificationPopover incidentBaseHref="/incidentes" />
         </header>
-        <main className="min-w-0 overflow-x-hidden">{children}</main>
+        <main className="min-w-0 max-w-full overflow-x-hidden">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );

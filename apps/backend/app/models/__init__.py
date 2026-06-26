@@ -29,7 +29,7 @@ from app.models.sc_incidentes import (
     Incidente,
     UbicacionIncidente,
 )
-from app.models.sc_lost_found import CategoriaObjeto, CasoLostFound, HistorialCasoLf
+from app.models.sc_lost_found import CategoriaObjeto, CasoLostFound, HistorialCasoLf, MotivoCierreLf
 from app.models.sc_maestros import UbicacionMaestra
 from app.models.sc_notificaciones import (
     Notificacion,
@@ -83,6 +83,7 @@ __all__ = [
     "Incidente",
     "KpiOperativo",
     "MensajeConversacion",
+    "MotivoCierreLf",
     "Notificacion",
     "Permiso",
     "PlantillaAlerta",

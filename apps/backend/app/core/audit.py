@@ -55,6 +55,7 @@ class AuditAccion(StrEnum):
     # Acciones específicas conservadas por compatibilidad / tests existentes.
     GENERAR_EXPEDIENTE_CIERRE = "generar_expediente_cierre"
     GENERAR_BORRADOR_CIERRE_IA = "generar_borrador_cierre_ia"
+    ACTUALIZAR_CUSTODIA = "actualizar_custodia"
 
 
 class AuditEntidad(StrEnum):
@@ -66,6 +67,8 @@ class AuditEntidad(StrEnum):
     ALERTA = "alerta"
     UBICACION_MAESTRA = "ubicacion_maestra"
     OBJETO_PERDIDO = "objeto_perdido"
+    CASO_LOST_FOUND = "caso_lost_found"
+    CUSTODIA_OBJETO = "custodia_objeto"
     INTEGRACION = "integracion"
 
 

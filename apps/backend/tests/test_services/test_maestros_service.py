@@ -85,6 +85,21 @@ async def test_crear_ubicacion_persiste_tipo():
 
 
 @pytest.mark.anyio
+async def test_crear_ubicacion_normaliza_tipo_personalizado():
+    await MaestrosService(db=None).crear_ubicacion(  # type: ignore[arg-type]
+        UbicacionMaestraCreateInput(
+            codigo="aula_especial",
+            nombre="Aula Especial",
+            tipo="Aula especializada",
+            latitud=-12.07,
+            longitud=-77.08,
+        )
+    )
+    payload = FakeMaestrosRepository.create_payloads[0]
+    assert payload["tipo"] == "AULA_ESPECIALIZADA"
+
+
+@pytest.mark.anyio
 async def test_actualizar_ubicacion_no_modifica_codigo():
     await MaestrosService(db=None).actualizar_ubicacion(  # type: ignore[arg-type]
         UBICACION_ID,

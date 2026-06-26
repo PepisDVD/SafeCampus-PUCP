@@ -122,6 +122,48 @@ class MotivoCierreLF(StrEnum):
     ADMINISTRATIVO = "ADMINISTRATIVO"
 
 
+class TagComentarioLF(StrEnum):
+    """Etiquetas de comentarios de hilos Lost & Found."""
+
+    GENERAL = "GENERAL"
+    # Casos PERDIDO
+    POSIBLE_HALLAZGO = "POSIBLE_HALLAZGO"
+    PISTA = "PISTA"
+    # Casos ENCONTRADO
+    RECLAMO = "RECLAMO"
+    INFO_UTIL = "INFO_UTIL"
+
+
+# Catálogo de etiquetas por tipo de caso: tag -> (label, prioridad).
+# Prioridad: 0 = general (no altera orden), 1 = media, 2 = alta ("destacado").
+LF_TAG_CATALOG: dict[str, dict[str, tuple[str, int]]] = {
+    TipoCasoLF.PERDIDO.value: {
+        TagComentarioLF.GENERAL.value: ("Comentario general", 0),
+        TagComentarioLF.POSIBLE_HALLAZGO.value: ("Creo que lo encontré", 2),
+        TagComentarioLF.PISTA.value: ("Tengo una pista sobre el objeto", 1),
+    },
+    TipoCasoLF.ENCONTRADO.value: {
+        TagComentarioLF.GENERAL.value: ("Comentario general", 0),
+        TagComentarioLF.RECLAMO.value: ("Creo que es mío / Quiero reclamarlo", 2),
+        TagComentarioLF.INFO_UTIL.value: ("Tengo información útil", 1),
+    },
+}
+
+
+def lf_tag_priority(tipo: str | None, tag: str | None) -> int:
+    """Prioridad de una etiqueta para un tipo de caso (0 si no aplica)."""
+    if not tag:
+        return 0
+    return LF_TAG_CATALOG.get(tipo or "", {}).get(tag, ("", 0))[1]
+
+
+def lf_tag_valido(tipo: str | None, tag: str | None) -> bool:
+    """Indica si la etiqueta pertenece al catálogo del tipo de caso."""
+    if tag is None:
+        return True
+    return tag in LF_TAG_CATALOG.get(tipo or "", {})
+
+
 class EstadoCustodia(StrEnum):
     ACTIVA = "ACTIVA"
     PROXIMA_VENCER = "PROXIMA_VENCER"
