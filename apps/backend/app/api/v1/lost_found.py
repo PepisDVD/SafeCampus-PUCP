@@ -443,10 +443,10 @@ async def listar_custodias(
 async def actualizar_custodia(
     custodia_id: str,
     body: CustodiaLfUpdateInput,
-    _user: AuthUserResponse = Depends(require_lost_found_access),
+    current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
 ):
-    return await service.actualizar_custodia(custodia_id, body)
+    return await service.actualizar_custodia(custodia_id, current_user.id, body)
 
 
 @router.post("/custodias/{custodia_id}/devolucion", status_code=status.HTTP_204_NO_CONTENT)

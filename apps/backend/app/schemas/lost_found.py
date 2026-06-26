@@ -1,5 +1,6 @@
 from datetime import datetime, time
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -229,6 +230,14 @@ class ComentarioLfEditInput(BaseModel):
     contenido: str = Field(min_length=2, max_length=2000)
 
 
+class CustodiaLfResumen(BaseModel):
+    id: str
+    estado: EstadoCustodia
+    ubicacion_custodia: str
+    fecha_recepcion: datetime
+    fecha_vencimiento: datetime
+
+
 class CasoLfDetail(CasoLfListItem):
     reportante: UsuarioMini | None = None
     contacto_info: str | None = None
@@ -240,6 +249,7 @@ class CasoLfDetail(CasoLfListItem):
     observaciones_cierre: str | None = None
     latitud: float | None = None
     longitud: float | None = None
+    custodia: CustodiaLfResumen | None = None
     updated_at: datetime
     comentarios_profundidad_maxima: int = 6
     historial: list[HistorialLfItem] = []
@@ -347,7 +357,7 @@ class CustodiaLfListResponse(BaseModel):
 
 
 class DevolucionLfInput(BaseModel):
-    reclamante_id: str
+    reclamante_id: UUID
     metodo_verificacion: str = Field(min_length=2, max_length=100)
     observaciones: str | None = Field(default=None, max_length=2000)
 

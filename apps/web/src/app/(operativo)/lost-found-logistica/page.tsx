@@ -4,9 +4,14 @@ import { LostFoundLogistica } from "@/features/lost-found/components/lost-found-
 import { LfBreadcrumb } from "@/features/lost-found/components/lf-breadcrumb";
 import { getLostFoundAccess, getLostFoundLogistica } from "@/features/lost-found/service";
 
-export default async function LostFoundLogisticaPage() {
+export default async function LostFoundLogisticaPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ search?: string }>;
+}) {
   if (!(await getLostFoundAccess())) redirect("/dashboard");
-  const { custodias, casos, motivosDescarte } = await getLostFoundLogistica();
+  const params = await searchParams;
+  const { custodias, casos, motivosDescarte, initialSearch } = await getLostFoundLogistica({ search: params?.search });
   return (
     <>
       <LfBreadcrumb
@@ -15,7 +20,7 @@ export default async function LostFoundLogisticaPage() {
           { label: "Logística" },
         ]}
       />
-      <LostFoundLogistica initialCustodias={custodias} casos={casos} motivosDescarte={motivosDescarte} />
+      <LostFoundLogistica initialCustodias={custodias} casos={casos} motivosDescarte={motivosDescarte} initialSearch={initialSearch} />
     </>
   );
 }

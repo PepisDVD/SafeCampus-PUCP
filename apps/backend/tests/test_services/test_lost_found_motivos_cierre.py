@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
@@ -7,7 +9,9 @@ from pydantic import ValidationError
 from app.schemas.lost_found import (
     CustodiaPoliticaItem,
     CustodiaPoliticaUpdateInput,
+    CustodiaLfUpdateInput,
     DescarteLfInput,
+    DevolucionLfInput,
     MotivoCierreLfCreate,
 )
 from app.services.lost_found_service import LostFoundService
@@ -21,9 +25,75 @@ class FakeRepo:
         return self.motivo
 
 
+class FakeAuditRepo:
+    def __init__(self) -> None:
+        self.created = []
+
+    async def create_registro(self, **kwargs):
+        self.created.append(kwargs)
+
+
+class FakeCustodiaRepo:
+    def __init__(self) -> None:
+        self.updated = None
+        self.historial = []
+        self.caso_id = UUID("11111111-1111-1111-1111-111111111111")
+        self.custodia = SimpleNamespace(
+            id=UUID("22222222-2222-2222-2222-222222222222"),
+            caso_id=self.caso_id,
+            estado="ACTIVA",
+            ubicacion_custodia="Estante A",
+            observaciones="Recibido",
+            es_perecible=False,
+            fecha_recepcion=datetime(2026, 6, 1, 10, tzinfo=timezone.utc),
+            fecha_vencimiento=datetime(2026, 7, 20, 10, tzinfo=timezone.utc),
+            reclamante_id=None,
+            metodo_verificacion=None,
+            created_at=datetime(2026, 6, 1, 10, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 6, 1, 10, tzinfo=timezone.utc),
+        )
+
+    async def get_custodia(self, _custodia_id):
+        return self.custodia
+
+    async def update_custodia(self, custodia_id, values):
+        self.updated = (custodia_id, values)
+        next_fecha = values.get("fecha_vencimiento", self.custodia.fecha_vencimiento)
+        next_estado = values.get("estado", self.custodia.estado)
+        return {
+            "id": str(self.custodia.id),
+            "caso_id": str(self.caso_id),
+            "codigo": "LF-202606-00001",
+            "titulo": "Mochila",
+            "estado": next_estado,
+            "ubicacion_custodia": values.get("ubicacion_custodia", self.custodia.ubicacion_custodia),
+            "observaciones": values.get("observaciones", self.custodia.observaciones),
+            "es_perecible": self.custodia.es_perecible,
+            "fecha_recepcion": self.custodia.fecha_recepcion,
+            "fecha_vencimiento": next_fecha,
+            "reclamante_id": None,
+            "metodo_verificacion": None,
+            "created_at": self.custodia.created_at,
+            "updated_at": datetime(2026, 6, 20, 10, tzinfo=timezone.utc),
+        }
+
+    async def get_estado(self, _caso_id):
+        return {"estado": "EN_CUSTODIA"}
+
+    async def add_historial(self, *args):
+        self.historial.append(args)
+
+
 def service_with(motivo):
     service = LostFoundService.__new__(LostFoundService)
     service._repo = FakeRepo(motivo)
+    return service
+
+
+def custody_service_with(repo: FakeCustodiaRepo, audit: FakeAuditRepo):
+    service = LostFoundService.__new__(LostFoundService)
+    service._repo = repo
+    service._audit = audit
     return service
 
 
@@ -129,6 +199,53 @@ def test_motivo_rechaza_nombre_vacio_y_validacion_incompatible():
 def test_descarte_otro_exige_detalle_manual():
     with pytest.raises(ValidationError):
         DescarteLfInput(motivo_cierre_id="OTRO", motivo_otro="  ")
+
+
+def test_devolucion_reclamante_debe_ser_uuid():
+    with pytest.raises(ValidationError):
+        DevolucionLfInput(reclamante_id="dni-12345678", metodo_verificacion="SSO_PUCP_CARNET")
+
+
+def test_devolucion_acepta_reclamante_uuid():
+    data = DevolucionLfInput(
+        reclamante_id="00000000-0000-0000-0000-000000000001",
+        metodo_verificacion="SSO_PUCP_CARNET",
+    )
+    assert str(data.reclamante_id) == "00000000-0000-0000-0000-000000000001"
+
+
+@pytest.mark.anyio
+async def test_actualizar_fecha_custodia_audita_y_deja_historial():
+    repo = FakeCustodiaRepo()
+    audit = FakeAuditRepo()
+    service = custody_service_with(repo, audit)
+    politica = CustodiaPoliticaItem(
+        dias_maximos_custodia=30,
+        dias_alerta_vencimiento=7,
+        dias_recordatorio_previo=3,
+        horas_maximas_perecibles=24,
+        horas_alerta_perecible=6,
+    )
+
+    async def obtener_politica():
+        return politica
+
+    service.obtener_politica_custodia = obtener_politica
+    nueva_fecha = datetime.now(timezone.utc) + timedelta(days=3)
+
+    result = await service.actualizar_custodia(
+        "22222222-2222-2222-2222-222222222222",
+        "00000000-0000-0000-0000-000000000001",
+        CustodiaLfUpdateInput(fecha_vencimiento=nueva_fecha),
+    )
+
+    assert result.estado == "PROXIMA_VENCER"
+    assert repo.updated[1]["estado"] == "PROXIMA_VENCER"
+    assert audit.created[0]["accion"] == "actualizar_custodia"
+    assert audit.created[0]["entidad"] == "custodia_objeto"
+    assert audit.created[0]["detalle"]["campos_modificados"] == ["estado", "fecha_vencimiento"]
+    assert repo.historial[0][3] == "Actualización de custodia"
+    assert "Fecha de vencimiento actualizada" in repo.historial[0][5]
 
 
 def test_estado_custodia_se_recalcula_con_politica_vigente():

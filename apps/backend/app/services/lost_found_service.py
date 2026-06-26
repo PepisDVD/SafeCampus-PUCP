@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.audit import AuditModulo, AuditResultado, build_detalle
+from app.core.audit import AuditAccion, AuditEntidad, AuditModulo, AuditResultado, build_detalle
 from app.core.config import settings
 from app.core.constants import EstadoCasoLF, lf_tag_priority, lf_tag_valido
 from app.core.lost_found_metadata import (
@@ -827,10 +827,17 @@ class LostFoundService:
     ) -> dict[str, Any]:
         safe_page = max(1, page)
         safe_per_page = max(1, min(per_page, 100))
+        politica = await self.obtener_politica_custodia()
+        await self._repo.refresh_custodia_estados(
+            dias_alerta_vencimiento=politica.dias_alerta_vencimiento,
+            horas_alerta_perecible=politica.horas_alerta_perecible,
+        )
         rows, total = await self._repo.list_custodias(
             estados=estados,
             search=search,
             vencimientos=vencimientos,
+            dias_alerta_vencimiento=politica.dias_alerta_vencimiento,
+            horas_alerta_perecible=politica.horas_alerta_perecible,
             page=safe_page,
             per_page=safe_per_page,
         )
@@ -841,10 +848,16 @@ class LostFoundService:
             "per_page": safe_per_page,
         }
 
-    async def actualizar_custodia(self, custodia_id: str, data: CustodiaLfUpdateInput) -> CustodiaLfItem:
+    async def actualizar_custodia(self, custodia_id: str, actor_id: str, data: CustodiaLfUpdateInput) -> CustodiaLfItem:
         custodia = await self._repo.get_custodia(custodia_id)
         if not custodia:
             raise HTTPException(status_code=404, detail="Custodia no encontrada.")
+        before = {
+            "estado": str(custodia.estado),
+            "ubicacion_custodia": custodia.ubicacion_custodia,
+            "observaciones": custodia.observaciones,
+            "fecha_vencimiento": custodia.fecha_vencimiento.isoformat(),
+        }
         values = data.model_dump(exclude_unset=True)
         if str(custodia.estado) in {"ACTIVA", "PROXIMA_VENCER", "VENCIDA"}:
             politica = await self.obtener_politica_custodia()
@@ -857,17 +870,66 @@ class LostFoundService:
         row = await self._repo.update_custodia(custodia_id, values)
         if not row:
             raise HTTPException(status_code=404, detail="Custodia no encontrada.")
+        after = {
+            "estado": row["estado"],
+            "ubicacion_custodia": row["ubicacion_custodia"],
+            "observaciones": row["observaciones"],
+            "fecha_vencimiento": row["fecha_vencimiento"].isoformat(),
+        }
+        changed = {key for key, value in after.items() if before.get(key) != value}
+        if changed:
+            fecha_cambio = "fecha_vencimiento" in changed
+            estado_cambio = "estado" in changed
+            resumen = "Custodia actualizada"
+            if fecha_cambio and estado_cambio:
+                resumen = f"Fecha de vencimiento actualizada; estado recalculado a {after['estado']}"
+            elif fecha_cambio:
+                resumen = "Fecha de vencimiento de custodia actualizada"
+            elif estado_cambio:
+                resumen = f"Estado de custodia recalculado a {after['estado']}"
+            detalle = build_detalle(
+                origen="WEB_OPERATIVA",
+                resultado=AuditResultado.EXITOSO,
+                before=before,
+                after=after,
+                resumen=resumen,
+                campos_modificados=sorted(changed),
+                caso_id=str(custodia.caso_id),
+            )
+            await self._audit_lf(
+                actor_id,
+                AuditAccion.ACTUALIZAR_CUSTODIA,
+                AuditEntidad.CUSTODIA_OBJETO,
+                custodia_id,
+                detalle,
+            )
+            comentario = resumen
+            if fecha_cambio:
+                comentario = (
+                    f"{resumen}. Vencimiento anterior: {before['fecha_vencimiento']}; "
+                    f"nuevo: {after['fecha_vencimiento']}."
+                )
+            caso_estado = await self._repo.get_estado(str(custodia.caso_id))
+            estado_caso = str(caso_estado["estado"]) if caso_estado else "EN_CUSTODIA"
+            await self._repo.add_historial(
+                str(custodia.caso_id),
+                estado_caso,
+                estado_caso,
+                "Actualización de custodia",
+                actor_id,
+                comentario,
+            )
         return CustodiaLfItem(**row)
 
     async def registrar_devolucion(self, custodia_id: str, actor_id: str, data: DevolucionLfInput) -> None:
         custodia = await self._repo.get_custodia(custodia_id)
         if not custodia:
             raise HTTPException(status_code=404, detail="Custodia no encontrada.")
-        await self._repo.update_custodia(custodia_id, {"estado": "DEVUELTA", "reclamante_id": UUID(data.reclamante_id), "entregado_por_id": UUID(actor_id), "metodo_verificacion": data.metodo_verificacion, "observaciones": data.observaciones, "fecha_devolucion": datetime.now(timezone.utc)})
+        await self._repo.update_custodia(custodia_id, {"estado": "DEVUELTA", "reclamante_id": data.reclamante_id, "entregado_por_id": UUID(actor_id), "metodo_verificacion": data.metodo_verificacion, "observaciones": data.observaciones, "fecha_devolucion": datetime.now(timezone.utc)})
         motivo = await self._validar_motivo_cierre("DEVUELTO_AL_PROPIETARIO", data.observaciones, validacion_entrega=bool(data.metodo_verificacion))
         await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="DEVUELTO", ejecutor_id=actor_id, comentario=data.observaciones, motivo_cierre="DEVUELTO", motivo_cierre_id=motivo["id"], observaciones_cierre=data.observaciones)
         await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico por devolucion", motivo_cierre="DEVUELTO", motivo_cierre_id=motivo["id"], observaciones_cierre=data.observaciones)
-        await self._audit_lf(actor_id, "LF_DEVOLUCION_REALIZADA", "custodia_objeto", custodia_id, {"reclamante_id": data.reclamante_id, "metodo_verificacion": data.metodo_verificacion})
+        await self._audit_lf(actor_id, "LF_DEVOLUCION_REALIZADA", "custodia_objeto", custodia_id, {"reclamante_id": str(data.reclamante_id), "metodo_verificacion": data.metodo_verificacion})
 
     async def registrar_descarte(self, custodia_id: str, actor_id: str, data: DescarteLfInput) -> None:
         custodia = await self._repo.get_custodia(custodia_id)
@@ -882,6 +944,7 @@ class LostFoundService:
             "destino_descarte": data.destino_descarte,
             "motivo_descarte": motivo_descarte,
             "observaciones": data.observaciones,
+            "fecha_descarte": datetime.now(timezone.utc),
         })
         await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="DESCARTADO", ejecutor_id=actor_id, comentario=observacion, motivo_cierre="DESCARTADO", motivo_cierre_id=motivo["id"], observaciones_cierre=observacion)
         await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico por descarte", motivo_cierre="DESCARTADO", motivo_cierre_id=motivo["id"], observaciones_cierre=observacion)
@@ -1392,6 +1455,17 @@ class LostFoundService:
             observaciones_cierre=row.get("observaciones_cierre"),
             latitud=row.get("latitud"),
             longitud=row.get("longitud"),
+            custodia=(
+                {
+                    "id": str(row["custodia_id"]),
+                    "estado": row["custodia_estado"],
+                    "ubicacion_custodia": row["custodia_ubicacion"],
+                    "fecha_recepcion": row["custodia_fecha_recepcion"],
+                    "fecha_vencimiento": row["custodia_fecha_vencimiento"],
+                }
+                if row.get("custodia_id")
+                else None
+            ),
             updated_at=row["updated_at"],
             historial=[
                 {

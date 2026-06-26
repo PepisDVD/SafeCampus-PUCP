@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { es } from "date-fns/locale";
 import type { ReactNode } from "react";
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +61,7 @@ type CustodiaPage = ListResponse<CustodiaLf> & { page: number; per_page: number 
 
 type Props = {
   initialCustodias: CustodiaPage;
+  initialSearch?: string;
   casos: CasoLfListItem[];
   motivosDescarte: MotivoCierreLf[];
 };
@@ -72,15 +73,17 @@ const VENCIMIENTOS = [
   { value: "vencida", label: "Vencidas" },
 ] as const;
 
-export function LostFoundLogistica({ initialCustodias, casos, motivosDescarte }: Props) {
+export function LostFoundLogistica({ initialCustodias, initialSearch = "", casos, motivosDescarte }: Props) {
   const [data, setData] = useState(initialCustodias);
-  const [search, setSearch] = useState("");
-  const [estados, setEstados] = useState<string[]>(["ACTIVA"]);
+  const [search, setSearch] = useState(initialSearch);
+  const [estados, setEstados] = useState<string[]>(["ACTIVA", "PROXIMA_VENCER", "VENCIDA"]);
   const [vencimientos, setVencimientos] = useState<string[]>([]);
   const [perPage, setPerPage] = useState(String(initialCustodias.per_page));
   const [drawer, setDrawer] = useState<"crear" | "editar" | "devolver" | "descartar" | "trazabilidad" | null>(null);
   const [selected, setSelected] = useState<CustodiaLf | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isLoading, setIsLoading] = useState(false);
+  const latestLoadRef = useRef(0);
+  const skipAutoLoadRef = useRef(true);
 
   // Excluye los casos que ya tienen custodia: al registrar custodia el caso pasa
   // a EN_CUSTODIA, y volver a asignarlo rompe el UNIQUE de custodia por caso.
@@ -89,18 +92,43 @@ export function LostFoundLogistica({ initialCustodias, casos, motivosDescarte }:
     [casos],
   );
 
-  const load = (page = data.page) => {
-    startTransition(async () => {
-      const params = buildParams({
-        search,
-        estado: estados.join(","),
-        vencimiento: vencimientos.join(","),
-        page: String(page),
-        per_page: perPage,
-      });
-      setData(await lostFoundClient.custodias(params));
-    });
-  };
+  const load = useCallback((page: number) => {
+    const requestId = latestLoadRef.current + 1;
+    latestLoadRef.current = requestId;
+    setIsLoading(true);
+    void (async () => {
+      try {
+        const params = buildParams({
+          search,
+          estado: estados.join(","),
+          vencimiento: vencimientos.join(","),
+          page: String(page),
+          per_page: perPage,
+        });
+        const nextData = await lostFoundClient.custodias(params);
+        if (latestLoadRef.current === requestId) {
+          setData(nextData);
+        }
+      } catch (error) {
+        if (latestLoadRef.current === requestId) {
+          toast.error(error instanceof Error ? error.message : "No se pudieron cargar las custodias");
+        }
+      } finally {
+        if (latestLoadRef.current === requestId) {
+          setIsLoading(false);
+        }
+      }
+    })();
+  }, [estados, perPage, search, vencimientos]);
+
+  useEffect(() => {
+    if (skipAutoLoadRef.current) {
+      skipAutoLoadRef.current = false;
+      return;
+    }
+    const timeout = window.setTimeout(() => load(1), search.trim() ? 350 : 150);
+    return () => window.clearTimeout(timeout);
+  }, [estados, load, perPage, search, vencimientos]);
 
   const openAction = (nextDrawer: typeof drawer, custodia: CustodiaLf) => {
     setSelected(custodia);
@@ -122,7 +150,7 @@ export function LostFoundLogistica({ initialCustodias, casos, motivosDescarte }:
           <p className="text-sm text-slate-500">Custodia física, devoluciones y descarte de objetos encontrados.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => load()} disabled={isPending}>
+          <Button variant="outline" onClick={() => load(data.page)} disabled={isLoading}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Actualizar
           </Button>
@@ -154,11 +182,11 @@ export function LostFoundLogistica({ initialCustodias, casos, motivosDescarte }:
               {["10", "20", "50"].map((value) => <SelectItem key={value} value={value}>{value} filas</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button onClick={() => load(1)} disabled={isPending}>Aplicar filtros</Button>
+          <Button onClick={() => load(1)} disabled={isLoading}>Aplicar filtros</Button>
         </div>
       </FilterBar>
 
-      <section className="overflow-hidden rounded-lg border bg-white">
+      <section className={`overflow-hidden rounded-lg border bg-white transition-opacity ${isLoading ? "opacity-70" : "opacity-100"}`} aria-busy={isLoading}>
         <Table className="table-fixed">
           <TableHeader>
             <TableRow>
@@ -222,7 +250,7 @@ export function LostFoundLogistica({ initialCustodias, casos, motivosDescarte }:
                       <DropdownMenuSeparator />
                       <DropdownMenuItem variant="destructive" onSelect={() => openAction("descartar", custodia)}>
                         <Trash2 />
-                        Eliminar por descarte
+                        Marcar como descartada
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -243,7 +271,7 @@ export function LostFoundLogistica({ initialCustodias, casos, motivosDescarte }:
           totalPages={totalPages}
           total={data.total}
           perPage={data.per_page}
-          isPending={isPending}
+          isPending={isLoading}
           onPrev={() => load(data.page - 1)}
           onNext={() => load(data.page + 1)}
         />
@@ -354,7 +382,7 @@ function CustodiaDrawer({
             observaciones: optional(observacionesDraft),
           });
         }
-        toast.success(mode === "descartar" ? "Objeto eliminado por descarte" : "Operación registrada");
+        toast.success(mode === "descartar" ? "Custodia marcada como descartada" : "Operación registrada");
         setDiscardConfirmOpen(false);
         onDone();
       } catch (error) {
@@ -547,7 +575,7 @@ function CustodiaDrawer({
             {mode !== "trazabilidad" && (
               <Button type="submit" disabled={isPending} variant={mode === "descartar" ? "destructive" : "default"}>
                 {mode === "descartar" ? <Trash2 className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                {mode === "descartar" ? "Eliminar" : "Guardar"}
+                {mode === "descartar" ? "Marcar descartada" : "Guardar"}
               </Button>
             )}
           </DrawerFooter>
@@ -563,7 +591,7 @@ function CustodiaDrawer({
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isPending}>Cancelar</AlertDialogCancel>
               <AlertDialogAction onClick={() => executeSubmit()} disabled={isPending} className="bg-rose-600 hover:bg-rose-700">
-                Eliminar objeto
+                Marcar descartada
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -684,11 +712,6 @@ function TraceTimeline({ custodia, caso }: { custodia: CustodiaLf; caso: CasoLfD
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border bg-slate-50 p-3 text-sm">
-        <p className="font-medium text-slate-950">{custodia.codigo ?? custodia.caso_id}</p>
-        <p className="text-slate-600">{custodia.titulo ?? "Objeto encontrado"}</p>
-        <p className="mt-2 text-xs text-slate-500">Vence: {formatDateTimePe(custodia.fecha_vencimiento)}</p>
-      </div>
       <div className="space-y-0">
         {events.map((event, index) => (
           <div key={`${event.estado ?? event.title}-${event.at}-${index}`} className="grid grid-cols-[18px_1fr] gap-3">
@@ -713,11 +736,6 @@ function TraceTimeline({ custodia, caso }: { custodia: CustodiaLf; caso: CasoLfD
 function TraceTimelineSkeleton() {
   return (
     <div className="space-y-5" aria-label="Cargando trazabilidad">
-      <div className="space-y-2 rounded-lg border bg-slate-50 p-3">
-        <Skeleton className="h-5 w-36" />
-        <Skeleton className="h-4 w-4/5" />
-        <Skeleton className="h-3 w-44" />
-      </div>
       <div className="space-y-5">
         {[0, 1, 2, 3].map((item) => (
           <div key={item} className="grid grid-cols-[18px_1fr] gap-3">

@@ -131,6 +131,13 @@ export type CasoLfDetail = CasoLfListItem & {
   motivo_cierre_id?: string | null;
   latitud?: number | null;
   longitud?: number | null;
+  custodia?: {
+    id: string;
+    estado: EstadoCustodia;
+    ubicacion_custodia: string;
+    fecha_recepcion: string;
+    fecha_vencimiento: string;
+  } | null;
   updated_at: string;
   comentarios_profundidad_maxima?: number;
   historial: Array<{

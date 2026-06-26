@@ -2,12 +2,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, case, delete, desc, exists, func, literal, or_, select, update
+from sqlalchemy import and_, case, cast, delete, desc, exists, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.constants import LOST_FOUND_CODE_PREFIX
+from app.models.db_enums import EstadoCustodiaEnum
 from app.models.sc_lost_found import (
     AccesoModuloLf,
     CasoLostFound,
@@ -324,12 +325,18 @@ class LostFoundRepository:
                 CategoriaObjeto.nombre.label("categoria_nombre"),
                 func.ST_Y(CasoLostFound.geom).label("latitud"),
                 func.ST_X(CasoLostFound.geom).label("longitud"),
+                CustodiaObjeto.id.label("custodia_id"),
+                CustodiaObjeto.estado.label("custodia_estado"),
+                CustodiaObjeto.ubicacion_custodia.label("custodia_ubicacion"),
+                CustodiaObjeto.fecha_recepcion.label("custodia_fecha_recepcion"),
+                CustodiaObjeto.fecha_vencimiento.label("custodia_fecha_vencimiento"),
                 Reportante.nombre.label("reportante_nombre"),
                 Reportante.apellido.label("reportante_apellido"),
                 Reportante.email.label("reportante_email"),
                 Reportante.avatar_url.label("reportante_avatar_url"),
             )
             .outerjoin(CategoriaObjeto, CategoriaObjeto.id == CasoLostFound.categoria_id)
+            .outerjoin(CustodiaObjeto, CustodiaObjeto.caso_id == CasoLostFound.id)
             .outerjoin(Reportante, Reportante.id == CasoLostFound.reportante_id)
             .where(*filters)
             .limit(1)
@@ -350,6 +357,11 @@ class LostFoundRepository:
             "categoria_nombre": row["categoria_nombre"],
             "latitud": row["latitud"],
             "longitud": row["longitud"],
+            "custodia_id": row["custodia_id"],
+            "custodia_estado": row["custodia_estado"],
+            "custodia_ubicacion": row["custodia_ubicacion"],
+            "custodia_fecha_recepcion": row["custodia_fecha_recepcion"],
+            "custodia_fecha_vencimiento": row["custodia_fecha_vencimiento"],
             "reportante_id": caso.reportante_id,
             "reportante_nombre": row["reportante_nombre"],
             "reportante_apellido": row["reportante_apellido"],
@@ -673,6 +685,8 @@ class LostFoundRepository:
         estados: list[str] | None,
         search: str | None,
         vencimientos: list[str] | None,
+        dias_alerta_vencimiento: int,
+        horas_alerta_perecible: int,
         page: int,
         per_page: int,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -693,16 +707,25 @@ class LostFoundRepository:
             if "proxima" in vencimientos:
                 vencimiento_filters.append(
                     and_(
-                        CustodiaObjeto.estado == "ACTIVA",
+                        CustodiaObjeto.estado == "PROXIMA_VENCER",
                         CustodiaObjeto.fecha_vencimiento >= now,
-                        CustodiaObjeto.fecha_vencimiento <= now + timedelta(days=2),
+                        or_(
+                            and_(
+                                CustodiaObjeto.es_perecible.is_(False),
+                                CustodiaObjeto.fecha_vencimiento <= now + timedelta(days=dias_alerta_vencimiento),
+                            ),
+                            and_(
+                                CustodiaObjeto.es_perecible.is_(True),
+                                CustodiaObjeto.fecha_vencimiento <= now + timedelta(hours=horas_alerta_perecible),
+                            ),
+                        ),
                     )
                 )
             if "vencida" in vencimientos:
                 vencimiento_filters.append(
                     and_(
-                        CustodiaObjeto.estado.in_(("ACTIVA", "PROXIMA_VENCER", "VENCIDA")),
-                        CustodiaObjeto.fecha_vencimiento < now,
+                        CustodiaObjeto.estado == "VENCIDA",
+                        CustodiaObjeto.fecha_vencimiento <= now,
                     )
                 )
             if "vigente" in vencimientos:
@@ -723,6 +746,36 @@ class LostFoundRepository:
         )
         items = [{**self._custodia_dict(row["CustodiaObjeto"]), "codigo": row["codigo"], "titulo": row["titulo"]} for row in result.mappings()]
         return items, int(total)
+
+    async def refresh_custodia_estados(self, *, dias_alerta_vencimiento: int, horas_alerta_perecible: int) -> None:
+        now = datetime.now(timezone.utc)
+        estados_mutables = ("ACTIVA", "PROXIMA_VENCER", "VENCIDA")
+        estado_calculado = cast(case(
+            (CustodiaObjeto.fecha_vencimiento <= now, "VENCIDA"),
+            (
+                and_(
+                    CustodiaObjeto.es_perecible.is_(False),
+                    CustodiaObjeto.fecha_vencimiento <= now + timedelta(days=dias_alerta_vencimiento),
+                ),
+                "PROXIMA_VENCER",
+            ),
+            (
+                and_(
+                    CustodiaObjeto.es_perecible.is_(True),
+                    CustodiaObjeto.fecha_vencimiento <= now + timedelta(hours=horas_alerta_perecible),
+                ),
+                "PROXIMA_VENCER",
+            ),
+            else_="ACTIVA",
+        ), EstadoCustodiaEnum)
+        await self.db.execute(
+            update(CustodiaObjeto)
+            .where(
+                CustodiaObjeto.estado.in_(estados_mutables),
+                CustodiaObjeto.estado != estado_calculado,
+            )
+            .values(estado=estado_calculado, updated_at=now)
+        )
 
     async def get_custodia(self, custodia_id: str) -> CustodiaObjeto | None:
         return await self.db.get(CustodiaObjeto, UUID(custodia_id))

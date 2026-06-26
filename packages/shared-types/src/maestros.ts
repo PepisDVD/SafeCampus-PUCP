@@ -1,21 +1,5 @@
-/**
- * Tipos de ubicación del catálogo maestro.
- * Debe mantenerse alineado con el backend (`app.schemas.maestros.TipoUbicacion`)
- * y la migración `20260514_0018`.
- */
-export type TipoUbicacion =
-  | "PABELLON"
-  | "FACULTAD"
-  | "BIBLIOTECA"
-  | "LABORATORIO"
-  | "AUDITORIO"
-  | "CAFETERIA"
-  | "AREA_DEPORTIVA"
-  | "AREA_COMUN"
-  | "ADMINISTRATIVO"
-  | "ESTACIONAMIENTO"
-  | "ACCESO"
-  | "OTRO";
+/** Tipo de ubicacion del catalogo maestro. Puede ser base o creado por administracion. */
+export type TipoUbicacion = string;
 
 export type UbicacionMaestra = {
   id: string;
@@ -25,7 +9,7 @@ export type UbicacionMaestra = {
   latitud: number;
   longitud: number;
   activa: boolean;
-  /** True si la ubicación está referenciada por otras entidades (no eliminable). */
+  /** True si la ubicacion esta referenciada por otras entidades (no eliminable). */
   tiene_relaciones: boolean;
   created_at: string;
   updated_at: string;

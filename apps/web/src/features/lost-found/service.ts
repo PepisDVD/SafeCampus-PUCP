@@ -26,10 +26,12 @@ export async function getLostFoundOperativo() {
   return { dashboard, categorias, initialFilters: filters };
 }
 
-export async function getLostFoundLogistica() {
+export async function getLostFoundLogistica(filters?: { search?: string }) {
+  const search = filters?.search?.trim();
   const [custodias, casos, motivosCierre] = await Promise.all([
     serverApi.get<ListResponse<CustodiaLf> & { page: number; per_page: number }>("/lost-found/custodias", {
-      estado: "ACTIVA",
+      estado: "ACTIVA,PROXIMA_VENCER,VENCIDA",
+      ...(search ? { search } : {}),
       page: "1",
       per_page: "10",
     }),
@@ -39,6 +41,7 @@ export async function getLostFoundLogistica() {
   return {
     custodias,
     casos: casos.items,
+    initialSearch: search ?? "",
     motivosDescarte: motivosCierre.filter((motivo) => motivo.clase_cierre === "DESCARTE" && motivo.activo),
   };
 }

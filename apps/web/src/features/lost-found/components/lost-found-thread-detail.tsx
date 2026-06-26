@@ -38,10 +38,10 @@ import {
   TabsTrigger,
   Textarea,
 } from "@safecampus/ui-kit";
-import { Archive, CheckCircle2, Eye, EyeOff, GitCompareArrows, History, ImageIcon, Lock, LockOpen, MapPin, MessageSquare, Pencil, Settings2, XCircle } from "lucide-react";
+import { Archive, CheckCircle2, ExternalLink, Eye, EyeOff, GitCompareArrows, History, ImageIcon, Lock, LockOpen, MapPin, MessageSquare, Pencil, Settings2, XCircle } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
-import { estadoLabel, tagsForTipo, tipoLabel } from "../presentation";
+import { estadoLabel, formatDateTimePe, tagsForTipo, tipoLabel } from "../presentation";
 import { COMMENT_SORT_OPTIONS, filterByTags, sortRootComments, type CommentSort } from "./comment-sorting";
 import { EstadoLfBadge } from "./estado-lf-badge";
 import { EditCaseModal } from "./edit-case-modal";
@@ -87,6 +87,7 @@ export function LostFoundThreadDetail({
   const isAdmin = Boolean(currentUser?.isAdmin);
   const canEdit = Boolean(currentUser?.isAdmin || (currentUser && caso.reportante?.id === currentUser.id));
   const cerrado = caso.estado === "CERRADO";
+  const hasCustodia = Boolean(caso.custodia) || caso.estado === "EN_CUSTODIA";
   const canComment = COMMENTABLE_STATES.has(caso.estado);
   const metaEntries = activeMetadatoCampos(categorias.find((c) => c.id === caso.categoria_id))
     .map((campo) => ({ etiqueta: campo.etiqueta, valor: caso.metadatos?.[campo.codigo] }))
@@ -225,7 +226,7 @@ export function LostFoundThreadDetail({
   };
 
   const createCustody = () => {
-    if (!custodia.trim()) return;
+    if (hasCustodia || !custodia.trim()) return;
     startTransition(async () => {
       await lostFoundClient.registrarCustodia(caso.id, {
         ubicacion_custodia: custodia.trim(),
@@ -307,20 +308,26 @@ export function LostFoundThreadDetail({
                 <ThreadInfoTab caso={caso} metaEntries={metaEntries} />
               </TabsContent>
               <TabsContent value="gestion" className="space-y-4">
-                <Textarea value={operativo} onChange={(e) => setOperativo(e.target.value)} placeholder="Nota operativa" />
-                <Select onValueChange={changeState}>
-                  <SelectTrigger><SelectValue placeholder="Cambiar estado" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="EN_REVISION">En revision</SelectItem>
-                    <SelectItem value="CONFIRMADO">Confirmado</SelectItem>
-                    <SelectItem value="CERRADO">Cerrar</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input value={custodia} onChange={(e) => setCustodia(e.target.value)} placeholder="Ubicacion de custodia" />
-                <Button className="w-full" onClick={createCustody} disabled={isPending}>
-                  <Archive className="mr-2 h-4 w-4" />
-                  Registrar custodia
-                </Button>
+                {hasCustodia ? (
+                  <CustodiaLinkedNotice caso={caso} />
+                ) : (
+                  <>
+                    <Textarea value={operativo} onChange={(e) => setOperativo(e.target.value)} placeholder="Nota operativa" />
+                    <Select onValueChange={changeState}>
+                      <SelectTrigger><SelectValue placeholder="Cambiar estado" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EN_REVISION">En revision</SelectItem>
+                        <SelectItem value="CONFIRMADO">Confirmado</SelectItem>
+                        <SelectItem value="CERRADO">Cerrar</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input value={custodia} onChange={(e) => setCustodia(e.target.value)} placeholder="Ubicacion de custodia" />
+                    <Button className="w-full" onClick={createCustody} disabled={isPending}>
+                      <Archive className="mr-2 h-4 w-4" />
+                      Registrar custodia
+                    </Button>
+                  </>
+                )}
                 <Button className="w-full" variant="outline" onClick={() => setHistoryOpen(true)}>
                   <History className="mr-2 h-4 w-4" />
                   Ver historial del caso
@@ -513,6 +520,48 @@ function DescripcionVerMas({ texto }: { texto: string }) {
           {expanded ? "Ver menos" : "Ver más"}
         </button>
       )}
+    </div>
+  );
+}
+
+function CustodiaLinkedNotice({ caso }: { caso: CasoLfDetail }) {
+  const search = encodeURIComponent(caso.codigo || caso.id);
+  const custodia = caso.custodia;
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50 p-4">
+      <div className="flex items-start gap-3">
+        <Archive className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" />
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-slate-950">Este hilo ya tiene una custodia asociada</p>
+            <p className="text-sm text-slate-600">
+              La edición operativa y el registro de custodia se gestionan desde Logística para mantener una sola trazabilidad del objeto.
+            </p>
+          </div>
+          {custodia && (
+            <dl className="space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-slate-500">Estado de custodia</dt>
+                <dd><EstadoLfBadge estado={custodia.estado} /></dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Ubicación</dt>
+                <dd className="text-right font-medium text-slate-800">{custodia.ubicacion_custodia}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Vencimiento</dt>
+                <dd className="text-right font-medium text-slate-800">{formatDateTimePe(custodia.fecha_vencimiento)}</dd>
+              </div>
+            </dl>
+          )}
+          <Button asChild className="w-full">
+            <Link href={`/lost-found-logistica?search=${search}`}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Ver custodia en Logística
+            </Link>
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
