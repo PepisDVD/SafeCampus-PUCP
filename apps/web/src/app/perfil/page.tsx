@@ -15,6 +15,7 @@ import { OperativoShell } from "@/app/(operativo)/_components/operativo-shell";
 import { ComunidadProfile } from "@/features/profile/components/comunidad-profile";
 import { ProfilePageClient } from "@/features/profile/components/profile-page-client";
 import { listarMisIncidentes } from "@/features/incidentes/service";
+import { getLostFoundAccess } from "@/features/lost-found/service";
 import { getCurrentUserProfile } from "@/lib/auth/server";
 
 const ESTADOS_RESUELTOS: ReadonlySet<EstadoIncidente> = new Set([
@@ -85,5 +86,11 @@ export default async function PerfilPage() {
     return <AdminShell user={profile.navUser}>{content}</AdminShell>;
   }
 
-  return <OperativoShell user={profile.navUser}>{content}</OperativoShell>;
+  const lostFoundEnabled = await getLostFoundAccess();
+
+  return (
+    <OperativoShell user={profile.navUser} lostFoundEnabled={lostFoundEnabled}>
+      {content}
+    </OperativoShell>
+  );
 }

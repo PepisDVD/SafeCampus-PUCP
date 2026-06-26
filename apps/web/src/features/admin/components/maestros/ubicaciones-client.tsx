@@ -98,6 +98,7 @@ type FormState = {
   codigo: string;
   nombre: string;
   tipo: TipoUbicacion;
+  tipoOtro: string;
   latitud: string;
   longitud: string;
   activa: boolean;
@@ -107,6 +108,7 @@ const emptyForm: FormState = {
   codigo: "",
   nombre: "",
   tipo: "OTRO",
+  tipoOtro: "",
   latitud: "",
   longitud: "",
   activa: true,
@@ -134,6 +136,7 @@ export function UbicacionesClient({ initialItems }: Props) {
   const [isPending, startTransition] = useTransition();
   const latValue = toNumberOrNull(form.latitud);
   const lngValue = toNumberOrNull(form.longitud);
+  const tipoOptions = useMemo(() => buildTipoOptions(items), [items]);
 
   const filteredItems = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -167,6 +170,7 @@ export function UbicacionesClient({ initialItems }: Props) {
       codigo: target.codigo,
       nombre: target.nombre,
       tipo: target.tipo,
+      tipoOtro: target.tipo === "OTRO" ? "Otro" : isKnownTipo(target.tipo) ? "" : formatTipoUbicacion(target.tipo),
       latitud: String(target.latitud),
       longitud: String(target.longitud),
       activa: target.activa,
@@ -201,6 +205,11 @@ export function UbicacionesClient({ initialItems }: Props) {
       toast.error("Latitud y longitud deben ser valores numericos.");
       return;
     }
+    const tipo = resolveTipo(form);
+    if (tipo.length < 2) {
+      toast.error("Ingresa un tipo de ubicacion de al menos 2 caracteres.");
+      return;
+    }
 
     startTransition(async () => {
       try {
@@ -208,7 +217,7 @@ export function UbicacionesClient({ initialItems }: Props) {
           // El código es inmutable tras el registro: no se envía al actualizar.
           const updated = await api.patch<UbicacionMaestra>(`/maestros/ubicaciones/${editing.id}`, {
             nombre: form.nombre.trim(),
-            tipo: form.tipo,
+            tipo,
             latitud: lat,
             longitud: lng,
             activa: form.activa,
@@ -219,7 +228,7 @@ export function UbicacionesClient({ initialItems }: Props) {
           const created = await api.post<UbicacionMaestra>("/maestros/ubicaciones", {
             codigo: form.codigo.trim(),
             nombre: form.nombre.trim(),
-            tipo: form.tipo,
+            tipo,
             latitud: lat,
             longitud: lng,
             activa: form.activa,
@@ -340,7 +349,7 @@ export function UbicacionesClient({ initialItems }: Props) {
 
             <MultiSelectFilter
               placeholder="Todos los tipos"
-              options={TIPO_UBICACION_OPTIONS.map((option) => ({
+              options={tipoOptions.map((option) => ({
                 value: option.value,
                 label: option.label,
               }))}
@@ -349,6 +358,7 @@ export function UbicacionesClient({ initialItems }: Props) {
                 setTipoFilters(value);
                 setPage(1);
               }}
+              contentClassName="max-h-72 overflow-y-auto"
               selectedLabel={(count) => `${count} tipos`}
             />
           </div>
@@ -363,7 +373,7 @@ export function UbicacionesClient({ initialItems }: Props) {
                 }}
               >
                 <SelectTrigger className="w-30"><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-72 overflow-y-auto">
                   <SelectItem value="10">10 filas</SelectItem>
                   <SelectItem value="20">20 filas</SelectItem>
                   <SelectItem value="50">50 filas</SelectItem>
@@ -555,21 +565,39 @@ export function UbicacionesClient({ initialItems }: Props) {
               <Field label="Tipo de ubicación">
                 <Select
                   value={form.tipo}
-                  onValueChange={(value) =>
-                    setForm((current) => ({ ...current, tipo: value as TipoUbicacion }))
-                  }
+                  onValueChange={(value) => {
+                    setForm((current) => ({
+                      ...current,
+                      tipo: value,
+                      tipoOtro: value === "OTRO" ? current.tipoOtro : "",
+                    }));
+                  }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Seleccionar tipo..." />
                   </SelectTrigger>
-                  <SelectContent>
-                    {TIPO_UBICACION_OPTIONS.map((option) => (
+                  <SelectContent className="max-h-72 overflow-y-auto">
+                    {tipoOptions.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {form.tipo === "OTRO" && (
+                  <div className="space-y-2">
+                    <Input
+                      value={form.tipoOtro}
+                      onChange={(event) => setForm((current) => ({ ...current, tipoOtro: event.target.value }))}
+                      placeholder="Ej. Aula especializada"
+                      maxLength={40}
+                      required
+                    />
+                    <p className="text-xs text-slate-500">
+                      Se guardara como un nuevo tipo y aparecera en los filtros y selectores.
+                    </p>
+                  </div>
+                )}
               </Field>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -739,6 +767,40 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </div>
   );
+}
+
+function buildTipoOptions(items: UbicacionMaestra[]) {
+  const options = new Map<string, string>();
+  for (const option of TIPO_UBICACION_OPTIONS) {
+    options.set(option.value, option.label);
+  }
+  for (const item of items) {
+    options.set(item.tipo, formatTipoUbicacion(item.tipo));
+  }
+  return Array.from(options, ([value, label]) => ({ value, label })).sort((a, b) => {
+    if (a.value === "OTRO") return 1;
+    if (b.value === "OTRO") return -1;
+    return a.label.localeCompare(b.label, "es");
+  });
+}
+
+function isKnownTipo(value: string) {
+  return TIPO_UBICACION_OPTIONS.some((option) => option.value === value);
+}
+
+function resolveTipo(form: FormState) {
+  if (form.tipo !== "OTRO") return form.tipo;
+  return normalizeTipoInput(form.tipoOtro);
+}
+
+function normalizeTipoInput(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase()
+    .slice(0, 40);
 }
 
 function toNumberOrNull(value: string): number | null {

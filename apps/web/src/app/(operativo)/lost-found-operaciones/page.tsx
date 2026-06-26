@@ -1,13 +1,25 @@
+import { redirect } from "next/navigation";
+
 import { LostFoundOperativo } from "@/features/lost-found/components/lost-found-operativo";
-import { getLostFoundOperativo } from "@/features/lost-found/service";
+import { LfBreadcrumb } from "@/features/lost-found/components/lf-breadcrumb";
+import { getLostFoundAccess, getLostFoundOperativo } from "@/features/lost-found/service";
 
 export default async function LostFoundOperativoPage() {
-  const { casos, custodias, kpis } = await getLostFoundOperativo();
+  if (!(await getLostFoundAccess())) redirect("/dashboard");
+  const { dashboard, categorias, initialFilters } = await getLostFoundOperativo();
   return (
-    <LostFoundOperativo
-      initialCasos={casos}
-      initialCustodias={custodias}
-      kpis={kpis}
-    />
+    <>
+      <LfBreadcrumb
+        items={[
+          { label: "Lost & Found", href: "/lost-found-operaciones" },
+          { label: "Dashboard" },
+        ]}
+      />
+      <LostFoundOperativo
+        initialDashboard={dashboard}
+        categorias={categorias}
+        initialFilters={initialFilters}
+      />
+    </>
   );
 }

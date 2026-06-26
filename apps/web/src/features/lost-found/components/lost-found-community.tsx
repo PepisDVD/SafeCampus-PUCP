@@ -11,6 +11,7 @@ import {
   CardTitle,
   Input,
   Label,
+  MultiSelectFilter,
   Select,
   SelectContent,
   SelectItem,
@@ -31,19 +32,28 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
+  ChevronUp,
   History,
   ImagePlus,
   MapPin,
   MessageSquare,
   PackageCheck,
   PackageSearch,
+  Pencil,
+  Pin,
+  PinOff,
   Search,
+  Star,
   Trash2,
   X,
 } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
-import { estadoLabel, estadoLfTone, tipoLabel } from "../presentation";
+import { DEFAULT_TAG, estadoLabel, tagMeta, tagsForTipo, tipoLabel } from "../presentation";
+import { COMMENT_SORT_OPTIONS, filterByTags, sortRootComments, type CommentSort } from "./comment-sorting";
+import { EstadoLfBadge } from "./estado-lf-badge";
+import { CharCounter, LF_TEXT_LIMITS } from "./text-field-help";
+import { EditCaseModal } from "./edit-case-modal";
 import type { CasoLfDetail, CasoLfListItem, CategoriaLf, MatchLf, UbicacionMaestra } from "../types";
 
 type Props = {
@@ -99,8 +109,10 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
   const [photos, setPhotos] = useState<File[]>([]);
   const [mineStatus, setMineStatus] = useState("TODOS");
   const [selected, setSelected] = useState<CasoLfDetail | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [matches, setMatches] = useState<MatchLf[]>([]);
   const [comment, setComment] = useState("");
+  const [commentTag, setCommentTag] = useState<string>(DEFAULT_TAG);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [threadSubscribed, setThreadSubscribed] = useState(true);
   const [isPending, startTransition] = useTransition();
@@ -190,14 +202,41 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
 
   const sendComment = () => {
     if (!selected || !comment.trim()) return;
+    const tag = commentTag === DEFAULT_TAG ? null : commentTag;
     startTransition(async () => {
       try {
-        await lostFoundClient.comentar(selected.id, comment.trim(), replyingTo);
+        await lostFoundClient.comentar(selected.id, comment.trim(), replyingTo, undefined, tag);
         setSelected(await lostFoundClient.detalle(selected.id));
         setComment("");
+        setCommentTag(DEFAULT_TAG);
         setReplyingTo(null);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "No se pudo publicar el comentario");
+      }
+    });
+  };
+
+  const reactComment = (id: string) => {
+    if (!selected) return;
+    startTransition(async () => {
+      try {
+        await lostFoundClient.reaccionarComentario(id);
+        setSelected(await lostFoundClient.detalle(selected.id));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo registrar la reacción");
+      }
+    });
+  };
+
+  const pinComment = (id: string, fijar: boolean) => {
+    if (!selected) return;
+    startTransition(async () => {
+      try {
+        await lostFoundClient.fijarComentario(id, fijar);
+        setSelected(await lostFoundClient.detalle(selected.id));
+        toast.success(fijar ? "Comentario fijado" : "Comentario desfijado");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo fijar el comentario");
       }
     });
   };
@@ -289,8 +328,21 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
                   <SelectItem value="ENCONTRADO">Objeto encontrado</SelectItem>
                 </SelectContent>
               </Select>
-              <Input placeholder="Titulo" value={form.titulo} onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))} />
-              <Textarea placeholder="Descripcion detallada" value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} />
+              <div className="space-y-1">
+                <Input placeholder="Titulo" value={form.titulo} maxLength={LF_TEXT_LIMITS.titulo.max} onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))} />
+                <CharCounter value={form.titulo} min={LF_TEXT_LIMITS.titulo.min} max={LF_TEXT_LIMITS.titulo.max} />
+              </div>
+              <div className="space-y-1">
+                <Textarea
+                  placeholder="Descripcion detallada"
+                  value={form.descripcion}
+                  rows={4}
+                  maxLength={LF_TEXT_LIMITS.descripcion.max}
+                  className="max-h-60 min-h-24 w-full resize-y overflow-x-hidden break-all field-sizing-fixed"
+                  onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
+                />
+                <CharCounter value={form.descripcion} min={LF_TEXT_LIMITS.descripcion.min} max={LF_TEXT_LIMITS.descripcion.max} />
+              </div>
               <Select value={form.categoria_id || undefined} onValueChange={(value) => setForm((f) => ({ ...f, categoria_id: value }))}>
                 <SelectTrigger><SelectValue placeholder="Categoria" /></SelectTrigger>
                 <SelectContent>{categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
@@ -303,12 +355,21 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
                 </SelectContent>
               </Select>
               {ubicacionSeleccionada === "OTRO" && (
-                <Input placeholder="Lugar de referencia" value={form.lugar_referencia} onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))} />
+                <div className="space-y-1">
+                  <Input placeholder="Lugar de referencia" value={form.lugar_referencia} maxLength={LF_TEXT_LIMITS.lugar_referencia.max} onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))} />
+                  <CharCounter value={form.lugar_referencia} min={LF_TEXT_LIMITS.lugar_referencia.min} max={LF_TEXT_LIMITS.lugar_referencia.max} />
+                </div>
               )}
               <Input type="datetime-local" value={toLocalInput(form.fecha_evento)} onChange={(e) => setForm((f) => ({ ...f, fecha_evento: e.target.value }))} />
               <div className="grid grid-cols-2 gap-2">
-                <Input placeholder="Color" value={form.color_principal ?? ""} onChange={(e) => setForm((f) => ({ ...f, color_principal: e.target.value }))} />
-                <Input placeholder="Marca" value={form.marca ?? ""} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} />
+                <div className="space-y-1">
+                  <Input placeholder="Color" value={form.color_principal ?? ""} maxLength={LF_TEXT_LIMITS.color_principal.max} onChange={(e) => setForm((f) => ({ ...f, color_principal: e.target.value }))} />
+                  <CharCounter value={form.color_principal ?? ""} max={LF_TEXT_LIMITS.color_principal.max} />
+                </div>
+                <div className="space-y-1">
+                  <Input placeholder="Marca" value={form.marca ?? ""} maxLength={LF_TEXT_LIMITS.marca.max} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} />
+                  <CharCounter value={form.marca ?? ""} max={LF_TEXT_LIMITS.marca.max} />
+                </div>
               </div>
               <Input
                 placeholder="Etiquetas separadas por coma"
@@ -344,8 +405,12 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
           caso={selected}
           matches={matches}
           isOwn={isOwnSelected}
+          canEdit={isOwnSelected}
+          onEdit={() => setEditOpen(true)}
           threadSubscribed={threadSubscribed}
           comment={comment}
+          commentTag={commentTag}
+          onCommentTagChange={setCommentTag}
           loading={isPending}
           onClose={() => setSelected(null)}
           onCommentChange={setComment}
@@ -353,6 +418,8 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
           onReply={setReplyingTo}
           onClearReply={() => setReplyingTo(null)}
           onSendComment={sendComment}
+          onReactComment={reactComment}
+          onPinComment={pinComment}
           onDeleteComment={(id) => {
             if (!selected) return;
             startTransition(async () => {
@@ -368,6 +435,16 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
           onRespondMatch={respondMatch}
           onCancel={cancelCase}
           onToggleParticipation={toggleParticipation}
+        />
+      )}
+
+      {selected && isOwnSelected && (
+        <EditCaseModal
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          caso={selected}
+          categorias={categorias}
+          onSaved={(saved) => setSelected(saved)}
         />
       )}
     </div>
@@ -421,8 +498,12 @@ function CaseDetail(props: {
   caso: CasoLfDetail;
   matches: MatchLf[];
   isOwn: boolean;
+  canEdit?: boolean;
+  onEdit?: () => void;
   threadSubscribed: boolean;
   comment: string;
+  commentTag: string;
+  onCommentTagChange: (value: string) => void;
   replyingTo: string | null;
   loading: boolean;
   onClose: () => void;
@@ -430,15 +511,21 @@ function CaseDetail(props: {
   onReply: (id: string) => void;
   onClearReply: () => void;
   onSendComment: () => void;
+  onReactComment: (id: string) => void;
+  onPinComment: (id: string, fijar: boolean) => void;
   onDeleteComment: (id: string) => void;
   onRespondMatch: (matchId: string, confirmar: boolean) => void;
   onCancel: () => void;
   onToggleParticipation: (checked: boolean) => void;
 }) {
-  const { caso, matches, isOwn, threadSubscribed, comment, replyingTo, loading, onClose, onCommentChange, onReply, onClearReply, onSendComment, onDeleteComment, onRespondMatch, onCancel, onToggleParticipation } = props;
+  const { caso, matches, isOwn, canEdit, onEdit, threadSubscribed, comment, commentTag, onCommentTagChange, replyingTo, loading, onClose, onCommentChange, onReply, onClearReply, onSendComment, onReactComment, onPinComment, onDeleteComment, onRespondMatch, onCancel, onToggleParticipation } = props;
   const canComment = commentableStates.has(caso.estado);
   const canCancel = isOwn && !terminalStates.has(caso.estado);
-  const rootComments = caso.comentarios.filter((comentario) => !comentario.parent_id);
+  const [commentSort, setCommentSort] = useState<CommentSort>("recientes");
+  const [tagFilters, setTagFilters] = useState<string[]>([]);
+  const commentTags = tagsForTipo(caso.tipo);
+  const rawRoots = caso.comentarios.filter((comentario) => !comentario.parent_id);
+  const rootComments = sortRootComments(filterByTags(rawRoots, tagFilters), commentSort);
   const repliesByParent = new Map<string, typeof caso.comentarios>();
   caso.comentarios.filter((comentario) => comentario.parent_id).forEach((comentario) => {
     const replies = repliesByParent.get(comentario.parent_id!) ?? [];
@@ -454,7 +541,15 @@ function CaseDetail(props: {
             <CardTitle className="text-lg">{caso.titulo}</CardTitle>
             <p className="text-xs text-slate-500">{caso.codigo} · {caso.lugar_referencia}</p>
           </div>
-          <Button size="icon" variant="ghost" onClick={onClose} aria-label="Cerrar detalle"><X className="h-4 w-4" /></Button>
+          <div className="flex items-center gap-1">
+            {canEdit && onEdit && (
+              <Button size="sm" variant="outline" onClick={onEdit}>
+                <Pencil className="mr-1.5 h-4 w-4" />
+                Editar
+              </Button>
+            )}
+            <Button size="icon" variant="ghost" onClick={onClose} aria-label="Cerrar detalle"><X className="h-4 w-4" /></Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -464,7 +559,7 @@ function CaseDetail(props: {
         )}
         <p className="text-sm text-slate-700">{caso.descripcion}</p>
         <div className="flex flex-wrap gap-2">
-          <Badge variant="outline" className={estadoLfTone[caso.estado]}>{estadoLabel(caso.estado)}</Badge>
+          <EstadoLfBadge estado={caso.estado} />
           <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
           {caso.categoria_nombre && <Badge variant="secondary">{caso.categoria_nombre}</Badge>}
           {caso.reportante && <Badge variant="outline">Reporta {caso.reportante.nombre_completo}</Badge>}
@@ -523,9 +618,32 @@ function CaseDetail(props: {
               <Switch checked={threadSubscribed} onCheckedChange={onToggleParticipation} />
             </div>
           </div>
+          {rawRoots.length > 0 && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <MultiSelectFilter
+                className="w-full sm:w-56"
+                placeholder="Filtrar por etiqueta"
+                options={commentTags.map((t) => ({ value: t.value, label: t.label }))}
+                selected={tagFilters}
+                onChange={setTagFilters}
+              />
+              <Select value={commentSort} onValueChange={(value) => setCommentSort(value as CommentSort)}>
+                <SelectTrigger className="w-full sm:w-44" aria-label="Ordenar comentarios">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMMENT_SORT_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-2">
-            {rootComments.length === 0 ? (
+            {rawRoots.length === 0 ? (
               <p className="rounded-lg border border-dashed p-3 text-sm text-slate-500">Sin comentarios aun.</p>
+            ) : rootComments.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-3 text-sm text-slate-500">No hay comentarios con la etiqueta seleccionada.</p>
             ) : rootComments.map((c) => (
               <CommentItem
                 key={c.id}
@@ -533,6 +651,8 @@ function CaseDetail(props: {
                 replies={repliesByParent.get(c.id) ?? []}
                 canComment={canComment}
                 onReply={onReply}
+                onReact={onReactComment}
+                onPin={onPinComment}
                 onDelete={onDeleteComment}
               />
             ))}
@@ -543,9 +663,23 @@ function CaseDetail(props: {
               <Button size="sm" variant="ghost" onClick={onClearReply}>Cancelar</Button>
             </div>
           )}
-          <div className="flex gap-2">
-            <Input value={comment} onChange={(e) => onCommentChange(e.target.value)} placeholder={canComment ? "Escribe un comentario" : "Chat en solo lectura"} disabled={!canComment} />
-            <Button onClick={onSendComment} disabled={loading || !canComment || !comment.trim()}>Enviar</Button>
+          <div className="space-y-2">
+            {canComment && (
+              <Select value={commentTag} onValueChange={onCommentTagChange}>
+                <SelectTrigger className="w-full" aria-label="Etiqueta del comentario">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {commentTags.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="flex gap-2">
+              <Input value={comment} onChange={(e) => onCommentChange(e.target.value)} placeholder={canComment ? "Escribe un comentario" : "Chat en solo lectura"} disabled={!canComment} />
+              <Button onClick={onSendComment} disabled={loading || !canComment || !comment.trim()}>Enviar</Button>
+            </div>
           </div>
         </section>
 
@@ -559,32 +693,81 @@ function CaseDetail(props: {
   );
 }
 
-function CommentItem({ comment, replies, canComment, onReply, onDelete }: {
+function CommentTagBadge({ tag }: { tag?: string | null }) {
+  if (!tag || tag === DEFAULT_TAG) return null;
+  const meta = tagMeta(tag);
+  return <Badge variant="outline" className={cn("ml-1", meta.badgeClassName)}>{meta.label}</Badge>;
+}
+
+function CommentItem({ comment, replies, canComment, onReply, onReact, onPin, onDelete }: {
   comment: CasoLfDetail["comentarios"][number];
   replies: CasoLfDetail["comentarios"];
   canComment: boolean;
   onReply: (id: string) => void;
+  onReact: (id: string) => void;
+  onPin: (id: string, fijar: boolean) => void;
   onDelete: (id: string) => void;
 }) {
+  // Las respuestas inician contraídas para no cargar todo el hilo de una vez.
+  const [repliesOpen, setRepliesOpen] = useState(false);
   return (
     <div className="space-y-2">
-      <div className="rounded-lg bg-slate-50 p-2 text-sm">
-        <p className="font-medium">{comment.autor?.nombre_completo ?? "Usuario"}{comment.autor?.rol ? ` · ${comment.autor.rol}` : ""}</p>
+      <div className={cn("rounded-lg bg-slate-50 p-2 text-sm", comment.fijado && "ring-1 ring-sky-200")}>
+        <p className="font-medium">
+          {comment.autor?.nombre_completo ?? "Usuario"}{comment.autor?.rol ? ` · ${comment.autor.rol}` : ""}
+          {comment.fijado && <Badge variant="outline" className="ml-1 border-sky-200 bg-sky-50 text-sky-700"><Pin className="mr-1 h-3 w-3" />Fijado</Badge>}
+          <CommentTagBadge tag={comment.tag} />
+        </p>
         <p>{comment.contenido}</p>
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-wrap gap-1">
           {canComment && <Button size="sm" variant="ghost" onClick={() => onReply(comment.id)}>Responder</Button>}
+          <Button
+            size="sm"
+            variant={comment.reaccionado ? "secondary" : "ghost"}
+            onClick={() => onReact(comment.id)}
+            disabled={!comment.puede_reaccionar}
+            title={comment.puede_reaccionar ? "Destacar" : "No puedes destacar este comentario"}
+          >
+            <Star className={cn("mr-1 h-4 w-4", comment.reaccionado && "fill-amber-400 text-amber-500")} />
+            {comment.destacados ? comment.destacados : "Destacar"}
+          </Button>
+          {comment.puede_fijar && (
+            <Button size="sm" variant="ghost" onClick={() => onPin(comment.id, !comment.fijado)}>
+              {comment.fijado ? <PinOff className="mr-1 h-4 w-4" /> : <Pin className="mr-1 h-4 w-4" />}
+              {comment.fijado ? "Quitar" : "Fijar"}
+            </Button>
+          )}
           {comment.puede_eliminar && <Button size="sm" variant="ghost" className="text-rose-700" onClick={() => onDelete(comment.id)}>Eliminar</Button>}
         </div>
       </div>
       {replies.length > 0 && (
         <div className="ml-4 space-y-2 border-l pl-3">
-          {replies.map((reply) => (
+          <Button size="sm" variant="ghost" className="text-slate-600" onClick={() => setRepliesOpen((v) => !v)}>
+            {repliesOpen ? <ChevronUp className="mr-1 h-4 w-4" /> : <ChevronDown className="mr-1 h-4 w-4" />}
+            {repliesOpen ? "Ocultar respuestas" : `Mostrar ${replies.length} respuesta${replies.length > 1 ? "s" : ""}`}
+          </Button>
+          {repliesOpen && replies.map((reply) => (
             <div key={reply.id} className="rounded-lg bg-white p-2 text-sm shadow-sm ring-1 ring-slate-100">
-              <p className="font-medium">{reply.autor?.nombre_completo ?? "Usuario"}{reply.autor?.rol ? ` · ${reply.autor.rol}` : ""}</p>
+              <p className="font-medium">
+                {reply.autor?.nombre_completo ?? "Usuario"}{reply.autor?.rol ? ` · ${reply.autor.rol}` : ""}
+                <CommentTagBadge tag={reply.tag} />
+              </p>
               <p>{reply.contenido}</p>
-              {reply.puede_eliminar && (
-                <Button size="sm" variant="ghost" className="mt-2 text-rose-700" onClick={() => onDelete(reply.id)}>Eliminar</Button>
-              )}
+              <div className="mt-2 flex flex-wrap gap-1">
+                <Button
+                  size="sm"
+                  variant={reply.reaccionado ? "secondary" : "ghost"}
+                  onClick={() => onReact(reply.id)}
+                  disabled={!reply.puede_reaccionar}
+                  title={reply.puede_reaccionar ? "Destacar" : "No puedes destacar este comentario"}
+                >
+                  <Star className={cn("mr-1 h-4 w-4", reply.reaccionado && "fill-amber-400 text-amber-500")} />
+                  {reply.destacados ? reply.destacados : "Destacar"}
+                </Button>
+                {reply.puede_eliminar && (
+                  <Button size="sm" variant="ghost" className="text-rose-700" onClick={() => onDelete(reply.id)}>Eliminar</Button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -607,7 +790,7 @@ function CaseList({ items, onOpen, empty = "No hay casos para mostrar." }: { ite
                   <p className="font-semibold text-slate-950">{item.titulo}</p>
                   <p className="text-xs text-slate-500">{tipoLabel(item.tipo)} · {item.codigo}</p>
                 </div>
-                <Badge variant="outline" className={estadoLfTone[item.estado]}>{estadoLabel(item.estado)}</Badge>
+                <EstadoLfBadge estado={item.estado} />
               </div>
               <p className="line-clamp-2 text-sm text-slate-600">{item.descripcion}</p>
               <div className="flex flex-wrap gap-3 text-xs text-slate-500">
@@ -654,7 +837,7 @@ function normalizeCreateForm(form: CasoLfCreatePayload): CasoLfCreatePayload {
 
 function validateCase(form: CasoLfCreatePayload, photos: File[]) {
   if (form.titulo.trim().length < 3) return "El titulo debe tener al menos 3 caracteres.";
-  if (form.descripcion.trim().length < 20) return "La descripcion debe tener al menos 20 caracteres.";
+  if (form.descripcion.trim().length < 10) return "La descripcion debe tener al menos 10 caracteres.";
   if (!form.categoria_id) return "Selecciona una categoria.";
   if (form.lugar_referencia.trim().length < 3) return "El lugar de referencia debe tener al menos 3 caracteres.";
   const eventDate = new Date(form.fecha_evento);

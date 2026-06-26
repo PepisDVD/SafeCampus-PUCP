@@ -1,24 +1,23 @@
 from datetime import datetime
-from typing import Literal
+import re
+import unicodedata
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-# Vocabulario controlado de tipos de ubicación. Debe mantenerse alineado con
-# la migración `20260514_0018` y con el frontend (`shared-types`).
-TipoUbicacion = Literal[
-    "PABELLON",
-    "FACULTAD",
-    "BIBLIOTECA",
-    "LABORATORIO",
-    "AUDITORIO",
-    "CAFETERIA",
-    "AREA_DEPORTIVA",
-    "AREA_COMUN",
-    "ADMINISTRATIVO",
-    "ESTACIONAMIENTO",
-    "ACCESO",
-    "OTRO",
-]
+TipoUbicacion = str
+
+
+def normalizar_tipo_ubicacion(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        return "OTRO"
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    normalized = re.sub(r"[^A-Za-z0-9]+", "_", normalized).strip("_").upper()
+    if len(normalized) < 2:
+        raise ValueError("El tipo de ubicacion debe tener al menos 2 caracteres.")
+    if len(normalized) > 40:
+        raise ValueError("El tipo de ubicacion no puede superar 40 caracteres.")
+    return normalized
 
 
 class UbicacionMaestraItem(BaseModel):
@@ -29,8 +28,8 @@ class UbicacionMaestraItem(BaseModel):
     latitud: float
     longitud: float
     activa: bool
-    # True si la ubicación está referenciada por otras entidades (alertas,
-    # puntos de interés, segmentos). Cuando es True no puede eliminarse.
+    # True si la ubicacion esta referenciada por otras entidades (alertas,
+    # puntos de interes, segmentos). Cuando es True no puede eliminarse.
     tiene_relaciones: bool = False
     created_at: datetime
     updated_at: datetime
@@ -39,17 +38,27 @@ class UbicacionMaestraItem(BaseModel):
 class UbicacionMaestraCreateInput(BaseModel):
     codigo: str = Field(min_length=2, max_length=40)
     nombre: str = Field(min_length=2, max_length=120)
-    tipo: TipoUbicacion = "OTRO"
+    tipo: TipoUbicacion = Field(default="OTRO", min_length=2, max_length=80)
     latitud: float = Field(ge=-90, le=90)
     longitud: float = Field(ge=-180, le=180)
     activa: bool = True
+
+    @field_validator("tipo")
+    @classmethod
+    def _normalizar_tipo(cls, value: str) -> str:
+        return normalizar_tipo_ubicacion(value)
 
 
 class UbicacionMaestraUpdateInput(BaseModel):
-    """El código es inmutable tras el registro, por eso no se incluye aquí."""
+    """El codigo es inmutable tras el registro, por eso no se incluye aqui."""
 
     nombre: str = Field(min_length=2, max_length=120)
-    tipo: TipoUbicacion = "OTRO"
+    tipo: TipoUbicacion = Field(default="OTRO", min_length=2, max_length=80)
     latitud: float = Field(ge=-90, le=90)
     longitud: float = Field(ge=-180, le=180)
     activa: bool = True
+
+    @field_validator("tipo")
+    @classmethod
+    def _normalizar_tipo(cls, value: str) -> str:
+        return normalizar_tipo_ubicacion(value)

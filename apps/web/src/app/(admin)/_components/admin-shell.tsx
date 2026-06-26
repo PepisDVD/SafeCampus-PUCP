@@ -14,6 +14,7 @@ import {
   BarChart3,
   BotMessageSquare,
   ClipboardList,
+  Cog,
   LayoutDashboard,
   Megaphone,
   MapPinned,
@@ -41,34 +42,6 @@ const ADMIN_NAV: NavItem[] = [
     label: "Incidentes",
     icon: ShieldCheck,
     section: "Operacion",
-  },
-  {
-    href: "/lost-found-operaciones",
-    label: "Lost & Found",
-    icon: PackageSearch,
-    section: "Operacion",
-    children: [
-      {
-        href: "/lost-found-operaciones",
-        label: "Dashboard",
-        icon: BarChart3,
-      },
-      {
-        href: "/lost-found-hilos",
-        label: "Hilos",
-        icon: MessageSquare,
-      },
-      {
-        href: "/lost-found-logistica",
-        label: "Logistica",
-        icon: PackageCheck,
-      },
-      {
-        href: "/lost-found-admin",
-        label: "Configuracion",
-        icon: ClipboardList,
-      },
-    ],
   },
   {
     href: "/mapa",
@@ -99,6 +72,34 @@ const ADMIN_NAV: NavItem[] = [
     label: "KPIs",
     icon: BarChart3,
     section: "Operacion",
+  },
+  {
+    href: "/lost-found-operaciones",
+    label: "Lost & Found",
+    icon: PackageSearch,
+    section: "Operacion",
+    children: [
+      {
+        href: "/lost-found-operaciones",
+        label: "Dashboard",
+        icon: BarChart3,
+      },
+      {
+        href: "/lost-found-hilos",
+        label: "Hilos",
+        icon: MessageSquare,
+      },
+      {
+        href: "/lost-found-logistica",
+        label: "Logistica",
+        icon: PackageCheck,
+      },
+      {
+        href: "/lost-found-admin",
+        label: "Configuración",
+        icon: Cog,
+      },
+    ],
   },
   {
     href: "/mensajes",
@@ -187,7 +188,7 @@ export function AdminShell({ user, children }: AdminShellProps) {
         editProfileHref="/perfil"
         LinkComponent={Link}
       />
-      <SidebarInset className="bg-[#f7f8fb]">
+      <SidebarInset className="min-w-0 bg-[#f7f8fb]">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1 size-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-[#001C55]" />
           <div className="min-w-0">
@@ -200,7 +201,7 @@ export function AdminShell({ user, children }: AdminShellProps) {
           </div>
           <div className="flex-1" />
         </header>
-        <main>{children}</main>
+        <main className="min-w-0 max-w-full overflow-x-hidden">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );

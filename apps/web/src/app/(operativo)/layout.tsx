@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { getLostFoundAccess } from "@/features/lost-found/service";
 import { getCurrentUserProfile } from "@/lib/auth/server";
 import { AdminShell } from "../(admin)/_components/admin-shell";
 import { OperativoShell } from "./_components/operativo-shell";
@@ -25,5 +26,12 @@ export default async function OperativoLayout({
     return <AdminShell user={profile.navUser}>{children}</AdminShell>;
   }
 
-  return <OperativoShell user={profile.navUser}>{children}</OperativoShell>;
+  // Solo los supervisores asignados al módulo Lost & Found ven su entrada en el sidebar.
+  const lostFoundEnabled = await getLostFoundAccess();
+
+  return (
+    <OperativoShell user={profile.navUser} lostFoundEnabled={lostFoundEnabled}>
+      {children}
+    </OperativoShell>
+  );
 }
