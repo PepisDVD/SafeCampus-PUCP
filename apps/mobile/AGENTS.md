@@ -17,7 +17,9 @@ React Native + Expo mobile app for SafeCampus PUCP field operators.
 pnpm dev              # expo start
 pnpm dev:lan          # expo start --lan
 pnpm dev:lan:clear    # expo start --lan --clear
+pnpm dev:lan:auto     # detects laptop LAN IP and starts expo --lan --clear
 pnpm dev:tunnel       # expo start --tunnel
+pnpm dev:tunnel:auto  # detects laptop LAN IP and starts expo --tunnel --clear
 pnpm build:android    # eas build --platform android
 pnpm build:ios        # eas build --platform ios
 pnpm test             # vitest run --passWithNoTests
@@ -38,7 +40,7 @@ pnpm typecheck        # tsc --noEmit
 - For physical-device testing with a local backend:
   - start backend with `pnpm dev:backend`
   - verify `http://<laptop-lan-ip>:8000/health` from the phone
-  - start mobile with `pnpm dev:lan:clear`
+  - start mobile with `pnpm dev:lan:auto`
 
 ## Testing
 

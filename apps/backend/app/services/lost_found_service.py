@@ -209,6 +209,11 @@ class LostFoundService:
         color: str | None,
         cursor: datetime | None,
         limit: int,
+        publicado_desde: datetime | None = None,
+        lat: float | None = None,
+        lng: float | None = None,
+        radio_km: float | None = None,
+        metadatos: dict[str, Any] | None = None,
     ) -> list[CasoLfListItem]:
         rows = await self._repo.list_feed(
             search=search,
@@ -219,6 +224,11 @@ class LostFoundService:
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
             color=color,
+            publicado_desde=publicado_desde,
+            lat=lat,
+            lng=lng,
+            radio_km=radio_km,
+            metadatos=metadatos,
             cursor=cursor,
             limit=max(1, min(limit, 100)),
         )
@@ -950,6 +960,94 @@ class LostFoundService:
         await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico por descarte", motivo_cierre="DESCARTADO", motivo_cierre_id=motivo["id"], observaciones_cierre=observacion)
         await self._audit_lf(actor_id, "LF_DESCARTE_EJECUTADO", "custodia_objeto", custodia_id, {"motivo": motivo_descarte, "motivo_cierre_id": motivo["id"], "destino": data.destino_descarte})
 
+    async def revertir_devolucion(self, custodia_id: str, actor_id: str) -> CustodiaLfItem:
+        """Revierte una devolución: deja la custodia operativa y reabre el caso.
+
+        Pensado como apoyo cuando una devolución se registró por error o el caso
+        debe reabrirse. Limpia los datos de la entrega y conserva la trazabilidad.
+        """
+        custodia = await self._repo.get_custodia(custodia_id)
+        if not custodia:
+            raise HTTPException(status_code=404, detail="Custodia no encontrada.")
+        if str(custodia.estado) != "DEVUELTA":
+            raise HTTPException(status_code=422, detail="Solo se puede revertir una custodia en estado devuelta.")
+        row = await self._reactivar_custodia_operativa(
+            custodia,
+            actor_id,
+            limpiar={
+                "reclamante_id": None,
+                "entregado_por_id": None,
+                "metodo_verificacion": None,
+                "fecha_devolucion": None,
+            },
+            audit_accion="LF_DEVOLUCION_REVERTIDA",
+            comentario_caso="Devolución revertida: la custodia vuelve a estar operativa.",
+        )
+        return CustodiaLfItem(**row)
+
+    async def reactivar_descarte(self, custodia_id: str, actor_id: str) -> CustodiaLfItem:
+        """Reactiva una custodia descartada y reabre el caso.
+
+        El estado operativo se recalcula según la fecha de vencimiento
+        (ACTIVA / PROXIMA_VENCER / VENCIDA). Limpia los datos del descarte.
+        """
+        custodia = await self._repo.get_custodia(custodia_id)
+        if not custodia:
+            raise HTTPException(status_code=404, detail="Custodia no encontrada.")
+        if str(custodia.estado) != "DESCARTADA":
+            raise HTTPException(status_code=422, detail="Solo se puede reactivar una custodia en estado descartada.")
+        row = await self._reactivar_custodia_operativa(
+            custodia,
+            actor_id,
+            limpiar={
+                "destino_descarte": None,
+                "motivo_descarte": None,
+                "fecha_descarte": None,
+            },
+            audit_accion="LF_DESCARTE_REACTIVADO",
+            comentario_caso="Descarte reactivado: la custodia vuelve a estar operativa.",
+        )
+        return CustodiaLfItem(**row)
+
+    async def _reactivar_custodia_operativa(
+        self,
+        custodia: Any,
+        actor_id: str,
+        *,
+        limpiar: dict[str, Any],
+        audit_accion: str,
+        comentario_caso: str,
+    ) -> dict[str, Any]:
+        """Devuelve la custodia a un estado operativo y reabre el caso asociado."""
+        politica = await self.obtener_politica_custodia()
+        estado_objetivo = self._estado_custodia_por_vencimiento(
+            custodia.fecha_vencimiento,
+            bool(custodia.es_perecible),
+            politica,
+        )
+        estado_anterior = str(custodia.estado)
+        row = await self._repo.update_custodia(str(custodia.id), {"estado": estado_objetivo, **limpiar})
+        if not row:
+            raise HTTPException(status_code=404, detail="Custodia no encontrada.")
+        await self._repo.reabrir_caso(
+            caso_id=str(custodia.caso_id),
+            ejecutor_id=actor_id,
+            estado="EN_CUSTODIA",
+            comentario=comentario_caso,
+        )
+        await self._audit_lf(
+            actor_id,
+            audit_accion,
+            "custodia_objeto",
+            str(custodia.id),
+            {
+                "caso_id": str(custodia.caso_id),
+                "estado_anterior": estado_anterior,
+                "estado_nuevo": estado_objetivo,
+            },
+        )
+        return row
+
     async def obtener_kpis(self) -> KpisLfResponse:
         return KpisLfResponse(**await self._repo.get_kpis())
 
@@ -1426,6 +1524,8 @@ class LostFoundService:
             categoria_nombre=row.get("categoria_nombre"),
             subcategoria=row.get("subcategoria"),
             lugar_referencia=row.get("lugar_referencia"),
+            latitud=row.get("latitud"),
+            longitud=row.get("longitud"),
             fecha_evento=row.get("fecha_evento"),
             foto_url=row.get("foto_url"),
             color_principal=row.get("color_principal"),
@@ -1453,8 +1553,6 @@ class LostFoundService:
             motivo_cierre=row.get("motivo_cierre"),
             motivo_cierre_id=str(row["motivo_cierre_id"]) if row.get("motivo_cierre_id") else None,
             observaciones_cierre=row.get("observaciones_cierre"),
-            latitud=row.get("latitud"),
-            longitud=row.get("longitud"),
             custodia=(
                 {
                     "id": str(row["custodia_id"]),

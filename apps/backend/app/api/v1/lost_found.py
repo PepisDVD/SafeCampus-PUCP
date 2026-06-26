@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
 from uuid import UUID
@@ -178,11 +179,29 @@ async def listar_feed(
     fecha_desde: datetime | None = Query(default=None),
     fecha_hasta: datetime | None = Query(default=None),
     color: str | None = Query(default=None),
+    publicado_desde: datetime | None = Query(default=None),
+    lat: float | None = Query(default=None, ge=-90, le=90),
+    lng: float | None = Query(default=None, ge=-180, le=180),
+    radio_km: float | None = Query(default=None, gt=0, le=10),
+    metadatos: str | None = Query(default=None, description="Filtros de metadatos como objeto JSON."),
     cursor: datetime | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     service: LostFoundService = Depends(get_service),
 ):
     page_limit = max(1, min(limit, 100))
+    geo_args = [lat, lng, radio_km]
+    if any(arg is not None for arg in geo_args) and any(arg is None for arg in geo_args):
+        raise HTTPException(status_code=422, detail="El filtro por ubicación requiere lat, lng y radio_km.")
+    metadatos_filtro: dict | None = None
+    if metadatos:
+        try:
+            parsed = json.loads(metadatos)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail="El filtro de metadatos no es un JSON válido.") from exc
+        if not isinstance(parsed, dict):
+            raise HTTPException(status_code=422, detail="El filtro de metadatos debe ser un objeto.")
+        metadatos_filtro = {str(k): v for k, v in parsed.items() if v not in (None, "")}
+        metadatos_filtro = metadatos_filtro or None
     items = await service.listar_feed(
         search=search,
         tipo=tipo.value if tipo else None,
@@ -192,6 +211,11 @@ async def listar_feed(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         color=color,
+        publicado_desde=publicado_desde,
+        lat=lat,
+        lng=lng,
+        radio_km=radio_km,
+        metadatos=metadatos_filtro,
         cursor=cursor,
         limit=min(page_limit + 1, 100),
     )
@@ -467,6 +491,26 @@ async def registrar_descarte(
     service: LostFoundService = Depends(get_service),
 ):
     await service.registrar_descarte(custodia_id, current_user.id, body)
+
+
+@router.post("/custodias/{custodia_id}/revertir", response_model=CustodiaLfItem)
+async def revertir_devolucion(
+    custodia_id: str,
+    current_user: AuthUserResponse = Depends(require_lost_found_access),
+    service: LostFoundService = Depends(get_service),
+):
+    """Revierte la devolución de una custodia y reabre el caso asociado."""
+    return await service.revertir_devolucion(custodia_id, current_user.id)
+
+
+@router.post("/custodias/{custodia_id}/reactivar", response_model=CustodiaLfItem)
+async def reactivar_descarte(
+    custodia_id: str,
+    current_user: AuthUserResponse = Depends(require_lost_found_access),
+    service: LostFoundService = Depends(get_service),
+):
+    """Reactiva una custodia descartada recalculando su estado por vencimiento."""
+    return await service.reactivar_descarte(custodia_id, current_user.id)
 
 
 @router.patch("/comentarios/{comentario_id}/visibilidad", status_code=status.HTTP_204_NO_CONTENT)

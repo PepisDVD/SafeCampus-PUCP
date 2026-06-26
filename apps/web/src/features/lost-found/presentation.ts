@@ -59,6 +59,31 @@ export function formatDateTimePe(value: string) {
   return `${parts.day}/${parts.month}/${parts.year}, ${String(hour12).padStart(2, "0")}:${parts.minute} ${period}`;
 }
 
+/**
+ * Tiempo relativo compacto para el feed comunitario ("hace 5 min", "hace 2 h",
+ * "ayer", "hace 3 d"). Para más de una semana cae a fecha corta en es-PE.
+ */
+export function formatRelativeTime(value?: string | null) {
+  if (!value) return "Sin fecha";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sin fecha";
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+
+  if (diffMin < 1) return "Ahora";
+  if (diffMin < 60) return `hace ${diffMin} min`;
+
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `hace ${diffHr} h`;
+
+  const diffDays = Math.floor(diffHr / 24);
+  if (diffDays === 1) return "ayer";
+  if (diffDays < 7) return `hace ${diffDays} d`;
+
+  return date.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+}
+
 // ───────────────────────────── Etiquetas de comentarios ─────────────────────────────
 
 export type LfCommentTag = {

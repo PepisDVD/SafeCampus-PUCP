@@ -92,10 +92,14 @@ export const lostFoundClient = {
     api.get<ListResponse<CustodiaLf> & { page: number; per_page: number }>("/lost-found/custodias", { params }),
   actualizarCustodia: (id: string, body: { ubicacion_custodia?: string; observaciones?: string | null; fecha_vencimiento?: string }) =>
     api.patch<CustodiaLf>(`/lost-found/custodias/${id}`, body),
-  devolver: (id: string, body: { reclamante_id: string; metodo_verificacion: string; observaciones?: string }) =>
+  devolver: (id: string, body: { reclamante_id?: string; metodo_verificacion: string; observaciones?: string }) =>
     api.post<void>(`/lost-found/custodias/${id}/devolucion`, body),
   descartar: (id: string, body: { motivo_cierre_id: string; motivo_otro?: string; destino_descarte?: string; observaciones?: string }) =>
     api.post<void>(`/lost-found/custodias/${id}/descarte`, body),
+  revertirDevolucion: (id: string) =>
+    api.post<CustodiaLf>(`/lost-found/custodias/${id}/revertir`, {}),
+  reactivarDescarte: (id: string) =>
+    api.post<CustodiaLf>(`/lost-found/custodias/${id}/reactivar`, {}),
   crearCategoria: (body: CategoriaLfWritePayload) => api.post<CategoriaLf>("/lost-found/categorias", body),
   actualizarCategoria: (id: string, body: CategoriaLfWritePayload) =>
     api.patch<CategoriaLf>(`/lost-found/categorias/${id}`, body),

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
+from geoalchemy2 import Geography
 from sqlalchemy import and_, case, cast, delete, desc, exists, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +59,8 @@ class LostFoundRepository:
                 CasoLostFound.categoria_id,
                 CategoriaObjeto.nombre.label("categoria_nombre"),
                 CasoLostFound.subcategoria,
+                func.ST_Y(CasoLostFound.geom).label("latitud"),
+                func.ST_X(CasoLostFound.geom).label("longitud"),
                 CasoLostFound.lugar_referencia,
                 CasoLostFound.fecha_evento,
                 CasoLostFound.foto_url,
@@ -179,8 +182,13 @@ class LostFoundRepository:
         fecha_desde: datetime | None,
         fecha_hasta: datetime | None,
         color: str | None,
-        cursor: datetime | None,
-        limit: int,
+        publicado_desde: datetime | None = None,
+        lat: float | None = None,
+        lng: float | None = None,
+        radio_km: float | None = None,
+        metadatos: dict[str, Any] | None = None,
+        cursor: datetime | None = None,
+        limit: int = 20,
     ) -> list[dict[str, Any]]:
         # La comunidad ve los hilos no ocultos (incluye cerrados, que se muestran en solo lectura).
         # Sólo se excluyen los descartados. La visibilidad la controla el flag `oculto`.
@@ -203,6 +211,27 @@ class LostFoundRepository:
             statement = statement.where(CasoLostFound.fecha_evento <= fecha_hasta)
         if color:
             statement = statement.where(CasoLostFound.color_principal.ilike(f"%{color.strip()}%"))
+        if publicado_desde:
+            statement = statement.where(CasoLostFound.created_at >= publicado_desde)
+        if lat is not None and lng is not None and radio_km is not None:
+            # Filtro por cercanía: casa los hilos cuyo punto está dentro del radio
+            # (metros) usando geografía. Casos sin `geom` (NULL) quedan fuera.
+            punto = func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326)
+            statement = statement.where(
+                func.ST_DWithin(
+                    cast(CasoLostFound.geom, Geography),
+                    cast(punto, Geography),
+                    radio_km * 1000,
+                )
+            )
+        if metadatos:
+            for clave, valor in metadatos.items():
+                texto = str(valor).strip()
+                if not texto:
+                    continue
+                statement = statement.where(
+                    CasoLostFound.metadatos[clave].astext.ilike(f"%{texto}%")
+                )
         if cursor:
             statement = statement.where(CasoLostFound.created_at < cursor)
         if search:
@@ -407,6 +436,33 @@ class LostFoundRepository:
         await self.db.execute(update(CasoLostFound).where(CasoLostFound.id == UUID(caso_id)).values(**values))
         await self.add_historial(caso_id, str(actual["estado"]), estado, "Cambio de estado", ejecutor_id, comentario)
         return {**actual, "estado_anterior": actual["estado"], "estado_nuevo": estado, "comentario": comentario}
+
+    async def reabrir_caso(
+        self,
+        *,
+        caso_id: str,
+        ejecutor_id: str,
+        estado: str,
+        comentario: str | None,
+    ) -> dict[str, Any] | None:
+        """Reabre un caso a un estado operativo limpiando los campos de cierre."""
+        actual = await self.get_estado(caso_id)
+        if not actual:
+            return None
+        await self.db.execute(
+            update(CasoLostFound)
+            .where(CasoLostFound.id == UUID(caso_id))
+            .values(
+                estado=estado,
+                motivo_cierre=None,
+                motivo_cierre_id=None,
+                observaciones_cierre=None,
+                cerrado_por_id=None,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        await self.add_historial(caso_id, str(actual["estado"]), estado, "Reapertura de caso", ejecutor_id, comentario)
+        return {**actual, "estado_anterior": actual["estado"], "estado_nuevo": estado}
 
     async def update_fotos(
         self,

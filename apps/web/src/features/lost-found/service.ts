@@ -1,4 +1,5 @@
 import { serverApi } from "@/lib/api/server";
+import { listarUsuarios, type UsuarioConRoles } from "@/features/admin/services/usuario.service";
 import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CustodiaLf, CustodiaPoliticaLf, DashboardLf, ListResponse, MatchingConfigLf, MatchLf, MotivoCierreLf, UbicacionMaestra } from "./types";
 
 export async function getLostFoundBootstrap() {
@@ -28,7 +29,7 @@ export async function getLostFoundOperativo() {
 
 export async function getLostFoundLogistica(filters?: { search?: string }) {
   const search = filters?.search?.trim();
-  const [custodias, casos, motivosCierre] = await Promise.all([
+  const [custodias, casos, motivosCierre, ubicaciones, usuariosResult] = await Promise.all([
     serverApi.get<ListResponse<CustodiaLf> & { page: number; per_page: number }>("/lost-found/custodias", {
       estado: "ACTIVA,PROXIMA_VENCER,VENCIDA",
       ...(search ? { search } : {}),
@@ -37,11 +38,18 @@ export async function getLostFoundLogistica(filters?: { search?: string }) {
     }),
     serverApi.get<ListResponse<CasoLfListItem>>("/lost-found/casos", { tipo: "ENCONTRADO", limit: "100" }),
     serverApi.get<MotivoCierreLf[]>("/lost-found/motivos-cierre"),
+    serverApi.get<UbicacionMaestra[]>("/maestros/ubicaciones", { include_inactive: "false" }),
+    listarUsuarios({ estado: "ACTIVO" }).then(
+      (response) => ({ status: "fulfilled" as const, value: response.items }),
+      () => ({ status: "rejected" as const, value: [] as UsuarioConRoles[] }),
+    ),
   ]);
   return {
     custodias,
     casos: casos.items,
     initialSearch: search ?? "",
+    ubicacionesCustodia: ubicaciones.filter((ubicacion) => ubicacion.activa && ubicacion.tipo.toLowerCase() === "custodia"),
+    usuarios: usuariosResult.value,
     motivosDescarte: motivosCierre.filter((motivo) => motivo.clase_cierre === "DESCARTE" && motivo.activo),
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Badge,
   Button,
@@ -9,6 +9,16 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
   Input,
   Label,
   MultiSelectFilter,
@@ -27,12 +37,14 @@ import {
   cn,
 } from "@safecampus/ui-kit";
 import {
+  ArrowLeft,
   Bell,
   BellOff,
-  CalendarDays,
   Check,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Eye,
   History,
   ImagePlus,
   MapPin,
@@ -42,10 +54,11 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Plus,
   Search,
+  SlidersHorizontal,
   Star,
   Trash2,
-  X,
 } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
@@ -53,7 +66,18 @@ import { DEFAULT_TAG, estadoLabel, tagMeta, tagsForTipo, tipoLabel } from "../pr
 import { COMMENT_SORT_OPTIONS, filterByTags, sortRootComments, type CommentSort } from "./comment-sorting";
 import { EstadoLfBadge } from "./estado-lf-badge";
 import { CharCounter, LF_TEXT_LIMITS } from "./text-field-help";
+import { activeMetadatoCampos, MetadatoFields, validateMetadatos, valuesToMetadatos } from "./metadato-fields";
 import { EditCaseModal } from "./edit-case-modal";
+import { CaseCard, CaseListSkeleton, CaseCardSkeleton } from "./lost-found-case-card";
+import { LostFoundFeedFilters } from "./lost-found-feed-filters";
+import { LostFoundLocationPicker, formatRadius, type LocationSelection } from "./lost-found-location-picker";
+import {
+  TIME_PRESETS,
+  countAdvancedFilters,
+  emptyCommunityFilters,
+  toFeedParams,
+  type CommunityFilters,
+} from "./feed-filters";
 import type { CasoLfDetail, CasoLfListItem, CategoriaLf, MatchLf, UbicacionMaestra } from "../types";
 
 type Props = {
@@ -63,18 +87,19 @@ type Props = {
   ubicaciones: UbicacionMaestra[];
 };
 
-type Filters = {
-  search: string;
-  tipo: "" | "PERDIDO" | "ENCONTRADO";
-  categoria_id: string;
-  lugar: string;
-  fecha_desde: string;
-  fecha_hasta: string;
-  color: string;
+type FotoAdjunta = {
+  file: File;
+  previewUrl: string;
 };
 
+type CommunityFormErrors = Partial<Record<
+  "titulo" | "descripcion" | "categoria_id" | "lugar_referencia" | "fecha_evento" | "fotos" | "metadatos",
+  string
+>>;
+type CommunityTouchedFields = Partial<Record<keyof CommunityFormErrors, boolean>>;
+
 const DRAFT_KEY = "safecampus:lost-found:draft";
-const emptyFilters: Filters = { search: "", tipo: "", categoria_id: "", lugar: "", fecha_desde: "", fecha_hasta: "", color: "" };
+const ALL_CATEGORIES = "__todas__";
 const emptyForm: CasoLfCreatePayload = {
   tipo: "PERDIDO",
   titulo: "",
@@ -93,7 +118,12 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
   const [feed, setFeed] = useState(initialFeed);
   const [mine, setMine] = useState(initialMine);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Filters>(emptyFilters);
+  const [filters, setFilters] = useState<CommunityFilters>(emptyCommunityFilters);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [form, setForm] = useState<CasoLfCreatePayload>(() => {
     if (typeof window === "undefined") return emptyForm;
     const saved = window.localStorage.getItem(DRAFT_KEY);
@@ -105,10 +135,21 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
       return emptyForm;
     }
   });
+  const [formTouched, setFormTouched] = useState<CommunityTouchedFields>({});
+  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [metadatos, setMetadatos] = useState<Record<string, string>>({});
+  const metadatoCampos = useMemo(
+    () => activeMetadatoCampos(categorias.find((categoria) => categoria.id === form.categoria_id)),
+    [categorias, form.categoria_id],
+  );
   const [ubicacionSeleccionada, setUbicacionSeleccionada] = useState("OTRO");
-  const [photos, setPhotos] = useState<File[]>([]);
+  const [photos, setPhotos] = useState<FotoAdjunta[]>([]);
+  const [photoPreview, setPhotoPreview] = useState<FotoAdjunta | null>(null);
+  const photosRef = useRef<FotoAdjunta[]>([]);
   const [mineStatus, setMineStatus] = useState("TODOS");
+  const [activeTab, setActiveTab] = useState("feed");
   const [selected, setSelected] = useState<CasoLfDetail | null>(null);
+  const [openingDetail, setOpeningDetail] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [matches, setMatches] = useState<MatchLf[]>([]);
   const [comment, setComment] = useState("");
@@ -122,55 +163,141 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
     () => mine.filter((item) => mineStatus === "TODOS" || item.estado === mineStatus),
     [mine, mineStatus],
   );
+  const advancedCount = countAdvancedFilters(filters);
+  const hasLocation = filters.lat !== null && filters.lng !== null && filters.radio_km !== null;
+  const isPristine = advancedCount === 0 && !filters.timePreset && !hasLocation && !filters.search.trim();
+
+  // Refs para handlers estables (evitan cierres obsoletos en el infinite scroll).
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const nextCursorRef = useRef(nextCursor);
+  nextCursorRef.current = nextCursor;
+  const loadingMoreRef = useRef(false);
 
   useEffect(() => {
     window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...form, etiquetas: form.etiquetas ?? [] }));
   }, [form]);
 
-  const refreshFeed = (cursor?: string | null, append = false) => {
-    startTransition(async () => {
-      const params = toFeedParams(filters, cursor ?? null);
-      const next = await lostFoundClient.feed(params);
-      setFeed((current) => (append ? [...current, ...next.items] : next.items));
-      setNextCursor(next.next_cursor ?? null);
-    });
-  };
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
 
-  const refreshMine = async () => {
-    const nextMine = await lostFoundClient.misCasos();
-    setMine(nextMine.items);
+  useEffect(() => {
+    return () => {
+      photosRef.current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    };
+  }, []);
+
+  const reloadFeed = useCallback(async () => {
+    setFeedLoading(true);
+    try {
+      const next = await lostFoundClient.feed(toFeedParams(filtersRef.current));
+      setFeed(next.items);
+      setNextCursor(next.next_cursor ?? null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cargar el feed");
+    } finally {
+      setFeedLoading(false);
+    }
+  }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !nextCursorRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const next = await lostFoundClient.feed(toFeedParams(filtersRef.current, nextCursorRef.current));
+      setFeed((current) => [...current, ...next.items]);
+      setNextCursor(next.next_cursor ?? null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cargar más casos");
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, []);
+
+  // Recarga el feed (con debounce) cuando cambian los filtros. El primer render
+  // usa el feed inicial del servidor, así que se omite.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    const handle = window.setTimeout(() => void reloadFeed(), 300);
+    return () => window.clearTimeout(handle);
+  }, [filters, reloadFeed]);
+
+  const patchFilters = (partial: Partial<CommunityFilters>) => setFilters((current) => ({ ...current, ...partial }));
+
+  const applyLocation = (value: LocationSelection | null) => {
+    patchFilters({
+      lat: value?.lat ?? null,
+      lng: value?.lng ?? null,
+      radio_km: value?.radio_km ?? null,
+    });
   };
 
   const openDetail = (item: CasoLfListItem) => {
+    setOpeningDetail(true);
+    setSelected(null);
     startTransition(async () => {
-      const detail = await lostFoundClient.detalle(item.id);
-      setSelected(detail);
-      setReplyingTo(null);
-      setThreadSubscribed(true);
-      await lostFoundClient.actualizarParticipacion(item.id, true, true).catch(() => undefined);
-      setMatches(await lostFoundClient.matches(item.id).catch(() => []));
+      try {
+        const detail = await lostFoundClient.detalle(item.id);
+        setSelected(detail);
+        setReplyingTo(null);
+        setThreadSubscribed(true);
+        await lostFoundClient.actualizarParticipacion(item.id, true, true).catch(() => undefined);
+        setMatches(await lostFoundClient.matches(item.id).catch(() => []));
+      } catch (error) {
+        setOpeningDetail(false);
+        toast.error(error instanceof Error ? error.message : "No se pudo abrir el hilo");
+      } finally {
+        setOpeningDetail(false);
+      }
     });
   };
 
+  const closeDetail = () => {
+    setSelected(null);
+    setOpeningDetail(false);
+  };
+
   const createCase = () => {
+    setFormSubmitted(true);
     const validation = validateCase(form, photos);
     if (validation) {
       toast.error(validation);
       return;
     }
+    const metaError = validateMetadatos(metadatoCampos, metadatos);
+    if (metaError) {
+      toast.error(metaError);
+      return;
+    }
     startTransition(async () => {
       try {
-        const created = await lostFoundClient.crearCaso(normalizeCreateForm(form));
-        const detail = photos.length ? await lostFoundClient.subirFotosArchivos(created.id, photos) : await lostFoundClient.detalle(created.id);
-        const [nextFeed, nextMine] = await Promise.all([lostFoundClient.feed(toFeedParams(filters)), lostFoundClient.misCasos()]);
+        const created = await lostFoundClient.crearCaso(normalizeCreateForm({
+          ...form,
+          metadatos: valuesToMetadatos(metadatoCampos, metadatos),
+        }));
+        const detail = photos.length
+          ? await lostFoundClient.subirFotosArchivos(created.id, photos.map((photo) => photo.file))
+          : await lostFoundClient.detalle(created.id);
+        const [nextFeed, nextMine] = await Promise.all([lostFoundClient.feed(toFeedParams(filtersRef.current)), lostFoundClient.misCasos()]);
         setFeed(nextFeed.items);
         setNextCursor(nextFeed.next_cursor ?? null);
         setMine(nextMine.items);
         setSelected(detail);
         setMatches(await lostFoundClient.matches(created.id).catch(() => []));
         setForm(emptyForm);
-        setPhotos([]);
+        setFormTouched({});
+        setFormSubmitted(false);
+        setMetadatos({});
+        resetPhotos();
         setUbicacionSeleccionada("OTRO");
+        setNewCaseOpen(false);
         window.localStorage.removeItem(DRAFT_KEY);
         toast.success(`Caso ${created.codigo} registrado`);
         requestNotificationPermission();
@@ -180,7 +307,13 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
     });
   };
 
+  const refreshMine = async () => {
+    const nextMine = await lostFoundClient.misCasos();
+    setMine(nextMine.items);
+  };
+
   const handleUbicacionChange = (value: string) => {
+    setFormTouched((current) => ({ ...current, lugar_referencia: true }));
     setUbicacionSeleccionada(value);
     if (value === "OTRO") {
       setForm((current) => ({ ...current, lugar_referencia: "" }));
@@ -191,13 +324,45 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
   };
 
   const handlePhotos = (files: FileList | null) => {
-    const next = Array.from(files ?? []).slice(0, 3);
-    const error = validatePhotos(next);
+    setFormTouched((current) => ({ ...current, fotos: true }));
+    const selectedFiles = Array.from(files ?? []);
+    const imageFiles = selectedFiles.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length !== selectedFiles.length) {
+      toast.error("Solo se permiten archivos de imagen.");
+    }
+    if (imageFiles.length === 0) return;
+    const error = validatePhotos(imageFiles);
     if (error) {
       toast.error(error);
       return;
     }
-    setPhotos(next);
+    const nextPhotos = imageFiles.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }));
+    setPhotos((current) => {
+      const combined = [...current, ...nextPhotos].slice(0, 3);
+      if (current.length + nextPhotos.length > 3) {
+        toast.error("Solo puedes adjuntar hasta 3 fotos.");
+      }
+      const dropped = [...current, ...nextPhotos].slice(3);
+      dropped.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      return combined;
+    });
+  };
+
+  const removePhoto = (index: number) => {
+    setFormTouched((current) => ({ ...current, fotos: true }));
+    setPhotos((current) => {
+      const target = current[index];
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return current.filter((_, currentIndex) => currentIndex !== index);
+    });
+  };
+
+  const resetPhotos = () => {
+    setPhotos((current) => {
+      current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      return [];
+    });
+    setPhotoPreview(null);
   };
 
   const sendComment = () => {
@@ -266,7 +431,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
         const detail = await lostFoundClient.cancelar(selected.id, observaciones.trim());
         setSelected(detail);
         await refreshMine();
-        refreshFeed();
+        void reloadFeed();
         toast.success("Caso cancelado");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "No se pudo cancelar el caso");
@@ -289,6 +454,75 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
   };
 
   const isOwnSelected = Boolean(selected && mineIds.has(selected.id));
+  const showDetailScreen = Boolean(selected) || openingDetail;
+  const formErrors = useMemo(() => validateCaseFields(form, photos), [form, photos]);
+  const metaError = useMemo(() => validateMetadatos(metadatoCampos, metadatos), [metadatoCampos, metadatos]);
+  const canAddPhotos = photos.length < 3;
+
+  // ── Vista de detalle a pantalla completa ──────────────────────────────────
+  if (showDetailScreen) {
+    return (
+      <div className="px-4 py-4">
+        <button
+          type="button"
+          onClick={closeDetail}
+          className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#001C55]"
+        >
+          <ArrowLeft className="h-4 w-4" /> Volver al feed
+        </button>
+
+        {selected ? (
+          <CaseDetail
+            caso={selected}
+            matches={matches}
+            isOwn={isOwnSelected}
+            canEdit={isOwnSelected}
+            onEdit={() => setEditOpen(true)}
+            threadSubscribed={threadSubscribed}
+            comment={comment}
+            commentTag={commentTag}
+            onCommentTagChange={setCommentTag}
+            loading={isPending}
+            onClose={closeDetail}
+            onCommentChange={setComment}
+            replyingTo={replyingTo}
+            onReply={setReplyingTo}
+            onClearReply={() => setReplyingTo(null)}
+            onSendComment={sendComment}
+            onReactComment={reactComment}
+            onPinComment={pinComment}
+            onDeleteComment={(id) => {
+              if (!selected) return;
+              startTransition(async () => {
+                try {
+                  await lostFoundClient.eliminarComentario(id);
+                  setSelected(await lostFoundClient.detalle(selected.id));
+                  toast.success("Comentario eliminado");
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "No se pudo eliminar el comentario");
+                }
+              });
+            }}
+            onRespondMatch={respondMatch}
+            onCancel={cancelCase}
+            onToggleParticipation={toggleParticipation}
+          />
+        ) : (
+          <DetailSkeleton />
+        )}
+
+        {selected && isOwnSelected && (
+          <EditCaseModal
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            caso={selected}
+            categorias={categorias}
+            onSaved={(saved) => setSelected(saved)}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 px-4 py-5">
@@ -297,93 +531,101 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
           <PackageSearch className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Lost & Found</h1>
         </div>
-        <p className="text-sm text-slate-600">Registra, busca y coordina objetos perdidos o encontrados en campus.</p>
       </section>
 
-      <Tabs defaultValue="feed" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="feed">Feed</TabsTrigger>
-          <TabsTrigger value="nuevo">Nuevo</TabsTrigger>
           <TabsTrigger value="mis">Mis casos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="feed" className="space-y-3">
-          <SearchFilters filters={filters} categorias={categorias} onChange={setFilters} onSearch={() => refreshFeed()} loading={isPending} />
-          <CaseList items={feed} onOpen={openDetail} />
-          {nextCursor && (
-            <Button variant="outline" className="w-full" onClick={() => refreshFeed(nextCursor, true)} disabled={isPending}>
-              <ChevronDown className="mr-2 h-4 w-4" /> Cargar mas
-            </Button>
-          )}
-        </TabsContent>
-
-        <TabsContent value="nuevo" className="space-y-3">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Registrar caso</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <Select value={form.tipo} onValueChange={(value) => setForm((f) => ({ ...f, tipo: value as "PERDIDO" | "ENCONTRADO" }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PERDIDO">Objeto perdido</SelectItem>
-                  <SelectItem value="ENCONTRADO">Objeto encontrado</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="space-y-1">
-                <Input placeholder="Titulo" value={form.titulo} maxLength={LF_TEXT_LIMITS.titulo.max} onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))} />
-                <CharCounter value={form.titulo} min={LF_TEXT_LIMITS.titulo.min} max={LF_TEXT_LIMITS.titulo.max} />
-              </div>
-              <div className="space-y-1">
-                <Textarea
-                  placeholder="Descripcion detallada"
-                  value={form.descripcion}
-                  rows={4}
-                  maxLength={LF_TEXT_LIMITS.descripcion.max}
-                  className="max-h-60 min-h-24 w-full resize-y overflow-x-hidden break-all field-sizing-fixed"
-                  onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
-                />
-                <CharCounter value={form.descripcion} min={LF_TEXT_LIMITS.descripcion.min} max={LF_TEXT_LIMITS.descripcion.max} />
-              </div>
-              <Select value={form.categoria_id || undefined} onValueChange={(value) => setForm((f) => ({ ...f, categoria_id: value }))}>
-                <SelectTrigger><SelectValue placeholder="Categoria" /></SelectTrigger>
-                <SelectContent>{categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
-              </Select>
-              <Select value={ubicacionSeleccionada} onValueChange={handleUbicacionChange}>
-                <SelectTrigger><SelectValue placeholder="Ubicacion" /></SelectTrigger>
-                <SelectContent>
-                  {ubicaciones.map((ubicacion) => <SelectItem key={ubicacion.id} value={ubicacion.id}>{ubicacion.nombre}</SelectItem>)}
-                  <SelectItem value="OTRO">Otro</SelectItem>
-                </SelectContent>
-              </Select>
-              {ubicacionSeleccionada === "OTRO" && (
-                <div className="space-y-1">
-                  <Input placeholder="Lugar de referencia" value={form.lugar_referencia} maxLength={LF_TEXT_LIMITS.lugar_referencia.max} onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))} />
-                  <CharCounter value={form.lugar_referencia} min={LF_TEXT_LIMITS.lugar_referencia.min} max={LF_TEXT_LIMITS.lugar_referencia.max} />
-                </div>
-              )}
-              <Input type="datetime-local" value={toLocalInput(form.fecha_evento)} onChange={(e) => setForm((f) => ({ ...f, fecha_evento: e.target.value }))} />
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Input placeholder="Color" value={form.color_principal ?? ""} maxLength={LF_TEXT_LIMITS.color_principal.max} onChange={(e) => setForm((f) => ({ ...f, color_principal: e.target.value }))} />
-                  <CharCounter value={form.color_principal ?? ""} max={LF_TEXT_LIMITS.color_principal.max} />
-                </div>
-                <div className="space-y-1">
-                  <Input placeholder="Marca" value={form.marca ?? ""} maxLength={LF_TEXT_LIMITS.marca.max} onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))} />
-                  <CharCounter value={form.marca ?? ""} max={LF_TEXT_LIMITS.marca.max} />
-                </div>
-              </div>
+          {/* Nivel 1: búsqueda general + filtros avanzados */}
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
-                placeholder="Etiquetas separadas por coma"
-                value={Array.isArray(form.etiquetas) ? form.etiquetas.join(", ") : String(form.etiquetas ?? "")}
-                onChange={(e) => setForm((f) => ({ ...f, etiquetas: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) }))}
+                value={filters.search}
+                onChange={(e) => patchFilters({ search: e.target.value })}
+                placeholder="Buscar por objeto, lugar o marca"
+                className="pl-9"
               />
-              <Label className="flex h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-slate-50 text-sm text-slate-600">
-                <ImagePlus className="h-5 w-5 text-[#001C55]" />
-                {photos.length ? `${photos.length} foto(s) seleccionada(s)` : "Agregar foto principal y hasta 2 adicionales"}
-                <Input className="hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple capture="environment" onChange={(e) => handlePhotos(e.target.files)} />
-              </Label>
-              <Button className="w-full" onClick={createCase} disabled={isPending || Boolean(validateCase(form, photos))}>Publicar caso</Button>
-            </CardContent>
-          </Card>
+            </div>
+            <Button
+              variant="outline"
+              className="relative gap-1.5"
+              onClick={() => setFiltersOpen(true)}
+              aria-label="Más filtros"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtros
+              {advancedCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#001C55] px-1 text-[10px] font-semibold text-white">
+                  {advancedCount}
+                </span>
+              )}
+            </Button>
+          </div>
+
+          {/* Nivel 2: filtros rápidos */}
+          <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+            <QuickChip active={isPristine} onClick={() => setFilters(emptyCommunityFilters)}>
+              Todos
+            </QuickChip>
+
+            <Select
+              value={filters.categoria_id || ALL_CATEGORIES}
+              onValueChange={(value) =>
+                patchFilters({ categoria_id: value === ALL_CATEGORIES ? "" : value, metadatos: {} })
+              }
+            >
+              <SelectTrigger
+                className={cn(
+                  "h-9 w-auto gap-1 rounded-full border-slate-200 text-xs",
+                  filters.categoria_id && "border-[#001C55] bg-[#001C55]/5 text-[#001C55]",
+                )}
+                aria-label="Filtrar por categoría"
+              >
+                <SelectValue placeholder="Categoría" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_CATEGORIES}>Categoría</SelectItem>
+                {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+
+            <Select value={filters.timePreset || "__any__"} onValueChange={(value) => patchFilters({ timePreset: value === "__any__" ? "" : value })}>
+              <SelectTrigger
+                className={cn(
+                  "h-9 w-auto gap-1 rounded-full border-slate-200 text-xs",
+                  filters.timePreset && "border-[#001C55] bg-[#001C55]/5 text-[#001C55]",
+                )}
+                aria-label="Filtrar por tiempo"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <SelectValue placeholder="Tiempo" />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_PRESETS.map((preset) => (
+                  <SelectItem key={preset.value || "__any__"} value={preset.value || "__any__"}>{preset.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <QuickChip active={hasLocation} icon={<MapPin className="h-3.5 w-3.5" />} onClick={() => setLocationOpen(true)}>
+              {hasLocation ? `Cerca · ${formatRadius(filters.radio_km! * 1000)}` : "Lugar"}
+            </QuickChip>
+          </div>
+
+          {/* Nivel 3: hilos */}
+          <FeedList
+            items={feed}
+            loading={feedLoading}
+            loadingMore={loadingMore}
+            nextCursor={nextCursor}
+            onOpen={openDetail}
+            onLoadMore={loadMore}
+          />
         </TabsContent>
 
         <TabsContent value="mis" className="space-y-3">
@@ -396,98 +638,417 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
               ))}
             </SelectContent>
           </Select>
-          <CaseList items={filteredMine} onOpen={openDetail} empty="No tienes casos con ese estado." />
+          {filteredMine.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-4 text-center text-sm text-slate-500">No tienes casos con ese estado.</p>
+          ) : (
+            <div className="space-y-3">
+              {filteredMine.map((item) => <CaseCard key={item.id} item={item} onOpen={openDetail} />)}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
-      {selected && (
-        <CaseDetail
-          caso={selected}
-          matches={matches}
-          isOwn={isOwnSelected}
-          canEdit={isOwnSelected}
-          onEdit={() => setEditOpen(true)}
-          threadSubscribed={threadSubscribed}
-          comment={comment}
-          commentTag={commentTag}
-          onCommentTagChange={setCommentTag}
-          loading={isPending}
-          onClose={() => setSelected(null)}
-          onCommentChange={setComment}
-          replyingTo={replyingTo}
-          onReply={setReplyingTo}
-          onClearReply={() => setReplyingTo(null)}
-          onSendComment={sendComment}
-          onReactComment={reactComment}
-          onPinComment={pinComment}
-          onDeleteComment={(id) => {
-            if (!selected) return;
-            startTransition(async () => {
-              try {
-                await lostFoundClient.eliminarComentario(id);
-                setSelected(await lostFoundClient.detalle(selected.id));
-                toast.success("Comentario eliminado");
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : "No se pudo eliminar el comentario");
-              }
-            });
-          }}
-          onRespondMatch={respondMatch}
-          onCancel={cancelCase}
-          onToggleParticipation={toggleParticipation}
-        />
-      )}
+      {/* Botón flotante para registrar un nuevo caso (persiste entre tabs). */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-24 z-30">
+        <div className="mx-auto max-w-md px-4">
+          <Button
+            onClick={() => setNewCaseOpen(true)}
+            aria-label="Registrar nuevo caso"
+            className="pointer-events-auto ml-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#001C55] p-0 shadow-lg shadow-[#001C55]/30 transition active:scale-95"
+          >
+            <Plus className="h-6 w-6" />
+          </Button>
+        </div>
+      </div>
 
-      {selected && isOwnSelected && (
-        <EditCaseModal
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          caso={selected}
-          categorias={categorias}
-          onSaved={(saved) => setSelected(saved)}
-        />
+      <Drawer
+        open={newCaseOpen}
+        onOpenChange={(open) => {
+          setNewCaseOpen(open);
+          if (!open) {
+            setFormTouched({});
+            setFormSubmitted(false);
+          }
+        }}
+      >
+        <DrawerContent className="max-h-[92vh]">
+          <div className="mx-auto flex w-full max-w-md flex-1 flex-col overflow-hidden">
+            <DrawerHeader className="text-left">
+              <DrawerTitle>Registrar caso</DrawerTitle>
+              <DrawerDescription>Publica un objeto perdido o encontrado para la comunidad.</DrawerDescription>
+            </DrawerHeader>
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+              <section className="space-y-3 rounded-lg border bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Informacion del hilo</p>
+                <FieldBlock label="Tipo de hilo" required>
+                  <Select value={form.tipo} onValueChange={(value) => setForm((f) => ({ ...f, tipo: value as "PERDIDO" | "ENCONTRADO" }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PERDIDO">Objeto perdido</SelectItem>
+                      <SelectItem value="ENCONTRADO">Objeto encontrado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FieldBlock>
+                <FieldBlock label="Titulo" required>
+                  <Input
+                    placeholder="Ej. Mochila azul en biblioteca"
+                    value={form.titulo}
+                    maxLength={LF_TEXT_LIMITS.titulo.max}
+                    aria-invalid={Boolean(visibleFormError(formErrors.titulo, formTouched.titulo, formSubmitted))}
+                    onBlur={() => setFormTouched((current) => ({ ...current, titulo: true }))}
+                    onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
+                  />
+                  <CharCounter value={form.titulo} min={LF_TEXT_LIMITS.titulo.min} max={LF_TEXT_LIMITS.titulo.max} />
+                  <FieldError message={visibleFormError(formErrors.titulo, formTouched.titulo, formSubmitted)} />
+                </FieldBlock>
+                <FieldBlock label="Descripcion" required>
+                  <Textarea
+                    placeholder="Describe rasgos, contenido visible, estado y detalles utiles para identificar el objeto."
+                    value={form.descripcion}
+                    rows={5}
+                    maxLength={LF_TEXT_LIMITS.descripcion.max}
+                    aria-invalid={Boolean(visibleFormError(formErrors.descripcion, formTouched.descripcion, formSubmitted))}
+                    className="max-h-60 min-h-28 w-full resize-y overflow-x-hidden break-words field-sizing-fixed"
+                    onBlur={() => setFormTouched((current) => ({ ...current, descripcion: true }))}
+                    onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
+                  />
+                  <CharCounter value={form.descripcion} min={LF_TEXT_LIMITS.descripcion.min} max={LF_TEXT_LIMITS.descripcion.max} />
+                  <FieldError message={visibleFormError(formErrors.descripcion, formTouched.descripcion, formSubmitted)} />
+                </FieldBlock>
+              </section>
+
+              <section className="space-y-3 rounded-lg border bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Categoria y detalles</p>
+                <FieldBlock label="Categoria" required>
+                  <Select
+                    value={form.categoria_id || undefined}
+                    onValueChange={(value) => {
+                      setFormTouched((current) => ({ ...current, categoria_id: true, metadatos: true }));
+                      setForm((f) => ({ ...f, categoria_id: value }));
+                      setMetadatos({});
+                    }}
+                  >
+                    <SelectTrigger aria-invalid={Boolean(visibleFormError(formErrors.categoria_id, formTouched.categoria_id, formSubmitted))}>
+                      <SelectValue placeholder="Categoria" />
+                    </SelectTrigger>
+                    <SelectContent>{categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FieldError message={visibleFormError(formErrors.categoria_id, formTouched.categoria_id, formSubmitted)} />
+                </FieldBlock>
+                <MetadatoFields
+                  campos={metadatoCampos}
+                  values={metadatos}
+                  onChange={(codigo, value) => {
+                    setFormTouched((current) => ({ ...current, metadatos: true }));
+                    setMetadatos((prev) => ({ ...prev, [codigo]: value }));
+                  }}
+                />
+                <FieldError message={visibleFormError(metaError ?? undefined, formTouched.metadatos, formSubmitted)} />
+              </section>
+
+              <section className="space-y-3 rounded-lg border bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lugar y fecha</p>
+                <FieldBlock label="Ubicacion" required>
+                  <Select value={ubicacionSeleccionada} onValueChange={handleUbicacionChange}>
+                    <SelectTrigger><SelectValue placeholder="Ubicacion" /></SelectTrigger>
+                    <SelectContent>
+                      {ubicaciones.map((ubicacion) => <SelectItem key={ubicacion.id} value={ubicacion.id}>{ubicacion.nombre}</SelectItem>)}
+                      <SelectItem value="OTRO">Otro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FieldBlock>
+                {ubicacionSeleccionada === "OTRO" && (
+                  <FieldBlock label="Lugar de referencia" required>
+                    <Input
+                      placeholder="Ej. Entrada principal, aula N-201"
+                      value={form.lugar_referencia}
+                      maxLength={LF_TEXT_LIMITS.lugar_referencia.max}
+                      aria-invalid={Boolean(visibleFormError(formErrors.lugar_referencia, formTouched.lugar_referencia, formSubmitted))}
+                      onBlur={() => setFormTouched((current) => ({ ...current, lugar_referencia: true }))}
+                      onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))}
+                    />
+                    <CharCounter value={form.lugar_referencia} min={LF_TEXT_LIMITS.lugar_referencia.min} max={LF_TEXT_LIMITS.lugar_referencia.max} />
+                    <FieldError message={visibleFormError(formErrors.lugar_referencia, formTouched.lugar_referencia, formSubmitted)} />
+                  </FieldBlock>
+                )}
+                {ubicacionSeleccionada !== "OTRO" && (
+                  <FieldError message={visibleFormError(formErrors.lugar_referencia, formTouched.lugar_referencia, formSubmitted)} />
+                )}
+                <FieldBlock label="Fecha y hora" required>
+                  <Input
+                    type="datetime-local"
+                    value={toLocalInput(form.fecha_evento)}
+                    aria-invalid={Boolean(visibleFormError(formErrors.fecha_evento, formTouched.fecha_evento, formSubmitted))}
+                    onBlur={() => setFormTouched((current) => ({ ...current, fecha_evento: true }))}
+                    onChange={(e) => setForm((f) => ({ ...f, fecha_evento: e.target.value }))}
+                  />
+                  <FieldError message={visibleFormError(formErrors.fecha_evento, formTouched.fecha_evento, formSubmitted)} />
+                </FieldBlock>
+              </section>
+
+              <section className="space-y-3 rounded-lg border bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Datos adicionales</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <FieldBlock label="Marca">
+                    <Input
+                      placeholder="Opcional"
+                      value={form.marca ?? ""}
+                      maxLength={LF_TEXT_LIMITS.marca.max}
+                      onChange={(e) => setForm((f) => ({ ...f, marca: e.target.value }))}
+                    />
+                    <CharCounter value={form.marca ?? ""} max={LF_TEXT_LIMITS.marca.max} />
+                  </FieldBlock>
+                  <FieldBlock label="Color principal">
+                    <Input
+                      placeholder="Opcional"
+                      value={form.color_principal ?? ""}
+                      maxLength={LF_TEXT_LIMITS.color_principal.max}
+                      onChange={(e) => setForm((f) => ({ ...f, color_principal: e.target.value }))}
+                    />
+                    <CharCounter value={form.color_principal ?? ""} max={LF_TEXT_LIMITS.color_principal.max} />
+                  </FieldBlock>
+                </div>
+                <FieldBlock label="Etiquetas">
+                  <Input
+                    placeholder="Ej. llaves, azul, biblioteca"
+                    value={Array.isArray(form.etiquetas) ? form.etiquetas.join(", ") : String(form.etiquetas ?? "")}
+                    onChange={(e) => setForm((f) => ({ ...f, etiquetas: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) }))}
+                  />
+                  <p className="text-[11px] text-slate-500">Separa cada etiqueta con coma.</p>
+                </FieldBlock>
+              </section>
+
+              <section className="space-y-3 rounded-lg border bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Imagenes</p>
+                    <p className="mt-1 text-xs text-slate-500">Puedes tomar una foto con la camara del celular o elegir imagenes guardadas.</p>
+                  </div>
+                  <Badge variant="outline">{photos.length}/3</Badge>
+                </div>
+                <Label className={cn(
+                  "flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-slate-50 px-3 text-center text-sm text-slate-600",
+                  !canAddPhotos && "cursor-not-allowed opacity-60",
+                )}>
+                  <ImagePlus className="h-5 w-5 text-[#001C55]" />
+                  {canAddPhotos ? "Agregar foto principal y hasta 2 adicionales" : "Ya agregaste el maximo de 3 fotos"}
+                  <Input
+                    className="hidden"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/gif"
+                    multiple
+                    capture="environment"
+                    disabled={!canAddPhotos}
+                    onChange={(e) => {
+                      handlePhotos(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </Label>
+                <FieldError message={visibleFormError(formErrors.fotos, formTouched.fotos, formSubmitted)} />
+                {photos.length > 0 && (
+                  <div className="grid grid-cols-1 gap-2">
+                    {photos.map((photo, index) => (
+                      <CommunityPhotoPreview
+                        key={`${photo.file.name}-${index}`}
+                        photo={photo}
+                        onPreview={() => setPhotoPreview(photo)}
+                        onRemove={() => removePhoto(index)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+            <DrawerFooter>
+              <Button className="w-full" onClick={createCase} disabled={isPending}>Publicar caso</Button>
+            </DrawerFooter>
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      <Dialog open={Boolean(photoPreview)} onOpenChange={(open) => !open && setPhotoPreview(null)}>
+        <DialogContent className="max-w-[calc(100vw-2rem)] rounded-lg p-0 sm:max-w-md">
+          <DialogHeader className="border-b px-4 py-3 text-left">
+            <DialogTitle className="text-sm">{photoPreview?.file.name ?? "Vista previa"}</DialogTitle>
+          </DialogHeader>
+          {photoPreview && (
+            <div className="bg-slate-50 p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photoPreview.previewUrl} alt={photoPreview.file.name} className="max-h-[72vh] w-full rounded object-contain" />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <LostFoundFeedFilters
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        filters={filters}
+        categorias={categorias}
+        onApply={setFilters}
+      />
+      <LostFoundLocationPicker
+        open={locationOpen}
+        onOpenChange={setLocationOpen}
+        value={hasLocation ? { lat: filters.lat!, lng: filters.lng!, radio_km: filters.radio_km! } : null}
+        onApply={applyLocation}
+      />
+    </div>
+  );
+}
+
+function FieldBlock({
+  label,
+  required = false,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+        {label}
+        {required && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">Requerido</span>}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-xs font-medium text-rose-600">{message}</p>;
+}
+
+function visibleFormError(message: string | undefined, touched?: boolean, submitted?: boolean) {
+  return touched || submitted ? message : undefined;
+}
+
+function CommunityPhotoPreview({
+  photo,
+  onPreview,
+  onRemove,
+}: {
+  photo: FotoAdjunta;
+  onPreview: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="grid min-w-0 grid-cols-[72px_1fr_auto] items-center gap-3 rounded-lg border bg-slate-50 p-2">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={photo.previewUrl} alt={photo.file.name} className="h-16 w-16 rounded-md object-cover" />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-slate-800">{photo.file.name}</p>
+        <p className="text-xs text-slate-500">{formatBytes(photo.file.size)}</p>
+      </div>
+      <div className="flex gap-1">
+        <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={onPreview} aria-label="Previsualizar imagen">
+          <Eye className="h-4 w-4" />
+        </Button>
+        <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-rose-600" onClick={onRemove} aria-label="Eliminar imagen">
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function QuickChip({
+  active,
+  icon,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  icon?: React.ReactNode;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition",
+        active ? "border-[#001C55] bg-[#001C55] text-white" : "border-slate-200 bg-white text-slate-600",
+      )}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function FeedList({
+  items,
+  loading,
+  loadingMore,
+  nextCursor,
+  onOpen,
+  onLoadMore,
+}: {
+  items: CasoLfListItem[];
+  loading: boolean;
+  loadingMore: boolean;
+  nextCursor: string | null;
+  onOpen: (item: CasoLfListItem) => void;
+  onLoadMore: () => void;
+}) {
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !nextCursor) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) onLoadMore();
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [nextCursor, onLoadMore]);
+
+  if (loading) return <CaseListSkeleton />;
+  if (!items.length) {
+    return <p className="rounded-lg border border-dashed p-6 text-center text-sm text-slate-500">No hay casos para los filtros seleccionados.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => <CaseCard key={item.id} item={item} onOpen={onOpen} />)}
+      {nextCursor && (
+        <div ref={sentinelRef} className="pt-1">
+          {loadingMore ? (
+            <CaseCardSkeleton />
+          ) : (
+            <Button variant="outline" className="w-full" onClick={onLoadMore}>
+              <ChevronDown className="mr-2 h-4 w-4" /> Cargar más
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-function SearchFilters({ filters, categorias, onChange, onSearch, loading }: {
-  filters: Filters;
-  categorias: CategoriaLf[];
-  onChange: (filters: Filters) => void;
-  onSearch: () => void;
-  loading: boolean;
-}) {
-  const patch = (partial: Partial<Filters>) => onChange({ ...filters, ...partial });
+function DetailSkeleton() {
   return (
     <Card>
-      <CardContent className="space-y-3 p-3">
-        <div className="grid grid-cols-[1fr_auto] gap-2">
-          <Input value={filters.search} onChange={(e) => patch({ search: e.target.value })} placeholder="Buscar por objeto, lugar, marca" />
-          <Button size="icon" onClick={onSearch} disabled={loading} aria-label="Buscar"><Search className="h-4 w-4" /></Button>
+      <CardContent className="space-y-4 p-5">
+        <div className="h-6 w-2/3 animate-pulse rounded bg-slate-200" />
+        <div className="aspect-video w-full animate-pulse rounded-lg bg-slate-200" />
+        <div className="space-y-2">
+          <div className="h-4 w-full animate-pulse rounded bg-slate-200" />
+          <div className="h-4 w-5/6 animate-pulse rounded bg-slate-200" />
+          <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" />
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Select value={filters.tipo || "TODOS"} onValueChange={(value) => patch({ tipo: value === "TODOS" ? "" : value as Filters["tipo"] })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODOS">Todos</SelectItem>
-              <SelectItem value="PERDIDO">Perdidos</SelectItem>
-              <SelectItem value="ENCONTRADO">Encontrados</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filters.categoria_id || "TODAS"} onValueChange={(value) => patch({ categoria_id: value === "TODAS" ? "" : value })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODAS">Categorias</SelectItem>
-              {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Input placeholder="Lugar" value={filters.lugar} onChange={(e) => patch({ lugar: e.target.value })} />
-          <Input placeholder="Color" value={filters.color} onChange={(e) => patch({ color: e.target.value })} />
-          <Input type="date" value={filters.fecha_desde} onChange={(e) => patch({ fecha_desde: e.target.value })} />
-          <Input type="date" value={filters.fecha_hasta} onChange={(e) => patch({ fecha_hasta: e.target.value })} />
+        <div className="flex gap-2">
+          <div className="h-6 w-20 animate-pulse rounded-full bg-slate-200" />
+          <div className="h-6 w-24 animate-pulse rounded-full bg-slate-200" />
         </div>
       </CardContent>
     </Card>
@@ -518,7 +1079,7 @@ function CaseDetail(props: {
   onCancel: () => void;
   onToggleParticipation: (checked: boolean) => void;
 }) {
-  const { caso, matches, isOwn, canEdit, onEdit, threadSubscribed, comment, commentTag, onCommentTagChange, replyingTo, loading, onClose, onCommentChange, onReply, onClearReply, onSendComment, onReactComment, onPinComment, onDeleteComment, onRespondMatch, onCancel, onToggleParticipation } = props;
+  const { caso, matches, isOwn, canEdit, onEdit, threadSubscribed, comment, commentTag, onCommentTagChange, replyingTo, loading, onCommentChange, onReply, onClearReply, onSendComment, onReactComment, onPinComment, onDeleteComment, onRespondMatch, onCancel, onToggleParticipation } = props;
   const canComment = commentableStates.has(caso.estado);
   const canCancel = isOwn && !terminalStates.has(caso.estado);
   const [commentSort, setCommentSort] = useState<CommentSort>("recientes");
@@ -541,15 +1102,12 @@ function CaseDetail(props: {
             <CardTitle className="text-lg">{caso.titulo}</CardTitle>
             <p className="text-xs text-slate-500">{caso.codigo} · {caso.lugar_referencia}</p>
           </div>
-          <div className="flex items-center gap-1">
-            {canEdit && onEdit && (
-              <Button size="sm" variant="outline" onClick={onEdit}>
-                <Pencil className="mr-1.5 h-4 w-4" />
-                Editar
-              </Button>
-            )}
-            <Button size="icon" variant="ghost" onClick={onClose} aria-label="Cerrar detalle"><X className="h-4 w-4" /></Button>
-          </div>
+          {canEdit && onEdit && (
+            <Button size="sm" variant="outline" onClick={onEdit}>
+              <Pencil className="mr-1.5 h-4 w-4" />
+              Editar
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -776,55 +1334,12 @@ function CommentItem({ comment, replies, canComment, onReply, onReact, onPin, on
   );
 }
 
-function CaseList({ items, onOpen, empty = "No hay casos para mostrar." }: { items: CasoLfListItem[]; onOpen: (item: CasoLfListItem) => void; empty?: string }) {
-  if (!items.length) return <p className="rounded-lg border border-dashed p-4 text-center text-sm text-slate-500">{empty}</p>;
-  return (
-    <div className="space-y-3">
-      {items.map((item) => (
-        <button key={item.id} onClick={() => onOpen(item)} className="w-full text-left">
-          <Card className="overflow-hidden transition active:scale-[0.99]">
-            {item.foto_url && <Photo src={item.foto_url} />}
-            <CardContent className="space-y-2 p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-slate-950">{item.titulo}</p>
-                  <p className="text-xs text-slate-500">{tipoLabel(item.tipo)} · {item.codigo}</p>
-                </div>
-                <EstadoLfBadge estado={item.estado} />
-              </div>
-              <p className="line-clamp-2 text-sm text-slate-600">{item.descripcion}</p>
-              <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{item.lugar_referencia}</span>
-                <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{formatDate(item.fecha_evento ?? item.created_at)}</span>
-                {item.conteo_comentarios > 0 && <span className="flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" />{item.conteo_comentarios}</span>}
-              </div>
-            </CardContent>
-          </Card>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function Photo({ src, small = false }: { src: string; small?: boolean }) {
   return (
     <div className={cn("relative w-full overflow-hidden bg-slate-100", small ? "aspect-square rounded-md" : "aspect-video")}>
       <Image src={src} alt="" fill unoptimized className="object-cover" />
     </div>
   );
-}
-
-function toFeedParams(filters: Filters, cursor?: string | null) {
-  return Object.fromEntries(Object.entries({
-    search: filters.search,
-    tipo: filters.tipo,
-    categoria_id: filters.categoria_id,
-    lugar: filters.lugar,
-    fecha_desde: filters.fecha_desde ? new Date(filters.fecha_desde).toISOString() : "",
-    fecha_hasta: filters.fecha_hasta ? new Date(`${filters.fecha_hasta}T23:59:59`).toISOString() : "",
-    color: filters.color,
-    cursor: cursor ?? "",
-  }).filter(([, value]) => value)) as Record<string, string>;
 }
 
 function normalizeCreateForm(form: CasoLfCreatePayload): CasoLfCreatePayload {
@@ -835,30 +1350,55 @@ function normalizeCreateForm(form: CasoLfCreatePayload): CasoLfCreatePayload {
   };
 }
 
-function validateCase(form: CasoLfCreatePayload, photos: File[]) {
-  if (form.titulo.trim().length < 3) return "El titulo debe tener al menos 3 caracteres.";
-  if (form.descripcion.trim().length < 10) return "La descripcion debe tener al menos 10 caracteres.";
-  if (!form.categoria_id) return "Selecciona una categoria.";
-  if (form.lugar_referencia.trim().length < 3) return "El lugar de referencia debe tener al menos 3 caracteres.";
+function validateCase(form: CasoLfCreatePayload, photos: FotoAdjunta[]) {
+  const errors = validateCaseFields(form, photos);
+  return errors.titulo ?? errors.descripcion ?? errors.categoria_id ?? errors.lugar_referencia ?? errors.fecha_evento ?? errors.fotos ?? "";
+}
+
+function validateCaseFields(form: CasoLfCreatePayload, photos: FotoAdjunta[]): CommunityFormErrors {
+  const errors: CommunityFormErrors = {};
+  const titleLength = form.titulo.trim().length;
+  const descriptionLength = form.descripcion.trim().length;
+  const placeLength = form.lugar_referencia.trim().length;
+  if (titleLength < LF_TEXT_LIMITS.titulo.min || form.titulo.length > LF_TEXT_LIMITS.titulo.max) {
+    errors.titulo = `El titulo debe tener entre ${LF_TEXT_LIMITS.titulo.min} y ${LF_TEXT_LIMITS.titulo.max} caracteres.`;
+  }
+  if (descriptionLength < LF_TEXT_LIMITS.descripcion.min || form.descripcion.length > LF_TEXT_LIMITS.descripcion.max) {
+    errors.descripcion = `La descripcion debe tener entre ${LF_TEXT_LIMITS.descripcion.min} y ${LF_TEXT_LIMITS.descripcion.max} caracteres.`;
+  }
+  if (!form.categoria_id) errors.categoria_id = "Selecciona una categoria.";
+  if (placeLength < LF_TEXT_LIMITS.lugar_referencia.min || form.lugar_referencia.length > LF_TEXT_LIMITS.lugar_referencia.max) {
+    errors.lugar_referencia = `El lugar debe tener entre ${LF_TEXT_LIMITS.lugar_referencia.min} y ${LF_TEXT_LIMITS.lugar_referencia.max} caracteres.`;
+  }
   const eventDate = new Date(form.fecha_evento);
   const now = new Date();
   const ninetyDaysAgo = new Date(now);
   ninetyDaysAgo.setDate(now.getDate() - 90);
-  if (Number.isNaN(eventDate.getTime())) return "Selecciona una fecha valida.";
-  if (eventDate > now) return "La fecha no puede ser futura.";
-  if (eventDate < ninetyDaysAgo) return "La fecha no puede ser anterior a 90 dias.";
-  return validatePhotos(photos, true);
+  if (Number.isNaN(eventDate.getTime())) errors.fecha_evento = "Selecciona una fecha valida.";
+  else if (eventDate > now) errors.fecha_evento = "La fecha no puede ser futura.";
+  else if (eventDate < ninetyDaysAgo) errors.fecha_evento = "La fecha no puede ser anterior a 90 dias.";
+  const photoError = validatePhotos(photos.map((photo) => photo.file), true);
+  if (photoError) errors.fotos = photoError;
+  return errors;
 }
 
 function validatePhotos(files: File[], required = false) {
   if (required && files.length === 0) return "Agrega al menos una foto.";
   if (files.length > 3) return "Solo puedes adjuntar hasta 3 fotos.";
   for (const file of files) {
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return "Solo se aceptan imagenes JPG, PNG o WEBP.";
+    if (!["image/jpeg", "image/png", "image/webp", "image/heic", "image/gif"].includes(file.type)) {
+      return "Solo se aceptan imagenes JPG, PNG, WEBP, HEIC o GIF.";
+    }
     if (file.size < 50 * 1024) return "Cada imagen debe pesar al menos 50 KB.";
     if (file.size > 10 * 1024 * 1024) return "Cada imagen debe pesar como maximo 10 MB.";
   }
   return "";
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function toLocalInput(value: string) {

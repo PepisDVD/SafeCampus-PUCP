@@ -144,6 +144,8 @@ class CasoLfListItem(BaseModel):
     categoria_nombre: str | None = None
     subcategoria: str | None = None
     lugar_referencia: str | None = None
+    latitud: float | None = None
+    longitud: float | None = None
     fecha_evento: datetime | None = None
     foto_url: str | None = None
     color_principal: str | None = None
@@ -357,7 +359,7 @@ class CustodiaLfListResponse(BaseModel):
 
 
 class DevolucionLfInput(BaseModel):
-    reclamante_id: UUID
+    reclamante_id: UUID | None = None
     metodo_verificacion: str = Field(min_length=2, max_length=100)
     observaciones: str | None = Field(default=None, max_length=2000)
 

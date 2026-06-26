@@ -70,6 +70,8 @@ export type CasoLfListItem = {
   categoria_nombre?: string | null;
   subcategoria?: string | null;
   lugar_referencia?: string | null;
+  latitud?: number | null;
+  longitud?: number | null;
   fecha_evento?: string | null;
   foto_url?: string | null;
   color_principal?: string | null;
