@@ -5,6 +5,7 @@
 """
 
 from datetime import datetime, time, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -21,6 +22,7 @@ from app.models.sc_incidentes import (
     ExpedienteCierre,
     HistorialIncidente,
     Incidente,
+    UbicacionIncidente,
 )
 from app.models.sc_users import Rol, Usuario, UsuarioRol
 
@@ -59,6 +61,9 @@ class IncidenteRepository:
                 Incidente.lugar_referencia,
                 func.ST_Y(Incidente.geom).label("latitud"),
                 func.ST_X(Incidente.geom).label("longitud"),
+                Incidente.live_location_enabled,
+                Incidente.live_location_updated_at,
+                Incidente.live_location_expires_at,
                 Incidente.canal_origen,
                 Incidente.created_at,
                 operador_nombre,
@@ -74,6 +79,7 @@ class IncidenteRepository:
         search: str | None = None,
         severidad: str | None = None,
         estado: str | None = None,
+        asignado_a: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         statement = self._base_select()
@@ -90,6 +96,10 @@ class IncidenteRepository:
             statement = statement.where(Incidente.severidad == severidad)
         if estado:
             statement = statement.where(Incidente.estado == estado)
+        if asignado_a:
+            statement = statement.where(
+                Incidente.operador_asignado_id == UUID(asignado_a)
+            )
 
         statement = statement.order_by(Incidente.created_at.desc()).limit(limit)
         result = await self.db.execute(statement)
@@ -116,6 +126,9 @@ class IncidenteRepository:
                 Incidente.lugar_referencia,
                 func.ST_Y(Incidente.geom).label("latitud"),
                 func.ST_X(Incidente.geom).label("longitud"),
+                Incidente.live_location_enabled,
+                Incidente.live_location_updated_at,
+                Incidente.live_location_expires_at,
                 Incidente.canal_origen,
                 Incidente.fecha_primera_respuesta,
                 Incidente.fecha_resolucion,
@@ -181,6 +194,9 @@ class IncidenteRepository:
                 Incidente.lugar_referencia,
                 func.ST_Y(Incidente.geom).label("latitud"),
                 func.ST_X(Incidente.geom).label("longitud"),
+                Incidente.live_location_enabled,
+                Incidente.live_location_updated_at,
+                Incidente.live_location_expires_at,
                 Incidente.canal_origen,
                 Incidente.fecha_primera_respuesta,
                 Incidente.fecha_resolucion,
@@ -257,6 +273,8 @@ class IncidenteRepository:
                 Incidente.lugar_referencia,
                 func.ST_Y(Incidente.geom).label("latitud"),
                 func.ST_X(Incidente.geom).label("longitud"),
+                Incidente.live_location_enabled,
+                Incidente.live_location_updated_at,
                 Incidente.created_at,
             )
             .where(Incidente.deleted_at.is_(None))
@@ -492,8 +510,11 @@ class IncidenteRepository:
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
-    async def get_stats(self) -> dict[str, int]:
-        """Métricas agregadas en una sola consulta (counts con FILTER)."""
+    async def get_stats(self, *, asignado_a: str | None = None) -> dict[str, int]:
+        """Métricas agregadas en una sola consulta (counts con FILTER).
+
+        Con `asignado_a` se restringe a los incidentes del operador indicado.
+        """
         cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
         statement = select(
             func.count().label("total"),
@@ -515,6 +536,11 @@ class IncidenteRepository:
             )
             .label("resueltos_24h"),
         ).where(Incidente.deleted_at.is_(None))
+
+        if asignado_a:
+            statement = statement.where(
+                Incidente.operador_asignado_id == UUID(asignado_a)
+            )
 
         result = await self.db.execute(statement)
         row = result.mappings().one()
@@ -797,6 +823,68 @@ class IncidenteRepository:
             "estado_nuevo": new_estado,
             "comentario": comentario,
         }
+
+    async def update_live_location(
+        self,
+        *,
+        incidente_id: str,
+        reportante_id: str,
+        activo: bool,
+        latitud: float | None = None,
+        longitud: float | None = None,
+        precision_metros: float | None = None,
+        expires_at: datetime | None = None,
+    ) -> dict[str, Any] | None:
+        ahora = datetime.now(timezone.utc)
+        values: dict[str, Any] = {
+            "live_location_enabled": activo,
+            "live_location_updated_at": ahora if activo else None,
+            "live_location_expires_at": expires_at if activo else None,
+            "updated_at": ahora,
+        }
+        if activo and latitud is not None and longitud is not None:
+            values["geom"] = func.ST_SetSRID(func.ST_MakePoint(longitud, latitud), 4326)
+
+        statement = (
+            update(Incidente)
+            .where(
+                Incidente.id == UUID(incidente_id),
+                Incidente.reportante_id == UUID(reportante_id),
+                Incidente.deleted_at.is_(None),
+            )
+            .values(**values)
+            .returning(
+                Incidente.id,
+                Incidente.codigo,
+                Incidente.live_location_enabled,
+                Incidente.live_location_updated_at,
+                Incidente.live_location_expires_at,
+                func.ST_Y(Incidente.geom).label("latitud"),
+                func.ST_X(Incidente.geom).label("longitud"),
+            )
+        )
+        result = await self.db.execute(statement)
+        row = result.mappings().one_or_none()
+        if row is None:
+            return None
+
+        if activo and latitud is not None and longitud is not None:
+            self.db.add(
+                UbicacionIncidente(
+                    incidente_id=UUID(incidente_id),
+                    geom=func.ST_SetSRID(func.ST_MakePoint(longitud, latitud), 4326),
+                    fuente="GPS_LIVE",
+                    precision_metros=(
+                        Decimal(str(precision_metros))
+                        if precision_metros is not None
+                        else None
+                    ),
+                    descripcion="Actualizacion de ubicacion en vivo desde PWA Comunidad",
+                )
+            )
+            await self.db.flush()
+
+        return dict(row)
 
     async def assign_operador(
         self,

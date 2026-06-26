@@ -119,6 +119,31 @@ export function useOperatorData(token: string | null) {
     return () => clearInterval(interval);
   }, [refresh]);
 
+  useEffect(() => {
+    const liveTrackingFresh =
+      selected?.live_location_enabled &&
+      (!selected.live_location_expires_at ||
+        Date.parse(selected.live_location_expires_at) > Date.now());
+    if (isDemo || !token || !selected || !liveTrackingFresh) return undefined;
+
+    const interval = setInterval(async () => {
+      try {
+        setSelected(await getIncident(token, selected.id));
+      } catch (error) {
+        logger.error("operator-data/live-location-refresh", error);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [
+    isDemo,
+    selected,
+    selected?.id,
+    selected?.live_location_enabled,
+    selected?.live_location_expires_at,
+    token,
+  ]);
+
   const activeIncidents = useMemo(
     () => incidents.filter((item) => !["RESUELTO", "CERRADO"].includes(item.estado)),
     [incidents],

@@ -21,6 +21,7 @@ from app.schemas.incidente import (
     IncidenteCreateInput,
     IncidenteDetail,
     IncidenteEstadoUpdate,
+    IncidenteLiveLocationUpdate,
     IncidenteListResponse,
     IncidenteMapaResponse,
     KpisResponse,
@@ -43,18 +44,25 @@ async def listar_incidentes(
     search: str | None = Query(default=None, description="Filtra por código o título."),
     severidad: NivelSeveridad | None = Query(default=None),
     estado: EstadoIncidente | None = Query(default=None),
+    mios: bool = Query(
+        default=False,
+        description="Si es true, solo devuelve incidentes asignados al usuario autenticado.",
+    ),
     limit: int = Query(default=50, ge=1, le=200),
-    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
 ):
     """Listado operativo de incidentes — filtrable por búsqueda, severidad y estado.
 
-    Restringido a roles supervisor / operador / administrador.
+    Con `mios=true` se restringe a los incidentes asignados al usuario autenticado
+    (vista del operador en la app móvil). Restringido a roles
+    supervisor / operador / administrador.
     """
     items = await service.listar_recentes(
         search=search,
         severidad=severidad.value if severidad else None,
         estado=estado.value if estado else None,
+        asignado_a=current_user.id if mios else None,
         limit=limit,
     )
     return IncidenteListResponse(items=items, total=len(items))
@@ -120,14 +128,22 @@ async def listar_incidentes_mapa(
 
 @router.get("/stats", response_model=DashboardStats)
 async def obtener_stats(
-    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    mios: bool = Query(
+        default=False,
+        description="Si es true, los counts se limitan a los incidentes asignados al usuario.",
+    ),
+    current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
 ):
     """Métricas agregadas + top zonas para el dashboard operativo.
 
-    Restringido a roles supervisor / operador / administrador.
+    Con `mios=true` los counts se limitan a los incidentes asignados al usuario
+    autenticado (dashboard del operador en la app móvil). Restringido a roles
+    supervisor / operador / administrador.
     """
-    return await service.obtener_stats()
+    return await service.obtener_stats(
+        asignado_a=current_user.id if mios else None,
+    )
 
 
 @router.get("/operadores", response_model=list[OperadorListItem])
@@ -211,6 +227,35 @@ async def crear_comentario_incidente(
         autor_id=current_user.id,
         roles=current_user.roles,
         data=body,
+    )
+
+
+@router.patch("/{incidente_id}/ubicacion-live", response_model=IncidenteDetail)
+async def actualizar_ubicacion_en_vivo(
+    incidente_id: str,
+    body: IncidenteLiveLocationUpdate,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: IncidenteService = Depends(get_service),
+):
+    """Actualiza o detiene la ubicacion en vivo compartida por el reportante."""
+    return await service.actualizar_ubicacion_en_vivo(
+        incidente_id=incidente_id,
+        reportante_id=current_user.id,
+        data=body,
+    )
+
+
+@router.post("/{incidente_id}/ubicacion-live/stop", response_model=IncidenteDetail)
+async def detener_ubicacion_en_vivo(
+    incidente_id: str,
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: IncidenteService = Depends(get_service),
+):
+    """Detiene la ubicacion en vivo de un incidente propio."""
+    return await service.actualizar_ubicacion_en_vivo(
+        incidente_id=incidente_id,
+        reportante_id=current_user.id,
+        data=IncidenteLiveLocationUpdate(activo=False),
     )
 
 

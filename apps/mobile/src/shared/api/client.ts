@@ -27,16 +27,18 @@ export function getMe(token: string) {
   return apiFetch<AuthSession["user"]>("/auth/me", { token });
 }
 
+/** Solo los incidentes asignados al operador autenticado (`mios=true`). */
 export function listIncidents(token: string) {
-  return apiFetch<IncidentListResponse>("/incidentes/?limit=80", { token });
+  return apiFetch<IncidentListResponse>("/incidentes/?mios=true&limit=80", { token });
 }
 
 export function getIncident(token: string, incidentId: string) {
   return apiFetch<IncidentDetail>(`/incidentes/${incidentId}`, { token });
 }
 
+/** Stats del dashboard limitadas a los incidentes asignados al operador (`mios=true`). */
 export function getDashboardStats(token: string) {
-  return apiFetch<DashboardStats>("/incidentes/stats", { token });
+  return apiFetch<DashboardStats>("/incidentes/stats?mios=true", { token });
 }
 
 export function updateIncidentStatus(

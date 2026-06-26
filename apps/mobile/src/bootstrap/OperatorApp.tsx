@@ -9,6 +9,7 @@ import { IncidentsScreen } from "../features/operator/IncidentsScreen";
 import { MapScreen } from "../features/operator/MapScreen";
 import { NotificationsScreen } from "../features/operator/NotificationsScreen";
 import { ProfileScreen } from "../features/operator/ProfileScreen";
+import { useIncidentAssignmentNotifications } from "../features/operator/use-incident-notifications";
 import { useOperatorData } from "../features/operator/use-operator-data";
 import { useNetworkStatus } from "../shared/net/use-network-status";
 
@@ -38,6 +39,8 @@ function AuthenticatedShell() {
   const data = useOperatorData(auth.token);
   const { isOnline } = useNetworkStatus();
   const [tab, setTab] = React.useState<Tab>("inicio");
+
+  useIncidentAssignmentNotifications(data.activeIncidents, data.lastSyncAt !== null);
 
   if (!auth.user) return null;
 
