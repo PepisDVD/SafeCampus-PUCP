@@ -30,6 +30,7 @@ const LAYOUT_GUARDED_PREFIXES = [
 function isPublicPath(pathname: string): boolean {
   // Toda la zona de login (incluida la pantalla de credenciales) es pública.
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
+  if (pathname === "/auth/callback") return true;
   return false;
 }
 
@@ -56,6 +57,15 @@ function isLayoutGuardedPath(pathname: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  if (
+    pathname === "/" &&
+    (request.nextUrl.searchParams.has("code") ||
+      request.nextUrl.searchParams.has("error") ||
+      request.nextUrl.searchParams.has("error_code"))
+  ) {
+    return NextResponse.next();
+  }
 
   if (isPublicPath(pathname)) {
     return NextResponse.next();
