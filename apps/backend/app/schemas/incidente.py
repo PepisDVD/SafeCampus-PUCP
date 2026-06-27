@@ -24,6 +24,9 @@ class IncidenteListItem(BaseModel):
     lugar_referencia: str | None = None
     latitud: float | None = None
     longitud: float | None = None
+    live_location_enabled: bool = False
+    live_location_updated_at: datetime | None = None
+    live_location_expires_at: datetime | None = None
     canal_origen: TipoCanal
     operador_nombre: str | None = None
     operador_avatar_url: str | None = None
@@ -45,6 +48,8 @@ class IncidenteMapaItem(BaseModel):
     lugar_referencia: str | None = None
     latitud: float | None = None
     longitud: float | None = None
+    live_location_enabled: bool = False
+    live_location_updated_at: datetime | None = None
     created_at: datetime | None = None
 
 
@@ -71,6 +76,13 @@ class IncidenteCreated(BaseModel):
     codigo: str
     estado: EstadoIncidente
     created_at: datetime
+
+
+class IncidenteLiveLocationUpdate(BaseModel):
+    latitud: float | None = Field(default=None, ge=-90, le=90)
+    longitud: float | None = Field(default=None, ge=-180, le=180)
+    precision_metros: float | None = Field(default=None, ge=0, le=10000)
+    activo: bool = True
 
 
 class IncidenteEstadoUpdate(BaseModel):
@@ -233,6 +245,9 @@ class IncidenteDetail(BaseModel):
     lugar_referencia: str | None = None
     latitud: float | None = None
     longitud: float | None = None
+    live_location_enabled: bool = False
+    live_location_updated_at: datetime | None = None
+    live_location_expires_at: datetime | None = None
     canal_origen: TipoCanal
     fecha_primera_respuesta: datetime | None = None
     fecha_resolucion: datetime | None = None

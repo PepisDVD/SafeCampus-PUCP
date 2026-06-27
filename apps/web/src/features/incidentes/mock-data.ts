@@ -19,8 +19,15 @@ export type IncidenteUI = Incidente & {
   posicion_mapa: { x: number; y: number };
 };
 
+const liveLocationDefaults = {
+  live_location_enabled: false,
+  live_location_updated_at: null,
+  live_location_expires_at: null,
+};
+
 export const incidentesMock: IncidenteUI[] = [
   {
+    ...liveLocationDefaults,
     id: "e5ce13d7-1e7b-4d8f-9e63-bf032f95b14b",
     codigo: "INC-20260418-0001",
     titulo: "Robo de laptop en biblioteca central",
@@ -43,6 +50,7 @@ export const incidentesMock: IncidenteUI[] = [
     posicion_mapa: { x: 38, y: 35 },
   },
   {
+    ...liveLocationDefaults,
     id: "7f63d3eb-7ab9-4ef3-80e4-6f01b594f40e",
     codigo: "INC-20260418-0002",
     titulo: "Persona sospechosa en estacionamiento",
@@ -64,6 +72,7 @@ export const incidentesMock: IncidenteUI[] = [
     posicion_mapa: { x: 72, y: 46 },
   },
   {
+    ...liveLocationDefaults,
     id: "c48cc5f4-63e4-4a43-b98c-b8adf64091f8",
     codigo: "INC-20260418-0003",
     titulo: "Emergencia medica en Patio de Letras",
@@ -85,6 +94,7 @@ export const incidentesMock: IncidenteUI[] = [
     posicion_mapa: { x: 26, y: 52 },
   },
   {
+    ...liveLocationDefaults,
     id: "f7fb54ba-f410-4749-bb54-c4f4f93fe31b",
     codigo: "INC-20260418-0004",
     titulo: "Conato de incendio en cafeteria",

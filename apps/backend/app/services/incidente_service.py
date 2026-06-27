@@ -32,6 +32,7 @@ from app.schemas.incidente import (
     IncidenteCreateInput,
     IncidenteDetail,
     IncidenteEstadoUpdate,
+    IncidenteLiveLocationUpdate,
     IncidenteListItem,
     IncidenteMapaItem,
     IncidenteMapaResponse,
@@ -89,6 +90,7 @@ class IncidenteService:
         search: str | None = None,
         severidad: str | None = None,
         estado: str | None = None,
+        asignado_a: str | None = None,
         limit: int = 20,
     ) -> list[IncidenteListItem]:
         safe_limit = max(1, min(limit, 200))
@@ -96,6 +98,7 @@ class IncidenteService:
             search=search,
             severidad=severidad,
             estado=estado,
+            asignado_a=asignado_a,
             limit=safe_limit,
         )
         return [self._map_list_item(r) for r in rows]
@@ -135,9 +138,13 @@ class IncidenteService:
             sin_coordenadas=len(items) - georreferenciados,
         )
 
-    async def obtener_stats(self) -> DashboardStats:
-        """Métricas agregadas + top zonas para el dashboard operativo."""
-        counts = await self._repo.get_stats()
+    async def obtener_stats(self, *, asignado_a: str | None = None) -> DashboardStats:
+        """Métricas agregadas + top zonas para el dashboard operativo.
+
+        Con `asignado_a` los counts se restringen al operador indicado
+        (vista del dashboard móvil del operador).
+        """
+        counts = await self._repo.get_stats(asignado_a=asignado_a)
         zonas = await self._repo.get_top_zonas(limit=5)
         return DashboardStats(
             total=counts["total"],
@@ -313,6 +320,9 @@ class IncidenteService:
             lugar_referencia=row.get("lugar_referencia"),
             latitud=row.get("latitud"),
             longitud=row.get("longitud"),
+            live_location_enabled=row.get("live_location_enabled") or False,
+            live_location_updated_at=row.get("live_location_updated_at"),
+            live_location_expires_at=row.get("live_location_expires_at"),
             canal_origen=row["canal_origen"],
             fecha_primera_respuesta=row.get("fecha_primera_respuesta"),
             fecha_resolucion=row.get("fecha_resolucion"),
@@ -384,6 +394,9 @@ class IncidenteService:
             lugar_referencia=row.get("lugar_referencia"),
             latitud=row.get("latitud"),
             longitud=row.get("longitud"),
+            live_location_enabled=row.get("live_location_enabled") or False,
+            live_location_updated_at=row.get("live_location_updated_at"),
+            live_location_expires_at=row.get("live_location_expires_at"),
             canal_origen=row["canal_origen"],
             fecha_primera_respuesta=row.get("fecha_primera_respuesta"),
             fecha_resolucion=row.get("fecha_resolucion"),
@@ -505,6 +518,64 @@ class IncidenteService:
                 exclude={ejecutor_id},
             )
         return await self.obtener_detalle(incidente_id)
+
+    async def actualizar_ubicacion_en_vivo(
+        self,
+        incidente_id: str,
+        reportante_id: str,
+        data: IncidenteLiveLocationUpdate,
+    ) -> IncidenteDetail:
+        try:
+            UUID(incidente_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ID de incidente invalido.",
+            ) from exc
+
+        if data.activo and (data.latitud is None or data.longitud is None):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Latitud y longitud son obligatorias para compartir ubicacion en vivo.",
+            )
+
+        result = await self._repo.update_live_location(
+            incidente_id=incidente_id,
+            reportante_id=reportante_id,
+            activo=data.activo,
+            latitud=data.latitud,
+            longitud=data.longitud,
+            precision_metros=data.precision_metros,
+            expires_at=(
+                datetime.now(timezone.utc) + timedelta(seconds=20)
+                if data.activo
+                else None
+            ),
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Incidente no encontrado para el reportante.",
+            )
+
+        await self._registrar_auditoria_incidente(
+            usuario_id=reportante_id,
+            accion="actualizar_ubicacion_en_vivo"
+            if data.activo
+            else "detener_ubicacion_en_vivo",
+            incidente_id=incidente_id,
+            detalle={
+                "codigo": result["codigo"],
+                "activo": data.activo,
+                "precision_metros": data.precision_metros,
+                "live_location_updated_at": (
+                    result["live_location_updated_at"].isoformat()
+                    if result.get("live_location_updated_at")
+                    else None
+                ),
+            },
+        )
+        return await self.obtener_mi_detalle(incidente_id, reportante_id)
 
     async def generar_borrador_cierre_ia(
         self,
@@ -1213,6 +1284,9 @@ class IncidenteService:
             lugar_referencia=row.get("lugar_referencia"),
             latitud=row.get("latitud"),
             longitud=row.get("longitud"),
+            live_location_enabled=row.get("live_location_enabled") or False,
+            live_location_updated_at=row.get("live_location_updated_at"),
+            live_location_expires_at=row.get("live_location_expires_at"),
             canal_origen=row["canal_origen"],
             operador_nombre=row.get("operador_nombre"),
             operador_avatar_url=row.get("operador_avatar_url"),
@@ -1231,5 +1305,7 @@ class IncidenteService:
             lugar_referencia=row.get("lugar_referencia"),
             latitud=row.get("latitud"),
             longitud=row.get("longitud"),
+            live_location_enabled=row.get("live_location_enabled") or False,
+            live_location_updated_at=row.get("live_location_updated_at"),
             created_at=row.get("created_at"),
         )

@@ -22,6 +22,9 @@ from app.models.sc_users import Rol, Usuario, UsuarioRol
 
 ALERT_CODE_PREFIX = "ALR"
 
+# Roles cuyos usuarios son audiencia de comunidad (candidatos a segmentacion por usuario).
+ROLES_COMUNIDAD = {"comunidad", "estudiante", "docente", "personal"}
+
 
 class AlertaRepository:
     def __init__(self, db: AsyncSession) -> None:
@@ -283,6 +286,37 @@ class AlertaRepository:
                 estado_nuevo=(detalle or {}).get("estado"),
             )
         )
+
+    async def list_usuarios_comunidad(
+        self, *, search: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Usuarios activos con rol de comunidad, candidatos a segmentacion por usuario."""
+        community_user_ids = (
+            select(UsuarioRol.usuario_id)
+            .join(Rol, Rol.id == UsuarioRol.rol_id)
+            .where(func.lower(Rol.nombre).in_(ROLES_COMUNIDAD))
+        )
+        statement = (
+            select(Usuario.id, Usuario.email, Usuario.nombre, Usuario.apellido)
+            .where(
+                Usuario.deleted_at.is_(None),
+                Usuario.estado == "ACTIVO",
+                Usuario.id.in_(community_user_ids),
+            )
+            .distinct()
+        )
+        if search and search.strip():
+            term = f"%{search.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    func.lower(Usuario.nombre).like(term),
+                    func.lower(Usuario.apellido).like(term),
+                    func.lower(Usuario.email).like(term),
+                )
+            )
+        statement = statement.order_by(Usuario.apellido, Usuario.nombre).limit(limit)
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
 
     async def resolve_destinatarios(self, alerta_id: str) -> list[dict[str, Any]]:
         segmentos = await self.list_segmentos(alerta_id)

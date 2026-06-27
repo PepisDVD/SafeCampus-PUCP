@@ -9,6 +9,7 @@ from app.api.deps import get_session, require_roles
 from app.core.constants import EstadoAlertaCampus, NivelSeveridad
 from app.schemas.alerta import (
     AlertaCreateInput,
+    AlertaDestinatariosResponse,
     AlertaDetail,
     AlertaEstadoInput,
     AlertaListResponse,
@@ -50,6 +51,17 @@ async def obtener_stats_alertas(
     service: AlertaService = Depends(get_service),
 ):
     return await service.stats()
+
+
+@router.get("/destinatarios", response_model=AlertaDestinatariosResponse)
+async def listar_destinatarios(
+    search: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    service: AlertaService = Depends(get_service),
+):
+    """Usuarios de comunidad activos para segmentar una alerta por usuario especifico."""
+    return await service.listar_destinatarios(search=search, limit=limit)
 
 
 @router.post("/", response_model=AlertaDetail, status_code=201)

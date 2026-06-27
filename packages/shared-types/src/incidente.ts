@@ -20,6 +20,9 @@ export interface Incidente {
   canal_origen: TipoCanal;
   latitud: number | null;
   longitud: number | null;
+  live_location_enabled: boolean;
+  live_location_updated_at: string | null;
+  live_location_expires_at: string | null;
   reportante_id: string;
   operador_asignado_id: string | null;
   supervisor_id: string | null;
@@ -41,6 +44,9 @@ export interface IncidenteListItem {
   lugar_referencia: string | null;
   latitud: number | null;
   longitud: number | null;
+  live_location_enabled: boolean;
+  live_location_updated_at: string | null;
+  live_location_expires_at: string | null;
   canal_origen: TipoCanal;
   operador_nombre: string | null;
   operador_avatar_url: string | null;
@@ -206,6 +212,9 @@ export interface IncidenteDetail {
   lugar_referencia: string | null;
   latitud: number | null;
   longitud: number | null;
+  live_location_enabled: boolean;
+  live_location_updated_at: string | null;
+  live_location_expires_at: string | null;
   canal_origen: TipoCanal;
   fecha_primera_respuesta: string | null;
   fecha_resolucion: string | null;
@@ -237,6 +246,8 @@ export interface IncidenteMapaItem {
   lugar_referencia: string | null;
   latitud: number | null;
   longitud: number | null;
+  live_location_enabled: boolean;
+  live_location_updated_at: string | null;
   created_at: string | null;
 }
 
@@ -257,6 +268,14 @@ export interface IncidenteCreateInput {
   lugar_referencia?: string | null;
   latitud?: number | null;
   longitud?: number | null;
+}
+
+/** Body de PATCH /api/v1/incidentes/{id}/ubicacion-live. */
+export interface IncidenteLiveLocationUpdate {
+  latitud?: number | null;
+  longitud?: number | null;
+  precision_metros?: number | null;
+  activo?: boolean;
 }
 
 /** Respuesta de POST /api/v1/incidentes. */

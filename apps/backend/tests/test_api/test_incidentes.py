@@ -11,7 +11,9 @@ from app.main import app
 from app.schemas.auth import AuthUserResponse
 from app.schemas.incidente import (
     ExpedienteCierreAiDraft,
+    IncidenteDetail,
     IncidenteListItem,
+    IncidenteLiveLocationUpdate,
     IncidenteMapaItem,
     IncidenteMapaResponse,
 )
@@ -24,6 +26,7 @@ class FakeIncidenteService:
         search: str | None = None,
         severidad: str | None = None,
         estado: str | None = None,
+        asignado_a: str | None = None,
         limit: int = 20,
     ) -> list[IncidenteListItem]:
         items = [
@@ -120,6 +123,40 @@ class FakeIncidenteService:
             resultado_cierre="Cierre operativo sugerido.",
         )
 
+    async def actualizar_ubicacion_en_vivo(
+        self,
+        incidente_id: str,
+        reportante_id: str,
+        data: IncidenteLiveLocationUpdate,
+    ) -> IncidenteDetail:
+        assert incidente_id == "11111111-1111-1111-1111-111111111111"
+        assert reportante_id == "00000000-0000-0000-0000-000000000001"
+        return IncidenteDetail(
+            id=incidente_id,
+            codigo="INC-20260418-0001",
+            titulo="Robo de laptop en biblioteca central",
+            descripcion=None,
+            estado=EstadoIncidente.RECIBIDO,
+            severidad=NivelSeveridad.ALTO,
+            categoria="robo",
+            lugar_referencia="Ubicacion GPS en vivo",
+            latitud=data.latitud,
+            longitud=data.longitud,
+            live_location_enabled=data.activo,
+            live_location_updated_at=datetime(2026, 4, 18, 9, 45, tzinfo=UTC)
+            if data.activo
+            else None,
+            live_location_expires_at=datetime(2026, 4, 18, 9, 46, tzinfo=UTC)
+            if data.activo
+            else None,
+            canal_origen=TipoCanal.WEB,
+            created_at=datetime(2026, 4, 18, 9, 40, tzinfo=UTC),
+            updated_at=datetime(2026, 4, 18, 9, 45, tzinfo=UTC),
+            historial=[],
+            comentarios=[],
+            evidencias=[],
+        )
+
 
 def _fake_supervisor() -> AuthUserResponse:
     return AuthUserResponse(
@@ -191,6 +228,29 @@ def test_generar_borrador_cierre_ia(client):
         payload = response.json()
         assert payload["resumen_cierre"].startswith("El incidente fue atendido")
         assert payload["resultado_cierre"] == "Cierre operativo sugerido."
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_actualizar_ubicacion_en_vivo(client):
+    app.dependency_overrides[get_service] = lambda: FakeIncidenteService()
+    app.dependency_overrides[get_current_user] = _fake_supervisor
+    try:
+        response = client.patch(
+            "/api/v1/incidentes/11111111-1111-1111-1111-111111111111/ubicacion-live",
+            json={
+                "latitud": -12.06925,
+                "longitud": -77.0805,
+                "precision_metros": 8.5,
+                "activo": True,
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["latitud"] == -12.06925
+        assert payload["live_location_enabled"] is True
+        assert payload["live_location_updated_at"] is not None
     finally:
         app.dependency_overrides.pop(get_service, None)
         app.dependency_overrides.pop(get_current_user, None)

@@ -79,9 +79,17 @@ import {
   formatDateTime,
 } from "@/features/alertas/presentation";
 
+type UsuarioOption = {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+};
+
 type Props = {
   initialData: AlertaListResponse;
   ubicaciones: UbicacionMaestra[];
+  usuarios: UsuarioOption[];
 };
 
 type FormState = {
@@ -95,6 +103,7 @@ type FormState = {
   radio_metros: string;
   roles: string;
   departamentos: string;
+  usuarios: string[];
 };
 
 const EMPTY_FORM: FormState = {
@@ -108,6 +117,7 @@ const EMPTY_FORM: FormState = {
   radio_metros: "250",
   roles: "comunidad",
   departamentos: "",
+  usuarios: [],
 };
 
 const CANALES = [
@@ -161,7 +171,7 @@ function toNumberOrNull(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function AlertasClient({ initialData, ubicaciones }: Props) {
+export function AlertasClient({ initialData, ubicaciones, usuarios }: Props) {
   const [items, setItems] = useState(initialData.items);
   const [search, setSearch] = useState("");
   const [estado, setEstado] = useState("TODOS");
@@ -170,7 +180,16 @@ export function AlertasClient({ initialData, ubicaciones }: Props) {
   const [selected, setSelected] = useState<AlertaDetail | null>(null);
   const [editing, setEditing] = useState<AlertaListItem | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [usuarioSearch, setUsuarioSearch] = useState("");
   const [isPending, startTransition] = useTransition();
+
+  const usuariosFiltrados = useMemo(() => {
+    const term = usuarioSearch.trim().toLowerCase();
+    if (!term) return usuarios;
+    return usuarios.filter((usuario) =>
+      `${usuario.nombre} ${usuario.apellido} ${usuario.email}`.toLowerCase().includes(term),
+    );
+  }, [usuarios, usuarioSearch]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -187,6 +206,7 @@ export function AlertasClient({ initialData, ubicaciones }: Props) {
   const openCreate = () => {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setUsuarioSearch("");
     setDrawerOpen(true);
   };
 
@@ -203,7 +223,9 @@ export function AlertasClient({ initialData, ubicaciones }: Props) {
       radio_metros: item.radio_metros === null ? "" : String(item.radio_metros),
       roles: "",
       departamentos: "",
+      usuarios: [],
     });
+    setUsuarioSearch("");
     setDrawerOpen(true);
   };
 
@@ -221,6 +243,14 @@ export function AlertasClient({ initialData, ubicaciones }: Props) {
         tipo: TipoSegmentoAlerta.DEPARTAMENTO,
         valor: departamento,
       })),
+      ...form.usuarios.map((usuarioId) => {
+        const usuario = usuarios.find((item) => item.id === usuarioId);
+        return {
+          tipo: TipoSegmentoAlerta.USUARIO,
+          valor: usuario ? `${usuario.nombre} ${usuario.apellido}`.trim() : usuarioId,
+          usuario_id: usuarioId,
+        };
+      }),
     ];
     if (form.zona_id !== "NONE") {
       const zona = ubicaciones.find((item) => item.id === form.zona_id);
@@ -299,6 +329,15 @@ export function AlertasClient({ initialData, ubicaciones }: Props) {
         ? Array.from(new Set([...current.canales, canal]))
         : current.canales.filter((item) => item !== canal);
       return { ...current, canales: canales.length ? canales : [CanalNotificacion.INAPP] };
+    });
+  };
+
+  const toggleUsuario = (usuarioId: string, checked: boolean) => {
+    setForm((current) => {
+      const usuarios = checked
+        ? Array.from(new Set([...current.usuarios, usuarioId]))
+        : current.usuarios.filter((item) => item !== usuarioId);
+      return { ...current, usuarios };
     });
   };
 
@@ -533,6 +572,31 @@ export function AlertasClient({ initialData, ubicaciones }: Props) {
                   <Input value={form.departamentos} onChange={(event) => setForm((current) => ({ ...current, departamentos: event.target.value }))} placeholder="Estudios Generales" />
                 </Field>
               </div>
+              <Field label={`Usuarios especificos${form.usuarios.length ? ` (${form.usuarios.length} seleccionados)` : ""}`}>
+                <Input
+                  value={usuarioSearch}
+                  onChange={(event) => setUsuarioSearch(event.target.value)}
+                  placeholder="Buscar por nombre o correo"
+                />
+                <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border p-2">
+                  {usuariosFiltrados.length === 0 ? (
+                    <p className="px-1 py-2 text-sm text-slate-500">No se encontraron usuarios.</p>
+                  ) : (
+                    usuariosFiltrados.map((usuario) => (
+                      <label key={usuario.id} className="flex items-center gap-2 rounded-md px-1 py-1.5 text-sm hover:bg-slate-50">
+                        <Checkbox
+                          checked={form.usuarios.includes(usuario.id)}
+                          onCheckedChange={(checked) => toggleUsuario(usuario.id, checked === true)}
+                        />
+                        <span className="flex-1">
+                          <span className="font-medium text-slate-900">{usuario.nombre} {usuario.apellido}</span>
+                          <span className="text-slate-500"> — {usuario.email}</span>
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </Field>
               <Field label="Canales">
                 <div className="grid gap-2 sm:grid-cols-2">
                   {CANALES.map((canal) => (
