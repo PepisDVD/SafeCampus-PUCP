@@ -42,6 +42,8 @@ import {
   BellOff,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Clock,
   Eye,
@@ -56,9 +58,12 @@ import {
   PinOff,
   Plus,
   Search,
+  Send,
   SlidersHorizontal,
   Star,
   Trash2,
+  UserCircle2,
+  X,
 } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
@@ -365,16 +370,17 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
     setPhotoPreview(null);
   };
 
-  const sendComment = () => {
+  const sendComment = (files: File[] = [], onSent?: () => void) => {
     if (!selected || !comment.trim()) return;
     const tag = commentTag === DEFAULT_TAG ? null : commentTag;
     startTransition(async () => {
       try {
-        await lostFoundClient.comentar(selected.id, comment.trim(), replyingTo, undefined, tag);
+        await lostFoundClient.comentar(selected.id, comment.trim(), replyingTo, files.length ? files : undefined, tag);
         setSelected(await lostFoundClient.detalle(selected.id));
         setComment("");
         setCommentTag(DEFAULT_TAG);
         setReplyingTo(null);
+        onSent?.();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "No se pudo publicar el comentario");
       }
@@ -462,7 +468,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
   // ── Vista de detalle a pantalla completa ──────────────────────────────────
   if (showDetailScreen) {
     return (
-      <div className="px-4 py-4">
+      <div className="px-2 py-4">
         <button
           type="button"
           onClick={closeDetail}
@@ -1071,7 +1077,7 @@ function CaseDetail(props: {
   onCommentChange: (value: string) => void;
   onReply: (id: string) => void;
   onClearReply: () => void;
-  onSendComment: () => void;
+  onSendComment: (files: File[], onSuccess: () => void) => void;
   onReactComment: (id: string) => void;
   onPinComment: (id: string, fijar: boolean) => void;
   onDeleteComment: (id: string) => void;
@@ -1084,36 +1090,115 @@ function CaseDetail(props: {
   const canCancel = isOwn && !terminalStates.has(caso.estado);
   const [commentSort, setCommentSort] = useState<CommentSort>("recientes");
   const [tagFilters, setTagFilters] = useState<string[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
+  const [menuComment, setMenuComment] = useState<CasoLfDetail["comentarios"][number] | null>(null);
+  const [commentPhotos, setCommentPhotos] = useState<FotoAdjunta[]>([]);
+  const commentFileRef = useRef<HTMLInputElement | null>(null);
+  const commentPhotosRef = useRef<FotoAdjunta[]>([]);
+  const galleryImages = useMemo(
+    () => [caso.foto_url, ...caso.foto_adicional_urls].filter((src): src is string => Boolean(src)),
+    [caso.foto_url, caso.foto_adicional_urls],
+  );
+  const maxDepth = caso.comentarios_profundidad_maxima ?? 6;
+  const childrenMap = useMemo(() => buildCommentChildrenMap(caso.comentarios), [caso.comentarios]);
+
+  useEffect(() => {
+    commentPhotosRef.current = commentPhotos;
+  }, [commentPhotos]);
+  useEffect(() => () => commentPhotosRef.current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl)), []);
+
+  const addCommentPhotos = (fileList: FileList | null) => {
+    const chosen = Array.from(fileList ?? []);
+    const images = chosen.filter((file) => file.type.startsWith("image/"));
+    if (images.length !== chosen.length) toast.error("Solo se permiten archivos de imagen.");
+    if (images.length === 0) return;
+    setCommentPhotos((current) => {
+      const combined = [...current, ...images.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))];
+      if (combined.length > 3) toast.error("Solo puedes adjuntar hasta 3 imagenes.");
+      combined.slice(3).forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      return combined.slice(0, 3);
+    });
+  };
+
+  const removeCommentPhoto = (index: number) => {
+    setCommentPhotos((current) => {
+      const target = current[index];
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return current.filter((_, idx) => idx !== index);
+    });
+  };
+
+  const handleSendComment = () => {
+    onSendComment(commentPhotos.map((photo) => photo.file), () => {
+      commentPhotosRef.current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      setCommentPhotos([]);
+    });
+  };
   const commentTags = tagsForTipo(caso.tipo);
-  const rawRoots = caso.comentarios.filter((comentario) => !comentario.parent_id);
+  const commentIds = new Set(caso.comentarios.map((comentario) => comentario.id));
+  // Raíz = sin padre, o cuyo padre ya no es visible (huérfano), igual que en la web de gestión.
+  const rawRoots = caso.comentarios.filter((comentario) => !comentario.parent_id || !commentIds.has(comentario.parent_id));
   const rootComments = sortRootComments(filterByTags(rawRoots, tagFilters), commentSort);
-  const repliesByParent = new Map<string, typeof caso.comentarios>();
-  caso.comentarios.filter((comentario) => comentario.parent_id).forEach((comentario) => {
-    const replies = repliesByParent.get(comentario.parent_id!) ?? [];
-    replies.push(comentario);
-    repliesByParent.set(comentario.parent_id!, replies);
-  });
   const replyingComment = replyingTo ? caso.comentarios.find((item) => item.id === replyingTo) : null;
+  const hasHistory = isOwn && caso.historial.length > 0;
   return (
+    <>
     <Card>
-      <CardHeader>
+      <CardHeader className="px-3 pt-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle className="text-lg">{caso.titulo}</CardTitle>
             <p className="text-xs text-slate-500">{caso.codigo} · {caso.lugar_referencia}</p>
           </div>
-          {canEdit && onEdit && (
-            <Button size="sm" variant="outline" onClick={onEdit}>
-              <Pencil className="mr-1.5 h-4 w-4" />
-              Editar
-            </Button>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {hasHistory && (
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-9 w-9"
+                onClick={() => setHistoryOpen(true)}
+                aria-label="Ver historial"
+                title="Historial"
+              >
+                <History className="h-4 w-4" />
+              </Button>
+            )}
+            {canEdit && onEdit && (
+              <Button size="icon" variant="outline" className="h-9 w-9" onClick={onEdit} aria-label="Editar caso" title="Editar">
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            {canCancel && (
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-9 w-9 border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                onClick={onCancel}
+                disabled={loading}
+                aria-label="Cancelar mi caso"
+                title="Cancelar mi caso"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {caso.foto_url && <Photo src={caso.foto_url} />}
-        {caso.foto_adicional_urls.length > 0 && (
-          <div className="grid grid-cols-3 gap-2">{caso.foto_adicional_urls.map((src) => <Photo key={src} src={src} small />)}</div>
+      <CardContent className="space-y-4 px-3">
+        {galleryImages.length > 0 && (
+          <>
+            {caso.foto_url && (
+              <Photo src={caso.foto_url} onClick={() => setLightbox({ images: galleryImages, index: galleryImages.indexOf(caso.foto_url!) })} />
+            )}
+            {caso.foto_adicional_urls.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {caso.foto_adicional_urls.map((src) => (
+                  <Photo key={src} src={src} small onClick={() => setLightbox({ images: galleryImages, index: galleryImages.indexOf(src) })} />
+                ))}
+              </div>
+            )}
+          </>
         )}
         <p className="text-sm text-slate-700">{caso.descripcion}</p>
         <div className="flex flex-wrap gap-2">
@@ -1149,20 +1234,6 @@ function CaseDetail(props: {
                 </div>
               </div>
             ))}
-          </section>
-        )}
-
-        {isOwn && caso.historial.length > 0 && (
-          <section className="space-y-2">
-            <Label className="flex items-center gap-1"><History className="h-4 w-4" />Historial</Label>
-            <div className="space-y-2">
-              {caso.historial.map((item) => (
-                <div key={item.id} className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
-                  <p className="font-medium text-slate-800">{estadoLabel(item.estado_nuevo)} · {item.accion}</p>
-                  <p>{formatDate(item.created_at)}{item.comentario ? ` · ${item.comentario}` : ""}</p>
-                </div>
-              ))}
-            </div>
           </section>
         )}
 
@@ -1203,15 +1274,17 @@ function CaseDetail(props: {
             ) : rootComments.length === 0 ? (
               <p className="rounded-lg border border-dashed p-3 text-sm text-slate-500">No hay comentarios con la etiqueta seleccionada.</p>
             ) : rootComments.map((c) => (
-              <CommentItem
+              <CommunityCommentNode
                 key={c.id}
                 comment={c}
-                replies={repliesByParent.get(c.id) ?? []}
+                childrenMap={childrenMap}
+                depth={0}
+                maxDepth={maxDepth}
                 canComment={canComment}
                 onReply={onReply}
                 onReact={onReactComment}
-                onPin={onPinComment}
-                onDelete={onDeleteComment}
+                onOpenMenu={setMenuComment}
+                onOpenImages={(images, index) => setLightbox({ images, index })}
               />
             ))}
           </div>
@@ -1234,21 +1307,271 @@ function CaseDetail(props: {
                 </SelectContent>
               </Select>
             )}
-            <div className="flex gap-2">
-              <Input value={comment} onChange={(e) => onCommentChange(e.target.value)} placeholder={canComment ? "Escribe un comentario" : "Chat en solo lectura"} disabled={!canComment} />
-              <Button onClick={onSendComment} disabled={loading || !canComment || !comment.trim()}>Enviar</Button>
+            {commentPhotos.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {commentPhotos.map((photo, index) => (
+                  <div key={photo.previewUrl} className="relative h-16 w-16 overflow-hidden rounded-md border bg-slate-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photo.previewUrl} alt="" className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeCommentPhoto(index)}
+                      className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                      aria-label="Quitar imagen"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              {canComment && (
+                <>
+                  <input
+                    ref={commentFileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/gif"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      addCommentPhotos(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => commentFileRef.current?.click()}
+                    disabled={loading || commentPhotos.length >= 3}
+                    aria-label="Adjuntar imagen o tomar foto"
+                    title="Adjuntar imagen o tomar foto"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+              <Input
+                value={comment}
+                onChange={(e) => onCommentChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && comment.trim() && canComment && !loading) {
+                    e.preventDefault();
+                    handleSendComment();
+                  }
+                }}
+                placeholder={canComment ? "Escribe un comentario" : "Chat en solo lectura"}
+                disabled={!canComment}
+              />
+              <Button
+                size="icon"
+                className="shrink-0"
+                onClick={handleSendComment}
+                disabled={loading || !canComment || !comment.trim()}
+                aria-label="Enviar comentario"
+                title="Enviar"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </section>
-
-        {canCancel && (
-          <Button variant="outline" className="w-full border-rose-200 text-rose-700 hover:bg-rose-50" onClick={onCancel} disabled={loading}>
-            <Trash2 className="mr-2 h-4 w-4" /> Cancelar mi caso
-          </Button>
-        )}
       </CardContent>
     </Card>
+
+    {/* Historial en modal para no saturar la vista principal. */}
+    <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+      <DialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-md">
+        <DialogHeader className="text-left">
+          <DialogTitle className="flex items-center gap-1.5 text-base">
+            <History className="h-4 w-4" />Historial
+          </DialogTitle>
+        </DialogHeader>
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+          {caso.historial.map((item) => (
+            <div key={item.id} className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
+              <p className="font-medium text-slate-800">{estadoLabel(item.estado_nuevo)} · {item.accion}</p>
+              <p>{formatDate(item.created_at)}{item.comentario ? ` · ${item.comentario}` : ""}</p>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Lightbox de imagenes: ampliar tocando cualquier foto del hilo o de un comentario. */}
+    <ImageLightbox
+      images={lightbox?.images ?? []}
+      index={lightbox?.index ?? null}
+      onIndexChange={(index) => setLightbox((current) => (current ? { ...current, index } : current))}
+      onClose={() => setLightbox(null)}
+    />
+
+    {/* Menu contextual de comentario (mantener presionado, estilo Instagram). */}
+    <CommentContextMenu
+      comment={menuComment}
+      onClose={() => setMenuComment(null)}
+      onPin={onPinComment}
+      onDelete={onDeleteComment}
+    />
+    </>
   );
+}
+
+function ImageLightbox({
+  images,
+  index,
+  onIndexChange,
+  onClose,
+}: {
+  images: string[];
+  index: number | null;
+  onIndexChange: (index: number) => void;
+  onClose: () => void;
+}) {
+  const open = index !== null && index >= 0 && index < images.length;
+  return (
+    <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
+      <DialogContent className="max-w-[calc(100vw-1rem)] border-0 bg-transparent p-0 shadow-none sm:max-w-2xl">
+        <DialogTitle className="sr-only">Imagen ampliada</DialogTitle>
+        {open && (
+          <div className="relative flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={images[index]} alt="" className="max-h-[80vh] w-full rounded-lg object-contain" />
+            {images.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onIndexChange((index - 1 + images.length) % images.length)}
+                  className="absolute left-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white"
+                  aria-label="Imagen anterior"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onIndexChange((index + 1) % images.length)}
+                  className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white"
+                  aria-label="Imagen siguiente"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-2.5 py-0.5 text-xs font-medium text-white">
+                  {index + 1} / {images.length}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CommentContextMenu({
+  comment,
+  onClose,
+  onPin,
+  onDelete,
+}: {
+  comment: CasoLfDetail["comentarios"][number] | null;
+  onClose: () => void;
+  onPin: (id: string, fijar: boolean) => void;
+  onDelete: (id: string) => void;
+}) {
+  if (!comment) return null;
+  const canPin = comment.puede_fijar;
+  const canDelete = comment.puede_eliminar;
+  return (
+    <div
+      className="animate-in fade-in-0 fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/40 p-6 backdrop-blur-sm duration-200"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-2xl bg-white p-3 shadow-2xl duration-200" onClick={(e) => e.stopPropagation()}>
+        <CommentAuthorLine comment={comment} />
+        <p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm text-slate-700">{comment.contenido}</p>
+      </div>
+      {(canPin || canDelete) ? (
+        <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl delay-75 duration-200" onClick={(e) => e.stopPropagation()}>
+          {canPin && (
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 active:bg-slate-100"
+              onClick={() => {
+                onPin(comment.id, !comment.fijado);
+                onClose();
+              }}
+            >
+              {comment.fijado ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+              {comment.fijado ? "Quitar fijado" : "Fijar comentario"}
+            </button>
+          )}
+          {canPin && canDelete && <Separator />}
+          {canDelete && (
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-rose-600 active:bg-rose-50"
+              onClick={() => {
+                onDelete(comment.id);
+                onClose();
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              Eliminar comentario
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs text-white/80">No tienes acciones disponibles para este comentario.</p>
+      )}
+    </div>
+  );
+}
+
+function CommentAuthorLine({ comment }: { comment: CasoLfDetail["comentarios"][number] }) {
+  return (
+    <div className="flex items-center gap-2">
+      <UserCircle2 className="h-7 w-7 shrink-0 text-slate-400" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium leading-tight text-slate-800">
+          {comment.autor?.nombre_completo ?? "Usuario"}{comment.autor?.rol ? ` · ${comment.autor.rol}` : ""}
+        </p>
+        <div className="flex flex-wrap items-center gap-1">
+          {comment.fijado && (
+            <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700"><Pin className="mr-1 h-3 w-3" />Fijado</Badge>
+          )}
+          <CommentTagBadge tag={comment.tag} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Mantener presionado (o clic derecho) para abrir el menu contextual del comentario.
+function useLongPress(onLongPress: () => void, ms = 450) {
+  const timer = useRef<number | null>(null);
+  const clear = useCallback(() => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, []);
+  useEffect(() => clear, [clear]);
+  return {
+    onTouchStart: () => {
+      clear();
+      timer.current = window.setTimeout(onLongPress, ms);
+    },
+    onTouchEnd: clear,
+    onTouchMove: clear,
+    onTouchCancel: clear,
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      onLongPress();
+    },
+  };
 }
 
 function CommentTagBadge({ tag }: { tag?: string | null }) {
@@ -1257,28 +1580,75 @@ function CommentTagBadge({ tag }: { tag?: string | null }) {
   return <Badge variant="outline" className={cn("ml-1", meta.badgeClassName)}>{meta.label}</Badge>;
 }
 
-function CommentItem({ comment, replies, canComment, onReply, onReact, onPin, onDelete }: {
+function buildCommentChildrenMap(comentarios: CasoLfDetail["comentarios"]): Map<string, CasoLfDetail["comentarios"]> {
+  const map = new Map<string, CasoLfDetail["comentarios"]>();
+  for (const comentario of comentarios) {
+    if (!comentario.parent_id) continue;
+    const list = map.get(comentario.parent_id) ?? [];
+    list.push(comentario);
+    map.set(comentario.parent_id, list);
+  }
+  return map;
+}
+
+// Nodo recursivo: misma profundidad que la web de gestión (caso.comentarios_profundidad_maxima).
+function CommunityCommentNode({
+  comment,
+  childrenMap,
+  depth,
+  maxDepth,
+  canComment,
+  onReply,
+  onReact,
+  onOpenMenu,
+  onOpenImages,
+}: {
   comment: CasoLfDetail["comentarios"][number];
-  replies: CasoLfDetail["comentarios"];
+  childrenMap: Map<string, CasoLfDetail["comentarios"]>;
+  depth: number;
+  maxDepth: number;
   canComment: boolean;
   onReply: (id: string) => void;
   onReact: (id: string) => void;
-  onPin: (id: string, fijar: boolean) => void;
-  onDelete: (id: string) => void;
+  onOpenMenu: (comment: CasoLfDetail["comentarios"][number]) => void;
+  onOpenImages: (images: string[], index: number) => void;
 }) {
-  // Las respuestas inician contraídas para no cargar todo el hilo de una vez.
-  const [repliesOpen, setRepliesOpen] = useState(false);
+  const replies = childrenMap.get(comment.id) ?? [];
+  // Al abrir el hilo, las respuestas de nivel 1 se muestran; las más profundas quedan contraídas.
+  const [repliesOpen, setRepliesOpen] = useState(depth === 0);
+  const canReply = canComment && depth + 1 < maxDepth;
+  const hasContextActions = Boolean(comment.puede_fijar || comment.puede_eliminar);
+  const longPress = useLongPress(() => onOpenMenu(comment));
+  const images = comment.imagenes ?? [];
   return (
-    <div className="space-y-2">
-      <div className={cn("rounded-lg bg-slate-50 p-2 text-sm", comment.fijado && "ring-1 ring-sky-200")}>
-        <p className="font-medium">
-          {comment.autor?.nombre_completo ?? "Usuario"}{comment.autor?.rol ? ` · ${comment.autor.rol}` : ""}
-          {comment.fijado && <Badge variant="outline" className="ml-1 border-sky-200 bg-sky-50 text-sky-700"><Pin className="mr-1 h-3 w-3" />Fijado</Badge>}
-          <CommentTagBadge tag={comment.tag} />
-        </p>
-        <p>{comment.contenido}</p>
-        <div className="mt-2 flex flex-wrap gap-1">
-          {canComment && <Button size="sm" variant="ghost" onClick={() => onReply(comment.id)}>Responder</Button>}
+    <div className={cn("space-y-2", depth > 0 && "border-l border-slate-200 pl-3")}>
+      <div
+        className={cn(
+          "select-none rounded-lg p-2.5 text-sm transition-colors active:bg-slate-100",
+          depth > 0 ? "bg-white shadow-sm ring-1 ring-slate-100" : "bg-slate-50",
+          comment.fijado && "ring-1 ring-sky-200",
+        )}
+        {...(hasContextActions ? longPress : {})}
+      >
+        <CommentAuthorLine comment={comment} />
+        <p className="mt-1.5 whitespace-pre-wrap wrap-break-word">{comment.contenido}</p>
+        {images.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {images.map((src, index) => (
+              <button
+                key={src}
+                type="button"
+                onClick={() => onOpenImages(images, index)}
+                className="relative h-20 w-20 overflow-hidden rounded-md border bg-slate-50"
+                aria-label="Ampliar imagen"
+              >
+                <Image src={src} alt="" fill unoptimized className="object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {canReply && <Button size="sm" variant="ghost" onClick={() => onReply(comment.id)}>Responder</Button>}
           <Button
             size="sm"
             variant={comment.reaccionado ? "secondary" : "ghost"}
@@ -1289,44 +1659,27 @@ function CommentItem({ comment, replies, canComment, onReply, onReact, onPin, on
             <Star className={cn("mr-1 h-4 w-4", comment.reaccionado && "fill-amber-400 text-amber-500")} />
             {comment.destacados ? comment.destacados : "Destacar"}
           </Button>
-          {comment.puede_fijar && (
-            <Button size="sm" variant="ghost" onClick={() => onPin(comment.id, !comment.fijado)}>
-              {comment.fijado ? <PinOff className="mr-1 h-4 w-4" /> : <Pin className="mr-1 h-4 w-4" />}
-              {comment.fijado ? "Quitar" : "Fijar"}
-            </Button>
-          )}
-          {comment.puede_eliminar && <Button size="sm" variant="ghost" className="text-rose-700" onClick={() => onDelete(comment.id)}>Eliminar</Button>}
         </div>
       </div>
       {replies.length > 0 && (
-        <div className="ml-4 space-y-2 border-l pl-3">
+        <div className="space-y-2">
           <Button size="sm" variant="ghost" className="text-slate-600" onClick={() => setRepliesOpen((v) => !v)}>
             {repliesOpen ? <ChevronUp className="mr-1 h-4 w-4" /> : <ChevronDown className="mr-1 h-4 w-4" />}
             {repliesOpen ? "Ocultar respuestas" : `Mostrar ${replies.length} respuesta${replies.length > 1 ? "s" : ""}`}
           </Button>
-          {repliesOpen && replies.map((reply) => (
-            <div key={reply.id} className="rounded-lg bg-white p-2 text-sm shadow-sm ring-1 ring-slate-100">
-              <p className="font-medium">
-                {reply.autor?.nombre_completo ?? "Usuario"}{reply.autor?.rol ? ` · ${reply.autor.rol}` : ""}
-                <CommentTagBadge tag={reply.tag} />
-              </p>
-              <p>{reply.contenido}</p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                <Button
-                  size="sm"
-                  variant={reply.reaccionado ? "secondary" : "ghost"}
-                  onClick={() => onReact(reply.id)}
-                  disabled={!reply.puede_reaccionar}
-                  title={reply.puede_reaccionar ? "Destacar" : "No puedes destacar este comentario"}
-                >
-                  <Star className={cn("mr-1 h-4 w-4", reply.reaccionado && "fill-amber-400 text-amber-500")} />
-                  {reply.destacados ? reply.destacados : "Destacar"}
-                </Button>
-                {reply.puede_eliminar && (
-                  <Button size="sm" variant="ghost" className="text-rose-700" onClick={() => onDelete(reply.id)}>Eliminar</Button>
-                )}
-              </div>
-            </div>
+          {repliesOpen && replies.map((child) => (
+            <CommunityCommentNode
+              key={child.id}
+              comment={child}
+              childrenMap={childrenMap}
+              depth={depth + 1}
+              maxDepth={maxDepth}
+              canComment={canComment}
+              onReply={onReply}
+              onReact={onReact}
+              onOpenMenu={onOpenMenu}
+              onOpenImages={onOpenImages}
+            />
           ))}
         </div>
       )}
@@ -1334,11 +1687,21 @@ function CommentItem({ comment, replies, canComment, onReply, onReact, onPin, on
   );
 }
 
-function Photo({ src, small = false }: { src: string; small?: boolean }) {
+function Photo({ src, small = false, onClick }: { src: string; small?: boolean; onClick?: () => void }) {
+  const content = <Image src={src} alt="" fill unoptimized className="object-cover" />;
+  const baseClass = cn("relative w-full overflow-hidden bg-slate-100", small ? "aspect-square rounded-md" : "aspect-video");
+  if (!onClick) {
+    return <div className={baseClass}>{content}</div>;
+  }
   return (
-    <div className={cn("relative w-full overflow-hidden bg-slate-100", small ? "aspect-square rounded-md" : "aspect-video")}>
-      <Image src={src} alt="" fill unoptimized className="object-cover" />
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(baseClass, "cursor-zoom-in transition active:scale-[0.99]")}
+      aria-label="Ampliar imagen"
+    >
+      {content}
+    </button>
   );
 }
 

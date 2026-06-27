@@ -20,7 +20,6 @@ const items = [
   { href: "/inicio", label: "Inicio", icon: Home },
   { href: "/reportar", label: "Reportar", icon: MapPinPlus },
   { href: "/mis-casos", label: "Mis casos", icon: ClipboardList },
-  { href: "/notificaciones", label: "Avisos", icon: Bell },
   { href: "/lost-found", label: "Lost & Found", icon: PackageSearch },
   { href: "/perfil", label: "Perfil", icon: UserCircle2 },
 ];
@@ -45,14 +44,31 @@ export function ComunidadShell({ children }: ComunidadShellProps) {
               <p className="text-[11px] text-white/70">PUCP</p>
             </div>
           </div>
-          <LogoutButton className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/30 bg-transparent px-3 text-xs font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60" />
+          <div className="flex items-center gap-2">
+            <Link
+              href="/notificaciones"
+              aria-label="Avisos"
+              title="Avisos"
+              className={cn(
+                "relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/30 text-white transition hover:bg-white/10",
+                pathname === "/notificaciones" && "bg-white/15",
+              )}
+            >
+              <Bell className="h-4 w-4" />
+              <NotificationBadge />
+            </Link>
+            <LogoutButton
+              iconOnly
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/30 bg-transparent text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </div>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-md pb-24">{children}</main>
 
       <nav className="fixed right-0 bottom-0 left-0 border-t bg-white/95 backdrop-blur">
-        <div className="mx-auto grid max-w-md grid-cols-6 px-2 py-2">
+        <div className="mx-auto grid max-w-md grid-cols-5 px-2 py-2">
           {items.map((item) => {
             const activo = pathname === item.href;
             return (
@@ -68,7 +84,6 @@ export function ComunidadShell({ children }: ComunidadShellProps) {
               >
                 <span className="relative">
                   <item.icon className="h-5 w-5" />
-                  {item.href === "/notificaciones" && <NotificationBadge />}
                 </span>
                 {item.label}
               </Link>

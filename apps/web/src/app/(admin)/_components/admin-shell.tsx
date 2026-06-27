@@ -103,8 +103,8 @@ const ADMIN_NAV: NavItem[] = [
   },
   {
     href: "/mensajes",
-    label: "Mensajes",
-    icon: MessageSquare,
+    label: "ChatBot",
+    icon: BotMessageSquare,
     section: "Operacion",
   },
   {

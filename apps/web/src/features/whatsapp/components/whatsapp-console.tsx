@@ -21,12 +21,9 @@ import {
   cn,
 } from "@safecampus/ui-kit";
 import {
-  Activity,
-  AlertTriangle,
   Bot,
   BrainCircuit,
   CheckCircle2,
-  Clock3,
   Lock,
   MessageCircleMore,
   RefreshCw,
@@ -280,14 +277,6 @@ export function WhatsAppConsole() {
     [filteredConversations, selectedId],
   );
 
-  const queueAverageMinutes = useMemo(() => {
-    const queued = conversations.filter((item) => item.estado === "EN_COLA");
-    if (!queued.length) return 0;
-    return Math.round(
-      queued.reduce((sum, item) => sum + minutesSince(item.created_at), 0) / queued.length,
-    );
-  }, [conversations]);
-
   const loadConversations = useCallback(async () => {
     const params: Record<string, string> = { limit: "100" };
     if (search.trim()) params.search = search.trim();
@@ -450,17 +439,9 @@ export function WhatsAppConsole() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Bandeja operativa WhatsApp</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {counts.all} {counts.all === 1 ? "conversación registrada" : "conversaciones registradas"}
-            </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <RealtimeBadge connected={wsConnected} />
-            <KpiCard label="Activas" value={counts.active} tone="emerald" icon={Activity} />
-            <KpiCard label="Cola" value={counts.queue} tone="amber" icon={Clock3} />
-            <KpiCard label="Humano" value={counts.human} tone="indigo" icon={UserCheck} />
-            <KpiCard label="Bot" value={counts.bot} tone="sky" icon={Bot} />
-            <KpiCard label="Prom. espera" value={`${queueAverageMinutes}m`} tone="slate" icon={AlertTriangle} />
           </div>
         </div>
         {errorMessage ? (
@@ -959,37 +940,6 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
           {outgoing ? <CheckCircle2 className="h-3 w-3" /> : null}
         </div>
       </div>
-    </div>
-  );
-}
-
-function KpiCard({
-  label,
-  value,
-  tone,
-  icon: Icon,
-}: {
-  label: string;
-  value: number | string;
-  tone: "emerald" | "amber" | "indigo" | "sky" | "slate";
-  icon: typeof Activity;
-}) {
-  const hasValue = typeof value === "number" ? value > 0 : value !== "0m";
-  const tones = {
-    emerald: hasValue ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-400",
-    amber: hasValue ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-400",
-    indigo: hasValue ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-400",
-    sky: hasValue ? "border-sky-200 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-400",
-    slate: hasValue ? "border-slate-300 bg-slate-100 text-slate-700" : "border-slate-200 bg-white text-slate-400",
-  };
-
-  return (
-    <div className={cn("min-w-28 rounded-xl border px-3 py-2", tones[tone])}>
-      <div className="flex items-center justify-between gap-2">
-        <Icon className="h-4 w-4" />
-        <p className="text-lg font-bold">{value}</p>
-      </div>
-      <p className="mt-1 text-xs font-medium">{label}</p>
     </div>
   );
 }
