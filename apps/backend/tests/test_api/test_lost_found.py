@@ -13,6 +13,8 @@ from app.schemas.lost_found import (
     CasoLfListResponse,
     ComentarioLfItem,
     ComentarioReaccionResult,
+    CustodiaLfItem,
+    RecepcionLfMobileResult,
     SupervisorLfItem,
 )
 
@@ -32,9 +34,10 @@ class FakeLostFoundService:
         self.reaccion_args = None
         self.fijar_args = None
         self.acceso_set_args = None
+        self.recepcion_args = None
 
     async def tiene_acceso_lf(self, usuario_id, roles) -> bool:
-        if "administrador" in roles or "operador" in roles:
+        if "administrador" in roles:
             return True
         return self.acceso
 
@@ -68,6 +71,33 @@ class FakeLostFoundService:
 
     async def obtener_acceso_mi(self, usuario_id, roles) -> AccesoLfMiResult:
         return AccesoLfMiResult(acceso=await self.tiene_acceso_lf(usuario_id, roles))
+
+    async def registrar_recepcion_mobile(self, actor_id, body) -> RecepcionLfMobileResult:
+        self.recepcion_args = (actor_id, body.titulo, body.ubicacion_custodia)
+        created_at = datetime(2026, 6, 27, 10, 0, tzinfo=UTC)
+        return RecepcionLfMobileResult(
+            caso={
+                "id": CASE_ID,
+                "codigo": "LF-202606-00001",
+                "estado": EstadoCasoLF.ABIERTO,
+                "created_at": created_at,
+                "matches_generados": 0,
+            },
+            custodia=CustodiaLfItem(
+                id="22222222-2222-2222-2222-222222222222",
+                caso_id=CASE_ID,
+                codigo="LF-202606-00001",
+                titulo=body.titulo,
+                estado="ACTIVA",
+                ubicacion_custodia=body.ubicacion_custodia,
+                observaciones=body.observaciones_custodia,
+                es_perecible=False,
+                fecha_recepcion=created_at,
+                fecha_vencimiento=created_at,
+                created_at=created_at,
+                updated_at=created_at,
+            ),
+        )
 
     async def listar_feed(self, **kwargs) -> list[CasoLfListItem]:
         self.feed_args = kwargs
@@ -250,6 +280,32 @@ def test_lost_found_custodias_acepta_filtros_multiselect(client):
         assert response.status_code == 200
         assert fake.custodias_args["estados"] == ["ACTIVA", "VENCIDA"]
         assert fake.custodias_args["vencimientos"] == ["proxima", "vencida"]
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lost_found_mobile_registra_recepcion_con_acceso(client):
+    fake = FakeLostFoundService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_operador
+    try:
+        response = client.post(
+            "/api/v1/lost-found/mobile/recepciones",
+            json={
+                "tipo": "ENCONTRADO",
+                "titulo": "Casaca encontrada",
+                "descripcion": "Casaca negra encontrada durante patrullaje.",
+                "categoria_id": CASE_ID,
+                "lugar_referencia": "Puerta principal",
+                "fecha_evento": "2026-06-27T10:00:00Z",
+                "ubicacion_custodia": "Caseta norte",
+                "observaciones_custodia": "Recepcion registrada desde mobile.",
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["custodia"]["ubicacion_custodia"] == "Caseta norte"
+        assert fake.recepcion_args == (USER_ID, "Casaca encontrada", "Caseta norte")
     finally:
         app.dependency_overrides.pop(get_service, None)
         app.dependency_overrides.pop(get_current_user, None)

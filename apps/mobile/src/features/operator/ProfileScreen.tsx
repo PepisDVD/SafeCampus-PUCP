@@ -2,6 +2,7 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Card, Label, SectionHeader, colors, spacing } from "@safecampus/ui-native";
 
 import type { AuthUser } from "../../shared/types/api";
+import { BellIcon, LogoutIcon } from "../../shared/ui/icons";
 import type { useOperatorData } from "./use-operator-data";
 
 type OperatorData = ReturnType<typeof useOperatorData>;
@@ -9,10 +10,12 @@ type OperatorData = ReturnType<typeof useOperatorData>;
 export function ProfileScreen({
   data,
   logout,
+  onOpenNotifications,
   user,
 }: {
   data: OperatorData;
   logout: () => void;
+  onOpenNotifications: () => void;
   user: AuthUser;
 }) {
   return (
@@ -46,9 +49,16 @@ export function ProfileScreen({
         <Info label="Estado" value="En servicio" />
       </Card>
 
-      <Button variant="danger" onPress={logout}>
-        <Label weight="900">Finalizar turno y cerrar sesion</Label>
-      </Button>
+      <View style={styles.actions}>
+        <Button variant="secondary" onPress={onOpenNotifications} style={styles.actionButton}>
+          <BellIcon color={colors.text} size={20} />
+          <Label weight="900">Notificaciones</Label>
+        </Button>
+        <Button variant="danger" onPress={logout} style={styles.actionButton}>
+          <LogoutIcon color={colors.text} size={20} />
+          <Label weight="900">Finalizar turno</Label>
+        </Button>
+      </View>
     </ScrollView>
   );
 }
@@ -110,5 +120,11 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+  },
+  actions: {
+    gap: spacing.sm,
+  },
+  actionButton: {
+    justifyContent: "flex-start",
   },
 });

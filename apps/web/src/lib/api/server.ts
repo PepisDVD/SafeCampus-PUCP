@@ -13,6 +13,7 @@ const BACKEND_URL =
   process.env.BACKEND_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
   "http://localhost:8000/api/v1";
+const SERVER_FETCH_TIMEOUT_MS = 20000;
 
 type ServerApiRequestOptions = {
   params?: Record<string, string>;
@@ -47,9 +48,12 @@ async function request<T>(
     (typeof options.revalidate === "number" ||
       (Array.isArray(options.tags) && options.tags.length > 0));
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SERVER_FETCH_TIMEOUT_MS);
   const res = await fetch(url.toString(), {
     method,
     cache: cacheMode,
+    signal: controller.signal,
     ...(shouldUseNextOptions
       ? {
           next: {
@@ -67,7 +71,7 @@ async function request<T>(
       ...(cookieHeader ? { cookie: cookieHeader } : {}),
     },
     ...(options.body !== undefined && { body: JSON.stringify(options.body) }),
-  });
+  }).finally(() => clearTimeout(timeout));
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: `Error ${res.status}` }));

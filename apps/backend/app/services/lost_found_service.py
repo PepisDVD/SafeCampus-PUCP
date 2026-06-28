@@ -59,6 +59,8 @@ from app.schemas.lost_found import (
     MotivoCierreLfCreate,
     MotivoCierreLfItem,
     ParticipacionLfInput,
+    RecepcionLfMobileInput,
+    RecepcionLfMobileResult,
 )
 from app.services.storage_service import StorageService
 
@@ -83,6 +85,8 @@ COMENTARIOS_PROFUNDIDAD_KEY = "comentarios.profundidad_maxima"
 COMENTARIOS_PROFUNDIDAD_DEFAULT = 6
 COMENTARIOS_PROFUNDIDAD_MAX = 12
 COMENTARIO_ELIMINADO_PLACEHOLDER = "Comentario eliminado."
+ORIGEN_COMUNIDAD = "COMUNIDAD"
+ORIGEN_OPERADOR_MOVIL = "OPERADOR_MOVIL"
 LISTA_NEGRA_DEFAULT = [
     "idiota", "imbecil", "estupido", "estupida", "tarado", "tarada", "mierda",
     "puta", "puto", "pendejo", "pendeja", "cabron", "cabrona", "marica",
@@ -180,9 +184,10 @@ class LostFoundService:
         await self._audit_categoria(actor_id, accion, row["id"], before=before, after=row, resumen=resumen)
         return CategoriaLfItem(**row)
 
-    async def crear_caso(self, reportante_id: str, data: CasoLfCreateInput) -> CasoLfCreated:
+    async def crear_caso(self, reportante_id: str, data: CasoLfCreateInput, *, origen: str = ORIGEN_COMUNIDAD) -> CasoLfCreated:
         payload = data.model_dump()
         payload["tipo"] = data.tipo.value
+        payload["origen"] = origen
         categoria = await self._repo.get_categoria(data.categoria_id)
         if not categoria:
             raise HTTPException(status_code=422, detail="La categoría seleccionada no existe.")
@@ -195,6 +200,29 @@ class LostFoundService:
         await self._audit_lf(reportante_id, "LF_CASO_CREADO", "caso_lost_found", creado["id"], {"codigo": creado["codigo"], "tipo_caso": data.tipo.value, "categoria_id": data.categoria_id})
         matches = await self._generar_matches(creado["id"], reportante_id)
         return CasoLfCreated(**creado, matches_generados=matches)
+
+    async def registrar_recepcion_mobile(self, actor_id: str, data: RecepcionLfMobileInput) -> RecepcionLfMobileResult:
+        if data.tipo.value != "ENCONTRADO":
+            raise HTTPException(status_code=422, detail="La app operativa solo registra objetos encontrados.")
+        caso_payload = CasoLfCreateInput(**data.model_dump(exclude={"ubicacion_custodia", "observaciones_custodia", "es_perecible"}))
+        creado = await self.crear_caso(actor_id, caso_payload, origen=ORIGEN_OPERADOR_MOVIL)
+        custodia = await self.crear_custodia(
+            creado.id,
+            actor_id,
+            CustodiaLfCreateInput(
+                ubicacion_custodia=data.ubicacion_custodia,
+                observaciones=data.observaciones_custodia,
+                es_perecible=data.es_perecible,
+            ),
+        )
+        await self._audit_lf(
+            actor_id,
+            "LF_RECEPCION_MOVIL_REGISTRADA",
+            "caso_lost_found",
+            creado.id,
+            {"codigo": creado.codigo, "custodia_id": custodia.id},
+        )
+        return RecepcionLfMobileResult(caso=creado, custodia=custodia)
 
     async def listar_feed(
         self,
@@ -209,6 +237,12 @@ class LostFoundService:
         color: str | None,
         cursor: datetime | None,
         limit: int,
+        publicado_desde: datetime | None = None,
+        lat: float | None = None,
+        lng: float | None = None,
+        radio_km: float | None = None,
+        metadatos: dict[str, Any] | None = None,
+        origen: str | None = None,
     ) -> list[CasoLfListItem]:
         rows = await self._repo.list_feed(
             search=search,
@@ -219,13 +253,19 @@ class LostFoundService:
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
             color=color,
+            publicado_desde=publicado_desde,
+            lat=lat,
+            lng=lng,
+            radio_km=radio_km,
+            metadatos=metadatos,
+            origen=origen,
             cursor=cursor,
             limit=max(1, min(limit, 100)),
         )
         return [self._map_list(row, public=True) for row in rows]
 
-    async def listar_mis_casos(self, usuario_id: str, limit: int) -> list[CasoLfListItem]:
-        return [self._map_list(row) for row in await self._repo.list_by_reportante(usuario_id, max(1, min(limit, 100)))]
+    async def listar_mis_casos(self, usuario_id: str, limit: int, origen: str | None = None) -> list[CasoLfListItem]:
+        return [self._map_list(row) for row in await self._repo.list_by_reportante(usuario_id, max(1, min(limit, 100)), origen)]
 
     async def listar_operativo(
         self,
@@ -234,6 +274,7 @@ class LostFoundService:
         tipos: list[str] | None,
         estados: list[str] | None,
         categoria_ids: list[str] | None,
+        origen: str | None,
         cursor: datetime | None,
         limit: int,
     ) -> list[CasoLfListItem]:
@@ -244,6 +285,7 @@ class LostFoundService:
                 tipos=tipos,
                 estados=estados,
                 categoria_ids=categoria_ids,
+                origen=origen,
                 cursor=cursor,
                 limit=max(1, min(limit, 200)),
             )
@@ -261,9 +303,12 @@ class LostFoundService:
         if row.get("oculto") and not is_owner and not is_operativo:
             raise HTTPException(status_code=404, detail="Caso Lost & Found no encontrado.")
         historial = await self._repo.list_historial(str(row["id"])) if is_owner or is_operativo else []
-        comentarios = await self._repo.list_comentarios(str(row["id"]), include_hidden=is_operativo, usuario_id=usuario_id)
-        comentarios = self._compute_profundidades(comentarios)
-        comentarios = self._mark_comment_flags(comentarios, usuario_id, is_operativo, is_owner=is_owner, caso_tipo=str(row["tipo"]))
+        comentarios_habilitados = str(row.get("origen") or ORIGEN_COMUNIDAD) != ORIGEN_OPERADOR_MOVIL
+        comentarios = []
+        if comentarios_habilitados:
+            comentarios = await self._repo.list_comentarios(str(row["id"]), include_hidden=is_operativo, usuario_id=usuario_id)
+            comentarios = self._compute_profundidades(comentarios)
+            comentarios = self._mark_comment_flags(comentarios, usuario_id, is_operativo, is_owner=is_owner, caso_tipo=str(row["tipo"]))
         max_profundidad = await self._obtener_profundidad_maxima()
         return self._map_detail(
             row,
@@ -591,6 +636,8 @@ class LostFoundService:
     async def listar_comentarios(self, caso_id: str, roles: list[str], usuario_id: str) -> list[ComentarioLfItem]:
         is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
         caso = await self._repo.get_estado(caso_id)
+        if caso and str(caso.get("origen") or ORIGEN_COMUNIDAD) == ORIGEN_OPERADOR_MOVIL:
+            return []
         is_owner = bool(caso and str(caso["reportante_id"]) == usuario_id)
         caso_tipo = str(caso["tipo"]) if caso else None
         rows = await self._repo.list_comentarios(caso_id, include_hidden=is_operativo, usuario_id=usuario_id)
@@ -602,6 +649,8 @@ class LostFoundService:
         actual = await self._repo.get_estado(caso_id)
         if not actual or str(actual["estado"]) not in CHAT_STATES:
             raise HTTPException(status_code=404, detail="Caso activo no encontrado.")
+        if str(actual.get("origen") or ORIGEN_COMUNIDAD) == ORIGEN_OPERADOR_MOVIL:
+            raise HTTPException(status_code=403, detail="Los registros operativos no admiten comentarios.")
         contenido = data.contenido.strip()
         await self._validar_contenido(contenido)
         tag = data.tag or None
@@ -705,7 +754,7 @@ class LostFoundService:
                 id=str(r["id"]),
                 nombre_completo=f"{r.get('nombre') or ''} {r.get('apellido') or ''}".strip() or "Usuario",
                 email=r.get("email"),
-                rol="supervisor",
+                rol=r.get("rol") or "operador",
                 asignado=bool(r.get("asignado")),
             )
             for r in rows
@@ -719,7 +768,7 @@ class LostFoundService:
     async def tiene_acceso_lf(self, usuario_id: str, roles: list[str]) -> bool:
         # Administradores y operadores conservan el acceso operativo del módulo.
         # La restricción aplica a los supervisores: solo los asignados pueden entrar.
-        if "administrador" in roles or "operador" in roles:
+        if "administrador" in roles:
             return True
         return await self._repo.tiene_acceso_lf(usuario_id)
 
@@ -949,6 +998,94 @@ class LostFoundService:
         await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="DESCARTADO", ejecutor_id=actor_id, comentario=observacion, motivo_cierre="DESCARTADO", motivo_cierre_id=motivo["id"], observaciones_cierre=observacion)
         await self._repo.update_estado(caso_id=str(custodia.caso_id), estado="CERRADO", ejecutor_id=actor_id, comentario="Cierre automatico por descarte", motivo_cierre="DESCARTADO", motivo_cierre_id=motivo["id"], observaciones_cierre=observacion)
         await self._audit_lf(actor_id, "LF_DESCARTE_EJECUTADO", "custodia_objeto", custodia_id, {"motivo": motivo_descarte, "motivo_cierre_id": motivo["id"], "destino": data.destino_descarte})
+
+    async def revertir_devolucion(self, custodia_id: str, actor_id: str) -> CustodiaLfItem:
+        """Revierte una devolución: deja la custodia operativa y reabre el caso.
+
+        Pensado como apoyo cuando una devolución se registró por error o el caso
+        debe reabrirse. Limpia los datos de la entrega y conserva la trazabilidad.
+        """
+        custodia = await self._repo.get_custodia(custodia_id)
+        if not custodia:
+            raise HTTPException(status_code=404, detail="Custodia no encontrada.")
+        if str(custodia.estado) != "DEVUELTA":
+            raise HTTPException(status_code=422, detail="Solo se puede revertir una custodia en estado devuelta.")
+        row = await self._reactivar_custodia_operativa(
+            custodia,
+            actor_id,
+            limpiar={
+                "reclamante_id": None,
+                "entregado_por_id": None,
+                "metodo_verificacion": None,
+                "fecha_devolucion": None,
+            },
+            audit_accion="LF_DEVOLUCION_REVERTIDA",
+            comentario_caso="Devolución revertida: la custodia vuelve a estar operativa.",
+        )
+        return CustodiaLfItem(**row)
+
+    async def reactivar_descarte(self, custodia_id: str, actor_id: str) -> CustodiaLfItem:
+        """Reactiva una custodia descartada y reabre el caso.
+
+        El estado operativo se recalcula según la fecha de vencimiento
+        (ACTIVA / PROXIMA_VENCER / VENCIDA). Limpia los datos del descarte.
+        """
+        custodia = await self._repo.get_custodia(custodia_id)
+        if not custodia:
+            raise HTTPException(status_code=404, detail="Custodia no encontrada.")
+        if str(custodia.estado) != "DESCARTADA":
+            raise HTTPException(status_code=422, detail="Solo se puede reactivar una custodia en estado descartada.")
+        row = await self._reactivar_custodia_operativa(
+            custodia,
+            actor_id,
+            limpiar={
+                "destino_descarte": None,
+                "motivo_descarte": None,
+                "fecha_descarte": None,
+            },
+            audit_accion="LF_DESCARTE_REACTIVADO",
+            comentario_caso="Descarte reactivado: la custodia vuelve a estar operativa.",
+        )
+        return CustodiaLfItem(**row)
+
+    async def _reactivar_custodia_operativa(
+        self,
+        custodia: Any,
+        actor_id: str,
+        *,
+        limpiar: dict[str, Any],
+        audit_accion: str,
+        comentario_caso: str,
+    ) -> dict[str, Any]:
+        """Devuelve la custodia a un estado operativo y reabre el caso asociado."""
+        politica = await self.obtener_politica_custodia()
+        estado_objetivo = self._estado_custodia_por_vencimiento(
+            custodia.fecha_vencimiento,
+            bool(custodia.es_perecible),
+            politica,
+        )
+        estado_anterior = str(custodia.estado)
+        row = await self._repo.update_custodia(str(custodia.id), {"estado": estado_objetivo, **limpiar})
+        if not row:
+            raise HTTPException(status_code=404, detail="Custodia no encontrada.")
+        await self._repo.reabrir_caso(
+            caso_id=str(custodia.caso_id),
+            ejecutor_id=actor_id,
+            estado="EN_CUSTODIA",
+            comentario=comentario_caso,
+        )
+        await self._audit_lf(
+            actor_id,
+            audit_accion,
+            "custodia_objeto",
+            str(custodia.id),
+            {
+                "caso_id": str(custodia.caso_id),
+                "estado_anterior": estado_anterior,
+                "estado_nuevo": estado_objetivo,
+            },
+        )
+        return row
 
     async def obtener_kpis(self) -> KpisLfResponse:
         return KpisLfResponse(**await self._repo.get_kpis())
@@ -1426,14 +1563,19 @@ class LostFoundService:
             categoria_nombre=row.get("categoria_nombre"),
             subcategoria=row.get("subcategoria"),
             lugar_referencia=row.get("lugar_referencia"),
+            latitud=row.get("latitud"),
+            longitud=row.get("longitud"),
             fecha_evento=row.get("fecha_evento"),
             foto_url=row.get("foto_url"),
+            foto_adicional_urls=row.get("foto_adicional_urls") or [],
             color_principal=row.get("color_principal"),
             marca=row.get("marca"),
             conteo_comentarios=row.get("conteo_comentarios") or 0,
             ultimo_comentario=row.get("ultimo_comentario"),
             ultimo_comentario_at=row.get("ultimo_comentario_at"),
             reportante=cls._usuario(row, public=public),
+            origen=row.get("origen") or ORIGEN_COMUNIDAD,
+            comentarios_habilitados=(row.get("origen") or ORIGEN_COMUNIDAD) != ORIGEN_OPERADOR_MOVIL,
             created_at=row["created_at"],
         )
 
@@ -1441,6 +1583,7 @@ class LostFoundService:
     def _map_detail(cls, row: dict[str, Any], historial: list[dict[str, Any]], comentarios: list[dict[str, Any]], public: bool = False, *, mostrar_eliminado: bool = False, profundidad_maxima: int = COMENTARIOS_PROFUNDIDAD_DEFAULT) -> CasoLfDetail:
         base = cls._map_list(row, public=public).model_dump()
         base.pop("reportante", None)
+        base.pop("foto_adicional_urls", None)
         return CasoLfDetail(
             **base,
             comentarios_profundidad_maxima=profundidad_maxima,
@@ -1453,8 +1596,6 @@ class LostFoundService:
             motivo_cierre=row.get("motivo_cierre"),
             motivo_cierre_id=str(row["motivo_cierre_id"]) if row.get("motivo_cierre_id") else None,
             observaciones_cierre=row.get("observaciones_cierre"),
-            latitud=row.get("latitud"),
-            longitud=row.get("longitud"),
             custodia=(
                 {
                     "id": str(row["custodia_id"]),

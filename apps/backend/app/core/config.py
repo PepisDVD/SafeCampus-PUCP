@@ -29,6 +29,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",  # Frontend web (Next.js)
         "http://localhost:8081",  # Frontend móvil (Expo)
     ]
+    DEV_LAN_WEB_ORIGIN: str | None = None
 
     # --- Database ---
     DATABASE_URL: str
@@ -47,6 +48,8 @@ class Settings(BaseSettings):
     SESSION_COOKIE_DOMAIN: str | None = None
     WEB_APP_URL: str = "http://localhost:3000"
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"
+    DEV_LAN_WEB_APP_URL: str | None = None
+    DEV_LAN_BACKEND_PUBLIC_URL: str | None = None
 
     # --- Integraciones externas ---
     LLM_PROVIDER: str = "openai"
@@ -114,6 +117,21 @@ class Settings(BaseSettings):
             for value in self.WHATSAPP_ALLOWED_TEST_PHONES.split(",")
             if "".join(char for char in value if char.isdigit())
         }
+
+    @property
+    def cors_origins_effective(self) -> list[str]:
+        origins = list(self.CORS_ORIGINS)
+        if self.DEV_LAN_WEB_ORIGIN and self.DEV_LAN_WEB_ORIGIN not in origins:
+            origins.append(self.DEV_LAN_WEB_ORIGIN)
+        return origins
+
+    @property
+    def web_app_url_effective(self) -> str:
+        return self.DEV_LAN_WEB_APP_URL or self.WEB_APP_URL
+
+    @property
+    def backend_public_url_effective(self) -> str:
+        return self.DEV_LAN_BACKEND_PUBLIC_URL or self.BACKEND_PUBLIC_URL
 
     @field_validator("DATABASE_URL")
     @classmethod

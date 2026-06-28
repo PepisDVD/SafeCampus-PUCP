@@ -5,9 +5,12 @@ from typing import Annotated, Any
 from fastapi import (
     APIRouter,
     Depends,
+    File,
+    Form,
     Header,
     HTTPException,
     Request,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
     status,
@@ -23,7 +26,9 @@ from app.schemas.omnicanal import (
     ChatbotBorradorUpdateInput,
     CerrarConversacionInput,
     ConversacionDetail,
+    ConversacionHistorialDetail,
     ConversacionListResponse,
+    ConversacionesHistorialResponse,
     CrearIncidenteConversacionInput,
     EnviarMensajeInput,
     EventosConversacionResponse,
@@ -104,6 +109,38 @@ async def listar_conversaciones(
 
 
 @router.get(
+    "/historial/conversaciones",
+    response_model=ConversacionesHistorialResponse,
+    dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
+)
+async def listar_historial_conversaciones(
+    service: Annotated[OmnicanalService, Depends(get_service)],
+    search: str | None = None,
+    desde: str | None = None,
+    hasta: str | None = None,
+    limit: int = 80,
+):
+    return await service.listar_historial_conversaciones(
+        search=search,
+        desde=desde,
+        hasta=hasta,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/historial/conversaciones/{conversacion_id}",
+    response_model=ConversacionHistorialDetail,
+    dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
+)
+async def obtener_historial_conversacion(
+    conversacion_id: str,
+    service: Annotated[OmnicanalService, Depends(get_service)],
+):
+    return await service.obtener_historial_conversacion(conversacion_id)
+
+
+@router.get(
     "/conversaciones/{conversacion_id}/mensajes",
     response_model=MensajesConversacionResponse,
     dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
@@ -143,6 +180,25 @@ async def enviar_mensaje(
         conversacion_id,
         body.contenido,
         current_user.id,
+    )
+
+
+@router.post(
+    "/conversaciones/{conversacion_id}/imagenes",
+    response_model=MensajesConversacionResponse,
+)
+async def enviar_imagenes(
+    conversacion_id: str,
+    service: Annotated[OmnicanalService, Depends(get_service)],
+    current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
+    archivos: list[UploadFile] = File(...),
+    caption: str | None = Form(default=None),
+):
+    return await service.enviar_imagenes(
+        conversacion_id,
+        archivos,
+        current_user.id,
+        caption=caption,
     )
 
 

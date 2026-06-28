@@ -49,13 +49,15 @@ import {
   TablePaginationBar,
   Textarea,
 } from "@safecampus/ui-kit";
-import { CalendarDays, CheckCircle2, Clock3, Edit3, Eye, MoreHorizontal, PackageCheck, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock3, Edit3, Eye, MoreHorizontal, PackageCheck, Plus, RefreshCw, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
 import { estadoLabel, formatDateTimePe } from "../presentation";
 import { EstadoLfBadge } from "./estado-lf-badge";
 import { CharCounter, LF_TEXT_LIMITS } from "./text-field-help";
-import type { CasoLfDetail, CasoLfListItem, CustodiaLf, ListResponse, MotivoCierreLf } from "../types";
+import { ReturnRegistrationWizard } from "./return-registration-wizard";
+import type { UsuarioConRoles } from "@/features/admin/services/usuario.service";
+import type { CasoLfDetail, CasoLfListItem, CustodiaLf, ListResponse, MotivoCierreLf, UbicacionMaestra } from "../types";
 
 type CustodiaPage = ListResponse<CustodiaLf> & { page: number; per_page: number };
 
@@ -64,6 +66,21 @@ type Props = {
   initialSearch?: string;
   casos: CasoLfListItem[];
   motivosDescarte: MotivoCierreLf[];
+  ubicacionesCustodia: UbicacionMaestra[];
+  usuarios: UsuarioConRoles[];
+  currentUser: {
+    id: string;
+    roles: string[];
+    nombre: string;
+    apellido: string;
+    codigoInstitucional: string | null;
+    telefono: string | null;
+    navUser: {
+      name: string;
+      email: string;
+      avatarUrl?: string | null;
+    };
+  } | null;
 };
 
 const ESTADOS = ["ACTIVA", "PROXIMA_VENCER", "VENCIDA", "DEVUELTA", "DESCARTADA"] as const;
@@ -73,7 +90,7 @@ const VENCIMIENTOS = [
   { value: "vencida", label: "Vencidas" },
 ] as const;
 
-export function LostFoundLogistica({ initialCustodias, initialSearch = "", casos, motivosDescarte }: Props) {
+export function LostFoundLogistica({ initialCustodias, initialSearch = "", casos, motivosDescarte, ubicacionesCustodia, usuarios, currentUser }: Props) {
   const [data, setData] = useState(initialCustodias);
   const [search, setSearch] = useState(initialSearch);
   const [estados, setEstados] = useState<string[]>(["ACTIVA", "PROXIMA_VENCER", "VENCIDA"]);
@@ -81,6 +98,8 @@ export function LostFoundLogistica({ initialCustodias, initialSearch = "", casos
   const [perPage, setPerPage] = useState(String(initialCustodias.per_page));
   const [drawer, setDrawer] = useState<"crear" | "editar" | "devolver" | "descartar" | "trazabilidad" | null>(null);
   const [selected, setSelected] = useState<CustodiaLf | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ type: "revertir" | "reactivar"; custodia: CustodiaLf } | null>(null);
+  const [isMutating, startMutate] = useTransition();
   const [isLoading, setIsLoading] = useState(false);
   const latestLoadRef = useRef(0);
   const skipAutoLoadRef = useRef(true);
@@ -138,6 +157,26 @@ export function LostFoundLogistica({ initialCustodias, initialSearch = "", casos
   const closeDrawer = () => {
     setDrawer(null);
     setSelected(null);
+  };
+
+  const runConfirmAction = () => {
+    if (!confirmAction) return;
+    const { type, custodia } = confirmAction;
+    startMutate(async () => {
+      try {
+        if (type === "revertir") {
+          await lostFoundClient.revertirDevolucion(custodia.id);
+          toast.success("Devolución revertida. La custodia volvió a estar operativa y el caso se reabrió.");
+        } else {
+          await lostFoundClient.reactivarDescarte(custodia.id);
+          toast.success("Custodia reactivada según su fecha de vencimiento. El caso se reabrió.");
+        }
+        setConfirmAction(null);
+        load(data.page);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "No se pudo completar la operación.");
+      }
+    });
   };
 
   const totalPages = Math.max(1, Math.ceil(data.total / data.per_page));
@@ -235,23 +274,43 @@ export function LostFoundLogistica({ initialCustodias, initialSearch = "", casos
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-52">
-                      <DropdownMenuItem onSelect={() => openAction("editar", custodia)}>
-                        <Edit3 />
-                        Editar custodia
-                      </DropdownMenuItem>
+                      {canEditCustodia(custodia.estado) && (
+                        <DropdownMenuItem onSelect={() => openAction("editar", custodia)}>
+                          <Edit3 />
+                          Editar custodia
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onSelect={() => openAction("trazabilidad", custodia)}>
                         <Eye />
                         Ver trazabilidad
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openAction("devolver", custodia)}>
-                        <PackageCheck />
-                        Registrar devolución
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem variant="destructive" onSelect={() => openAction("descartar", custodia)}>
-                        <Trash2 />
-                        Marcar como descartada
-                      </DropdownMenuItem>
+                      {isOperativa(custodia.estado) && (
+                        <DropdownMenuItem onSelect={() => openAction("devolver", custodia)}>
+                          <PackageCheck />
+                          Registrar devolución
+                        </DropdownMenuItem>
+                      )}
+                      {custodia.estado === "DEVUELTA" && (
+                        <DropdownMenuItem onSelect={() => setConfirmAction({ type: "revertir", custodia })}>
+                          <Undo2 />
+                          Revertir devolución
+                        </DropdownMenuItem>
+                      )}
+                      {custodia.estado === "DESCARTADA" && (
+                        <DropdownMenuItem onSelect={() => setConfirmAction({ type: "reactivar", custodia })}>
+                          <RotateCcw />
+                          Reactivar custodia
+                        </DropdownMenuItem>
+                      )}
+                      {canDiscardCustodia(custodia.estado) && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem variant="destructive" onSelect={() => openAction("descartar", custodia)}>
+                            <Trash2 />
+                            Marcar como descartada
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -289,8 +348,62 @@ export function LostFoundLogistica({ initialCustodias, initialSearch = "", casos
           load(1);
         }}
       />
+      <ReturnRegistrationWizard
+        open={drawer === "devolver"}
+        custodia={selected}
+        casos={casos}
+        usuarios={usuarios}
+        ubicacionesCustodia={ubicacionesCustodia}
+        currentUser={currentUser}
+        onOpenChange={(open) => {
+          if (!open) closeDrawer();
+        }}
+        onDone={() => {
+          closeDrawer();
+          load(1);
+        }}
+      />
+
+      <AlertDialog open={Boolean(confirmAction)} onOpenChange={(open) => !open && !isMutating && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction?.type === "revertir" ? "Revertir devolución" : "Reactivar custodia"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.type === "revertir"
+                ? "La custodia volverá a un estado operativo según su fecha de vencimiento, se limpiarán los datos de la devolución y el caso asociado se reabrirá. La trazabilidad se conserva."
+                : "La custodia volverá a un estado operativo (Activa, Próxima a vencer o Vencida) según su fecha de vencimiento, se limpiarán los datos del descarte y el caso asociado se reabrirá. La trazabilidad se conserva."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isMutating}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                runConfirmAction();
+              }}
+              disabled={isMutating}
+            >
+              {confirmAction?.type === "revertir" ? "Revertir" : "Reactivar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
+}
+
+function isOperativa(estado: string) {
+  return estado === "ACTIVA" || estado === "PROXIMA_VENCER";
+}
+
+function canEditCustodia(estado: string) {
+  return isOperativa(estado) || estado === "VENCIDA";
+}
+
+function canDiscardCustodia(estado: string) {
+  return isOperativa(estado) || estado === "VENCIDA";
 }
 
 function CustodiaDrawer({
@@ -406,7 +519,7 @@ function CustodiaDrawer({
   };
 
   return (
-    <Drawer open={mode !== null} onOpenChange={(open) => !open && onClose()} direction="right">
+    <Drawer open={mode !== null && mode !== "devolver"} onOpenChange={(open) => !open && onClose()} direction="right">
       <DrawerContent className="h-full overflow-hidden p-0 sm:max-w-xl">
         <form id="custodia-drawer-form" onSubmit={submit} className="flex min-h-full flex-col">
           <DrawerHeader className="border-b px-6 py-5 text-left">
@@ -494,20 +607,6 @@ function CustodiaDrawer({
               traceCase
                 ? <TraceTimeline custodia={custodia} caso={traceCase} />
                 : <TraceTimelineSkeleton />
-            )}
-
-            {mode === "devolver" && (
-              <>
-                <Field label="ID del reclamante verificado">
-                  <Input name="reclamante_id" required placeholder="UUID del usuario validado" />
-                </Field>
-                <Field label="Método de verificación">
-                  <Input name="metodo_verificacion" required defaultValue="SSO_PUCP_CARNET" />
-                </Field>
-                <Field label="Observaciones">
-                  <Textarea name="observaciones" maxLength={2000} placeholder="Detalle de verificación y entrega" />
-                </Field>
-              </>
             )}
 
             {mode === "descartar" && (

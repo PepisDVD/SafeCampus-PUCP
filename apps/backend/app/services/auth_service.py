@@ -8,7 +8,7 @@ import logging
 import secrets
 from datetime import timedelta
 from typing import Any
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from fastapi import HTTPException, status
@@ -33,7 +33,8 @@ class AuthService:
         next_path: str,
         *,
         institutional: bool = True,
-    ) -> str:
+        web_origin: str | None = None,
+    ) -> tuple[str, str]:
         # institutional=True  → SSO exclusivo @pucp.edu.pe (chooser restringido con
         #                       `hd`); el callback vuelve a validar el dominio.
         # institutional=False → cuentas externas (Gmail); NO @pucp.edu.pe. No se
@@ -56,6 +57,7 @@ class AuthService:
                 )
 
         safe_next_path = self._sanitize_next_path(next_path)
+        safe_web_origin = self._sanitize_web_origin(web_origin)
         code_verifier = secrets.token_urlsafe(64)
         code_challenge = self._code_challenge(code_verifier)
         state = create_access_token(
@@ -63,13 +65,14 @@ class AuthService:
                 "kind": "oauth_state",
                 "email": normalized_email,
                 "next": safe_next_path,
+                "web_origin": safe_web_origin,
                 "code_verifier": code_verifier,
                 "institutional": institutional,
             },
             expires_delta=timedelta(minutes=10),
         )
 
-        callback_url = self._callback_url_with_oauth_state(state)
+        callback_url = self._callback_url(safe_web_origin)
         params: dict[str, str] = {
             "provider": "google",
             "redirect_to": callback_url,
@@ -82,13 +85,20 @@ class AuthService:
             params["hd"] = settings.ALLOWED_INSTITUTIONAL_DOMAIN
         if normalized_email:
             params["login_hint"] = normalized_email
-        return f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/authorize?{urlencode(params)}"
+        login_url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/authorize?{urlencode(params)}"
+        logger.info(
+            "OAuth Google login generado: redirect_to=%s institutional=%s next=%s",
+            callback_url,
+            institutional,
+            safe_next_path,
+        )
+        return login_url, state
 
     async def complete_google_callback(
         self,
         code: str,
         state: str,
-    ) -> tuple[AuthUserResponse, str, str]:
+    ) -> tuple[AuthUserResponse, str, str, str | None]:
         state_payload = decode_access_token(state)
         if not state_payload or state_payload.get("kind") != "oauth_state":
             raise HTTPException(
@@ -98,6 +108,7 @@ class AuthService:
 
         code_verifier = str(state_payload.get("code_verifier") or "")
         next_path = self._sanitize_next_path(str(state_payload.get("next") or "/dashboard"))
+        web_origin = self._sanitize_web_origin(str(state_payload.get("web_origin") or ""))
         institutional = bool(state_payload.get("institutional", True))
         supabase_session = await self._exchange_code_for_session(code, code_verifier)
         user = await self.sync_supabase_user_data(
@@ -112,7 +123,7 @@ class AuthService:
         )
         user = user.model_copy(update={"roles": effective_roles})
         session_token = self._create_user_session_token(user, AuthChannel.WEB)
-        return user, session_token, next_path
+        return user, session_token, next_path, web_origin
 
     async def login_operator_with_password(
         self,
@@ -427,14 +438,41 @@ class AuthService:
         return raw_path
 
     @staticmethod
-    def _callback_url_with_oauth_state(oauth_state: str) -> str:
-        callback_url = (
-            f"{settings.BACKEND_PUBLIC_URL.rstrip('/')}"
-            f"{settings.API_V1_PREFIX}/auth/google/callback"
+    def _callback_url(web_origin: str | None = None) -> str:
+        return f"{(web_origin or settings.web_app_url_effective).rstrip('/')}/auth/callback"
+
+    @staticmethod
+    def _sanitize_web_origin(raw_origin: str | None) -> str | None:
+        if not raw_origin:
+            return None
+
+        parts = urlsplit(raw_origin.strip())
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            return None
+        if parts.path not in {"", "/"} or parts.query or parts.fragment:
+            return None
+
+        host = parts.hostname or ""
+        port = parts.port
+        allowed_ports = {3000, 3001}
+        if port not in allowed_ports:
+            return None
+
+        is_localhost = host in {"localhost", "127.0.0.1"}
+        is_private_lan = (
+            host.startswith("192.168.")
+            or host.startswith("10.")
+            or (
+                host.startswith("172.")
+                and len(host.split(".")) == 4
+                and host.split(".")[1].isdigit()
+                and 16 <= int(host.split(".")[1]) <= 31
+            )
         )
-        parts = urlsplit(callback_url)
-        query = urlencode({"oauth_state": oauth_state})
-        return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+        if not is_localhost and not is_private_lan:
+            return None
+
+        return f"{parts.scheme}://{parts.netloc}"
 
     @staticmethod
     def _create_user_session_token(

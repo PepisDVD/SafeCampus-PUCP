@@ -103,9 +103,21 @@ const ADMIN_NAV: NavItem[] = [
   },
   {
     href: "/mensajes",
-    label: "Mensajes",
-    icon: MessageSquare,
+    label: "ChatBot",
+    icon: BotMessageSquare,
     section: "Operacion",
+    children: [
+      {
+        href: "/mensajes",
+        label: "Bandeja operativa",
+        icon: MessageSquare,
+      },
+      {
+        href: "/mensajes/historial",
+        label: "Historial",
+        icon: ClipboardList,
+      },
+    ],
   },
   {
     href: "/usuarios",

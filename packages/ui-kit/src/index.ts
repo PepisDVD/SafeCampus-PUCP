@@ -88,6 +88,17 @@ export {
 export { Checkbox } from "./components/ui/checkbox";
 export { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./components/ui/collapsible";
 export {
+  Command,
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandShortcut,
+  CommandSeparator,
+} from "./components/ui/command";
+export {
   Dialog,
   DialogClose,
   DialogPortal,
@@ -179,6 +190,7 @@ export {
   SheetDescription,
 } from "./components/ui/sheet";
 export { Skeleton } from "./components/ui/skeleton";
+export { Slider } from "./components/ui/slider";
 export {
   type CarouselApi,
   Carousel,

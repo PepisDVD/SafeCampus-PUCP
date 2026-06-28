@@ -659,7 +659,7 @@ function CaseMediaTabs({ caso }: { caso: CasoLfDetail }) {
               <CarouselContent>
                 {photos.map((url) => (
                   <CarouselItem key={url}>
-                    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg border bg-slate-50">
+                    <div className="relative aspect-4/3 w-full overflow-hidden rounded-lg border bg-slate-50">
                       <Image src={url} alt="" fill unoptimized className="object-cover" />
                     </div>
                   </CarouselItem>

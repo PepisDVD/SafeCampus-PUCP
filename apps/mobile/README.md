@@ -38,7 +38,7 @@ Debe responder algo similar a:
 
 ```bash
 cd apps/mobile
-pnpm run dev:lan:clear
+pnpm run dev:lan:auto
 ```
 
 5. Escanea el QR con Expo Go.
@@ -85,6 +85,15 @@ EXPO_PUBLIC_API_URL="http://TU_IP_LAN:8000/api/v1" pnpm run dev:lan:clear
 ## Modos De Expo
 
 ```bash
+pnpm run dev:lan:auto
+```
+
+Detecta la IP LAN actual de la laptop, define
+`EXPO_PUBLIC_API_URL=http://<ip>:8000/api/v1` para ese arranque y ejecuta
+Expo con `--lan --clear`. Es el modo recomendado cuando la laptop y el celular
+estan en la misma Wi-Fi.
+
+```bash
 pnpm run dev:lan
 ```
 
@@ -106,13 +115,21 @@ local. Para usar este modo con backend local se necesita exponer tambien el
 backend con una herramienta como ngrok o cloudflared y definir
 `EXPO_PUBLIC_API_URL`.
 
+```bash
+pnpm run dev:tunnel:auto
+```
+
+Tuneliza Metro, pero configura la app con la IP LAN actual de la laptop. Esto
+solo sirve si el celular tambien puede alcanzar esa IP LAN; si esta en otra red,
+hay que tunelizar el backend aparte.
+
 ## Diagnostico
 
 Si aparece `Sin conexion con el servidor`:
 
 - Confirma que `pnpm dev:backend` esta corriendo.
 - Abre `http://TU_IP_LAN:8000/health` desde el celular.
-- Usa `pnpm run dev:lan:clear`.
+- Usa `pnpm run dev:lan:auto`.
 - Revisa en la terminal de Expo los logs:
 
 ```txt

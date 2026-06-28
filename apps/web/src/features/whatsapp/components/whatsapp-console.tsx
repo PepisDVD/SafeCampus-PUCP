@@ -5,10 +5,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Avatar,
   AvatarFallback,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Input,
   MultiSelectFilter,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   ScrollArea,
   SearchInput,
   Select,
@@ -16,27 +27,32 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Separator,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   Textarea,
   cn,
 } from "@safecampus/ui-kit";
 import {
-  Activity,
-  AlertTriangle,
   Bot,
   BrainCircuit,
   CheckCircle2,
-  Clock3,
+  ExternalLink,
+  Filter,
+  History,
+  ImagePlus,
   Lock,
-  MessageCircleMore,
   RefreshCw,
   RotateCcw,
   Send,
   ShieldCheck,
+  UserRound,
   UserCheck,
   UserPlus,
   Wifi,
   WifiOff,
+  X,
 } from "lucide-react";
 
 import { api } from "@/lib/api/client";
@@ -76,8 +92,20 @@ const STATE_LABEL: Record<ConversationState, string> = {
   ABIERTA: "Abierta",
   EN_BOT: "Bot activo",
   EN_COLA: "En cola",
-  EN_ATENCION: "En atencion",
+  EN_ATENCION: "En atención",
   CERRADA: "Cerrada",
+};
+
+const PRIORITY_LABEL: Record<ConversationPriority, string> = {
+  BAJO: "Baja",
+  MEDIO: "Media",
+  ALTO: "Alta",
+  CRITICO: "Crítica",
+};
+
+const MODE_LABEL: Record<NonNullable<Conversation["modo_atencion"]>, string> = {
+  BOT: "Bot",
+  HUMANO: "Humano",
 };
 
 const PRIORITY_RANK: Record<ConversationPriority, number> = {
@@ -179,7 +207,20 @@ function authorLabel(author: MessageAuthor) {
   }[author];
 }
 
+function WhatsAppIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <img
+      src="/icon-whatsapp.svg"
+      alt=""
+      aria-hidden="true"
+      className={className}
+    />
+  );
+}
+
 function getAiClassification(conversation: Conversation) {
+  if (conversation.estado === "CERRADA") return null;
+
   return {
     category:
       conversation.chatbot?.classification_category ||
@@ -188,7 +229,8 @@ function getAiClassification(conversation: Conversation) {
     confidence: conversation.chatbot?.classification_confidence ?? null,
     requiresHumanReview:
       conversation.chatbot?.requires_human_review ??
-      (conversation.prioridad !== "BAJO" || !conversation.incidente),
+      ((conversation.prioridad !== null && conversation.prioridad !== "BAJO") ||
+        !conversation.incidente),
   };
 }
 
@@ -234,21 +276,81 @@ function chatbotStatusTone(status: ChatbotStatus) {
   }[status];
 }
 
+function ConversationStateBadge({ state }: { state: ConversationState }) {
+  return (
+    <Badge className={cn("border", stateTone(state))}>
+      {STATE_LABEL[state]}
+    </Badge>
+  );
+}
+
+function ConversationPriorityBadge({ priority }: { priority: ConversationPriority }) {
+  return (
+    <Badge className={cn("border font-semibold", priorityTone(priority))}>
+      {PRIORITY_LABEL[priority]}
+    </Badge>
+  );
+}
+
+function ConversationModeBadge({ mode }: { mode: NonNullable<Conversation["modo_atencion"]> }) {
+  return (
+    <Badge className={cn("border", modeTone(mode))}>
+      {mode === "BOT" ? <Bot className="mr-1 h-3 w-3" /> : <ShieldCheck className="mr-1 h-3 w-3" />}
+      {MODE_LABEL[mode]}
+    </Badge>
+  );
+}
+
+function LastMessageAuthorIcon({ author }: { author?: MessageAuthor | null }) {
+  if (author === "BOT") {
+    return (
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-sky-200 bg-sky-50 text-sky-700">
+        <Bot className="h-3 w-3" />
+      </span>
+    );
+  }
+  if (author === "OPERADOR") {
+    return (
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700">
+        <UserRound className="h-3 w-3" />
+      </span>
+    );
+  }
+  if (author === "CONTACTO") {
+    return (
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50">
+        <WhatsAppIcon className="h-3 w-3" />
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500">
+      <ShieldCheck className="h-3 w-3" />
+    </span>
+  );
+}
+
 export function WhatsAppConsole() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [stateFilters, setStateFilters] = useState<ConversationState[]>([]);
+  const [priorityFilters, setPriorityFilters] = useState<ConversationPriority[]>([]);
+  const [modeFilters, setModeFilters] = useState<NonNullable<Conversation["modo_atencion"]>[]>([]);
   const [draft, setDraft] = useState("");
-  const [operatorId, setOperatorId] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachmentPreviews, setAttachmentPreviews] = useState<Array<{ file: File; url: string }>>([]);
+  const [operatorIds, setOperatorIds] = useState<string[]>([]);
   const [operators, setOperators] = useState<OperatorOption[]>([]);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const counts = useMemo(() => {
     return {
@@ -258,19 +360,38 @@ export function WhatsAppConsole() {
       human: conversations.filter((item) => item.estado === "EN_ATENCION").length,
       bot: conversations.filter((item) => item.estado === "EN_BOT").length,
       closed: conversations.filter((item) => item.estado === "CERRADA").length,
+      priority: {
+        BAJO: conversations.filter((item) => item.prioridad === "BAJO").length,
+        MEDIO: conversations.filter((item) => item.prioridad === "MEDIO").length,
+        ALTO: conversations.filter((item) => item.prioridad === "ALTO").length,
+        CRITICO: conversations.filter((item) => item.prioridad === "CRITICO").length,
+      },
+      mode: {
+        BOT: conversations.filter((item) => item.modo_atencion === "BOT").length,
+        HUMANO: conversations.filter((item) => item.modo_atencion === "HUMANO").length,
+      },
     };
   }, [conversations]);
 
   const filteredConversations = useMemo(() => {
-    const filtered = stateFilters.length
-      ? conversations.filter((item) => stateFilters.includes(item.estado))
-      : conversations;
+    const filtered = conversations.filter((item) => {
+      const matchesState = stateFilters.length ? stateFilters.includes(item.estado) : true;
+      const matchesPriority = priorityFilters.length
+        ? Boolean(item.prioridad && priorityFilters.includes(item.prioridad))
+        : true;
+      const matchesMode = modeFilters.length
+        ? Boolean(item.modo_atencion && modeFilters.includes(item.modo_atencion))
+        : true;
+      return matchesState && matchesPriority && matchesMode;
+    });
     return [...filtered].sort((a, b) => {
-      const priority = PRIORITY_RANK[b.prioridad] - PRIORITY_RANK[a.prioridad];
+      const priority =
+        (b.prioridad ? PRIORITY_RANK[b.prioridad] : 0) -
+        (a.prioridad ? PRIORITY_RANK[a.prioridad] : 0);
       if (priority !== 0) return priority;
       return new Date(b.ultimo_mensaje_at).getTime() - new Date(a.ultimo_mensaje_at).getTime();
     });
-  }, [conversations, stateFilters]);
+  }, [conversations, modeFilters, priorityFilters, stateFilters]);
 
   const selectedConversation = useMemo(
     () =>
@@ -279,14 +400,6 @@ export function WhatsAppConsole() {
       null,
     [filteredConversations, selectedId],
   );
-
-  const queueAverageMinutes = useMemo(() => {
-    const queued = conversations.filter((item) => item.estado === "EN_COLA");
-    if (!queued.length) return 0;
-    return Math.round(
-      queued.reduce((sum, item) => sum + minutesSince(item.created_at), 0) / queued.length,
-    );
-  }, [conversations]);
 
   const loadConversations = useCallback(async () => {
     const params: Record<string, string> = { limit: "100" };
@@ -301,6 +414,7 @@ export function WhatsAppConsole() {
       if (current && response.items.some((item) => item.id === current)) return current;
       return response.items[0]?.id ?? null;
     });
+    return response.items;
   }, [search]);
 
   const loadMessages = useCallback(async (conversationId: string) => {
@@ -326,19 +440,31 @@ export function WhatsAppConsole() {
 
   useEffect(() => {
     selectedIdRef.current = selectedConversation?.id ?? null;
-    if (selectedConversation?.operador_asignado?.id) {
-      setOperatorId(selectedConversation.operador_asignado.id);
-    }
+    setOperatorIds(
+      selectedConversation?.operadores_asignados?.length
+        ? selectedConversation.operadores_asignados.map((operator) => operator.id)
+        : selectedConversation?.operador_asignado?.id
+          ? [selectedConversation.operador_asignado.id]
+          : [],
+    );
   }, [selectedConversation]);
 
   useEffect(() => {
     setLoading(true);
     loadConversations()
+      .then((items) => {
+        const current = selectedIdRef.current;
+        const nextId = current && items.some((item) => item.id === current)
+          ? current
+          : items[0]?.id;
+        if (nextId) return loadMessages(nextId);
+        return undefined;
+      })
       .catch((error) => {
         setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar la bandeja.");
       })
       .finally(() => setLoading(false));
-  }, [loadConversations]);
+  }, [loadConversations, loadMessages]);
 
   useEffect(() => {
     loadOperators().catch((error) => {
@@ -359,6 +485,15 @@ export function WhatsAppConsole() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const previews = attachments.map((file) => ({
+      file,
+      url: URL.createObjectURL(file),
+    }));
+    setAttachmentPreviews(previews);
+    return () => previews.forEach((preview) => URL.revokeObjectURL(preview.url));
+  }, [attachments]);
 
   useEffect(() => {
     let disposed = false;
@@ -413,15 +548,31 @@ export function WhatsAppConsole() {
   }
 
   async function handleSend() {
-    if (!selectedConversation || !draft.trim() || sending) return;
+    if (!selectedConversation || (!draft.trim() && attachments.length === 0) || sending) return;
+    if (selectedConversation.modo_atencion !== "HUMANO") {
+      setErrorMessage("Toma el chat antes de enviar respuestas manuales.");
+      return;
+    }
     const content = draft.trim();
     setSending(true);
     try {
-      await api.post(
-        `/omnicanal/conversaciones/${selectedConversation.id}/mensajes`,
-        { contenido: content },
-      );
+      if (attachments.length > 0) {
+        const formData = new FormData();
+        attachments.forEach((file) => formData.append("archivos", file));
+        if (content) formData.append("caption", content);
+        await api.postMultipart<ConversationMessagesResponse>(
+          `/omnicanal/conversaciones/${selectedConversation.id}/imagenes`,
+          formData,
+        );
+      } else {
+        await api.post(
+          `/omnicanal/conversaciones/${selectedConversation.id}/mensajes`,
+          { contenido: content },
+        );
+      }
       setDraft("");
+      setAttachments([]);
+      if (imageInputRef.current) imageInputRef.current.value = "";
       await loadConversations();
       await loadMessages(selectedConversation.id);
     } catch (error) {
@@ -433,16 +584,16 @@ export function WhatsAppConsole() {
 
   async function closeConversation() {
     if (!selectedConversation) return;
-    const confirmed = window.confirm("¿Cerrar esta conversación? Podrás reabrirla si es necesario.");
-    if (!confirmed) return;
     await runConversationAction(() =>
       api.post(`/omnicanal/conversaciones/${selectedConversation.id}/cerrar`, {
         motivo: "Cierre operativo desde bandeja.",
       }),
     );
+    setCloseConfirmOpen(false);
   }
 
   const selectedAi = selectedConversation ? getAiClassification(selectedConversation) : null;
+  const selectedIncident = selectedConversation?.incidente ?? selectedConversation?.ultimo_incidente ?? null;
 
   return (
     <div className="flex h-[calc(100vh-5rem)] min-h-180 flex-col bg-slate-50 p-6">
@@ -450,17 +601,9 @@ export function WhatsAppConsole() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Bandeja operativa WhatsApp</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {counts.all} {counts.all === 1 ? "conversación registrada" : "conversaciones registradas"}
-            </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <RealtimeBadge connected={wsConnected} />
-            <KpiCard label="Activas" value={counts.active} tone="emerald" icon={Activity} />
-            <KpiCard label="Cola" value={counts.queue} tone="amber" icon={Clock3} />
-            <KpiCard label="Humano" value={counts.human} tone="indigo" icon={UserCheck} />
-            <KpiCard label="Bot" value={counts.bot} tone="sky" icon={Bot} />
-            <KpiCard label="Prom. espera" value={`${queueAverageMinutes}m`} tone="slate" icon={AlertTriangle} />
           </div>
         </div>
         {errorMessage ? (
@@ -473,13 +616,44 @@ export function WhatsAppConsole() {
       <main className="mt-5 grid min-h-0 flex-1 grid-cols-[390px_minmax(0,1fr)_360px] overflow-hidden rounded-xl border bg-white">
         <aside className="flex min-h-0 flex-col border-r bg-white">
           <div className="space-y-3 border-b p-4">
-            <SearchInput
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar contacto o mensaje"
-              className="border-0 bg-slate-100"
-            />
-            <ConversationFilter value={stateFilters} onChange={setStateFilters} counts={counts} />
+            <div className="flex items-center gap-2">
+              <SearchInput
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar contacto o mensaje"
+                className="min-w-0 flex-1 border-0 bg-slate-100"
+              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 shrink-0"
+                    aria-label="Filtros avanzados"
+                    title="Filtros avanzados"
+                  >
+                    <Filter className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 space-y-3 p-3">
+                  <p className="text-xs font-medium uppercase text-slate-500">
+                    Filtros avanzados
+                  </p>
+                  <ConversationFilter value={stateFilters} onChange={setStateFilters} counts={counts} />
+                  <ConversationPriorityFilter
+                    value={priorityFilters}
+                    onChange={setPriorityFilters}
+                    counts={counts.priority}
+                  />
+                  <ConversationModeFilter
+                    value={modeFilters}
+                    onChange={setModeFilters}
+                    counts={counts.mode}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
 
           <ConversationList
@@ -537,28 +711,100 @@ export function WhatsAppConsole() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="mx-auto flex max-w-4xl items-end gap-3">
-                    <Textarea
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      placeholder="Escribe una respuesta operativa..."
-                      className="min-h-12 resize-none rounded-xl border-0 bg-slate-100"
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          void handleSend();
+                  <div className="mx-auto max-w-4xl space-y-2">
+                    {selectedConversation.modo_atencion !== "HUMANO" ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+                        <Lock className="h-4 w-4" />
+                        Toma el chat para habilitar respuestas manuales.
+                      </div>
+                    ) : null}
+                    {attachmentPreviews.length ? (
+                      <div className="flex gap-2 overflow-x-auto rounded-xl border bg-slate-50 p-2">
+                        {attachmentPreviews.map((preview, index) => (
+                          <div
+                            key={`${preview.file.name}-${index}`}
+                            className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border bg-white"
+                          >
+                            <img
+                              src={preview.url}
+                              alt={preview.file.name}
+                              className="h-full w-full object-cover"
+                            />
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="icon"
+                              className="absolute right-1 top-1 h-6 w-6 rounded-full bg-white/90 text-slate-700 shadow-sm"
+                              aria-label="Quitar imagen"
+                              title="Quitar imagen"
+                              onClick={() =>
+                                setAttachments((current) =>
+                                  current.filter((_, itemIndex) => itemIndex !== index),
+                                )
+                              }
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="flex items-end gap-2 rounded-xl border bg-slate-100 p-2">
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => {
+                          setAttachments(Array.from(event.target.files ?? []));
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-10 w-10 shrink-0 text-slate-600"
+                        aria-label="Adjuntar imagenes"
+                        title="Adjuntar imagenes"
+                        disabled={selectedConversation.modo_atencion !== "HUMANO"}
+                        onClick={() => imageInputRef.current?.click()}
+                      >
+                        <ImagePlus className="h-4 w-4" />
+                      </Button>
+                      <Textarea
+                        value={draft}
+                        onChange={(event) => setDraft(event.target.value)}
+                        placeholder={
+                          selectedConversation.modo_atencion === "HUMANO"
+                            ? "Escribe una respuesta operativa..."
+                            : "Chat en modo Bot"
                         }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      disabled={!draft.trim() || sending}
-                      onClick={() => void handleSend()}
-                      className="h-12 bg-[#001C55] px-5"
-                    >
-                      <Send className="mr-2 h-4 w-4" />
-                      Enviar
-                    </Button>
+                        disabled={selectedConversation.modo_atencion !== "HUMANO"}
+                        className="min-h-10 flex-1 resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0"
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey) {
+                            event.preventDefault();
+                            void handleSend();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        disabled={
+                          selectedConversation.modo_atencion !== "HUMANO" ||
+                          (!draft.trim() && attachments.length === 0) ||
+                          sending
+                        }
+                        onClick={() => void handleSend()}
+                        className="h-10 w-10 shrink-0 bg-[#001C55] p-0"
+                        aria-label="Enviar respuesta"
+                        title="Enviar respuesta"
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -573,190 +819,78 @@ export function WhatsAppConsole() {
         <aside className="min-h-0 border-l bg-white">
           {selectedConversation ? (
             <ScrollArea className="h-full">
-              <div className="space-y-5 p-4">
-                <div className="space-y-3">
-                  <h2 className="text-lg font-bold text-slate-900">Operacion</h2>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge className={cn("border", stateTone(selectedConversation.estado))}>
-                      {STATE_LABEL[selectedConversation.estado]}
-                    </Badge>
-                    <Badge className={cn("border", modeTone(selectedConversation.modo_atencion))}>
-                      {selectedConversation.modo_atencion === "BOT" ? (
-                        <Bot className="mr-1 h-3 w-3" />
-                      ) : (
-                        <ShieldCheck className="mr-1 h-3 w-3" />
-                      )}
-                      {selectedConversation.modo_atencion}
-                    </Badge>
-                    {selectedConversation.chatbot ? (
-                      <Badge
-                        className={cn(
-                          "border",
-                          chatbotStatusTone(selectedConversation.chatbot.bot_status),
-                        )}
-                      >
-                        <Bot className="mr-1 h-3 w-3" />
-                        {chatbotStatusLabel(selectedConversation.chatbot.bot_status)}
-                      </Badge>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="grid gap-2">
-                  <Button
-                    type="button"
-                    className="bg-[#001C55]"
-                    onClick={() =>
+              <Tabs defaultValue="operacion" className="p-4">
+                <TabsList className="grid h-10 w-full grid-cols-2 rounded-lg">
+                  <TabsTrigger value="operacion">Operacion</TabsTrigger>
+                  <TabsTrigger value="ia">IA</TabsTrigger>
+                </TabsList>
+                <TabsContent
+                  value="operacion"
+                  className="mt-4 space-y-4 transition-opacity duration-200 data-[state=active]:opacity-100 data-[state=inactive]:opacity-0"
+                >
+                  <OperationPanel
+                    conversation={selectedConversation}
+                    selectedIncident={selectedIncident}
+                    operatorIds={operatorIds}
+                    operators={operators}
+                    onOperatorChange={setOperatorIds}
+                    onTake={() =>
                       void runConversationAction(() =>
                         api.post(`/omnicanal/conversaciones/${selectedConversation.id}/tomar`),
                       )
                     }
-                    disabled={selectedConversation.estado === "CERRADA"}
-                  >
-                    <UserCheck className="mr-2 h-4 w-4" />
-                    Tomar chat
-                  </Button>
-                  <div className="grid gap-2 rounded-lg border bg-slate-50 p-3">
-                    <Select value={operatorId} onValueChange={setOperatorId}>
-                      <SelectTrigger className="bg-white">
-                        <SelectValue placeholder="Asignar operador" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {operators.map((operator) => (
-                          <SelectItem key={operator.id} value={operator.id}>
-                            <span className="flex items-center gap-2">
-                              <span
-                                className={cn(
-                                  "h-2 w-2 rounded-full",
-                                  operator.online ? "bg-emerald-500" : "bg-slate-300",
-                                )}
-                              />
-                              {operator.nombre_completo}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={!operatorId || selectedConversation.estado === "CERRADA"}
-                      onClick={() =>
-                        void runConversationAction(() =>
-                          api.post(
-                            `/omnicanal/conversaciones/${selectedConversation.id}/asignar`,
-                            { operador_id: operatorId },
-                          ),
-                        )
-                      }
-                    >
-                      <UserPlus className="mr-2 h-4 w-4" />
-                      Asignar
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={
-                      selectedConversation.estado === "CERRADA" ||
-                      selectedConversation.modo_atencion === "BOT"
+                    onAssign={() =>
+                      void runConversationAction(() =>
+                        api.post(
+                          `/omnicanal/conversaciones/${selectedConversation.id}/asignar`,
+                          { operador_ids: operatorIds },
+                        ),
+                      )
                     }
-                    onClick={() =>
+                    onActivateBot={() =>
                       void runConversationAction(() =>
                         api.post(`/omnicanal/conversaciones/${selectedConversation.id}/modo-bot`),
                       )
                     }
-                  >
-                    <Bot className="mr-2 h-4 w-4" />
-                    Activar bot
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={
-                      selectedConversation.estado === "CERRADA" ||
-                      selectedConversation.modo_atencion === "HUMANO"
-                    }
-                    onClick={() =>
-                      void runConversationAction(() =>
-                        api.post(`/omnicanal/conversaciones/${selectedConversation.id}/modo-humano`),
-                      )
-                    }
-                  >
-                    <ShieldCheck className="mr-2 h-4 w-4" />
-                    Pasar a humano
-                  </Button>
-                </div>
-
-                <Separator />
-
-                <AiClassificationPanel conversation={selectedConversation} classification={selectedAi} />
-
-                <ChatbotPanel
-                  conversation={selectedConversation}
-                  onUpdated={() => void refreshSelectedConversation()}
-                />
-
-                <InfoBlock label="Ultima actividad" value={formatDateTime(selectedConversation.ultimo_mensaje_at)} />
-                <InfoBlock label="Tiempo en cola" value={relativeTime(selectedConversation.created_at)} />
-
-                <div className="rounded-lg border bg-slate-50 p-4">
-                  <div className="flex items-center gap-2 font-medium text-slate-900">
-                    <MessageCircleMore className="h-4 w-4 text-[#001C55]" />
-                    Incidente vinculado
-                  </div>
-                  {selectedConversation.incidente ? (
-                    <div className="mt-3 space-y-2 text-sm">
-                      <p className="font-semibold">{selectedConversation.incidente.codigo}</p>
-                      <p className="text-slate-700">{selectedConversation.incidente.titulo}</p>
-                      <Badge variant="outline">{selectedConversation.incidente.estado}</Badge>
-                      <Button asChild variant="outline" size="sm" className="mt-1">
-                        <Link href={`/incidentes/${selectedConversation.incidente.id}`}>
-                          Revisar incidente
-                        </Link>
-                      </Button>
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-sm text-slate-500">
-                      Todavia no se creo ni vinculo un incidente.
-                    </p>
-                  )}
-                </div>
-
-                <Separator />
-
-                {selectedConversation.estado === "CERRADA" ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() =>
-                      void runConversationAction(() =>
-                        api.post(`/omnicanal/conversaciones/${selectedConversation.id}/reabrir`),
-                      )
-                    }
-                  >
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    Reabrir chat
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    className="w-full"
-                    onClick={() => void closeConversation()}
-                  >
-                    Cerrar chat
-                  </Button>
-                )}
-              </div>
+                    onClose={() => setCloseConfirmOpen(true)}
+                  />
+                </TabsContent>
+                <TabsContent
+                  value="ia"
+                  className="mt-4 space-y-4 transition-opacity duration-200 data-[state=active]:opacity-100 data-[state=inactive]:opacity-0"
+                >
+                  <AiClassificationPanel conversation={selectedConversation} classification={selectedAi} />
+                  <ChatbotPanel
+                    conversation={selectedConversation}
+                    onUpdated={() => void refreshSelectedConversation()}
+                  />
+                </TabsContent>
+              </Tabs>
             </ScrollArea>
           ) : null}
         </aside>
       </main>
+      <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cerrar chat</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Confirmas que deseas cerrar esta conversación? Se limpiarán la
+              prioridad, el modo de atención y los operadores asignados para
+              dejarla lista para un nuevo ciclo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={() => void closeConversation()}
+            >
+              Cerrar chat
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -768,7 +902,13 @@ function ConversationFilter({
 }: {
   value: ConversationState[];
   onChange: (value: ConversationState[]) => void;
-  counts: { all: number; queue: number; human: number; bot: number; closed: number };
+  counts: {
+    all: number;
+    queue: number;
+    human: number;
+    bot: number;
+    closed: number;
+  };
 }) {
   const options: Array<{ value: ConversationState; label: string }> = [
     { value: "EN_COLA", label: `En cola (${counts.queue})` },
@@ -784,6 +924,213 @@ function ConversationFilter({
       selected={value}
       onChange={onChange}
     />
+  );
+}
+
+function ConversationPriorityFilter({
+  value,
+  onChange,
+  counts,
+}: {
+  value: ConversationPriority[];
+  onChange: (value: ConversationPriority[]) => void;
+  counts: Record<ConversationPriority, number>;
+}) {
+  const options: Array<{ value: ConversationPriority; label: string }> = [
+    { value: "CRITICO", label: `${PRIORITY_LABEL.CRITICO} (${counts.CRITICO})` },
+    { value: "ALTO", label: `${PRIORITY_LABEL.ALTO} (${counts.ALTO})` },
+    { value: "MEDIO", label: `${PRIORITY_LABEL.MEDIO} (${counts.MEDIO})` },
+    { value: "BAJO", label: `${PRIORITY_LABEL.BAJO} (${counts.BAJO})` },
+  ];
+
+  return (
+    <MultiSelectFilter
+      placeholder="Todas las prioridades"
+      options={options}
+      selected={value}
+      onChange={onChange}
+    />
+  );
+}
+
+function ConversationModeFilter({
+  value,
+  onChange,
+  counts,
+}: {
+  value: NonNullable<Conversation["modo_atencion"]>[];
+  onChange: (value: NonNullable<Conversation["modo_atencion"]>[]) => void;
+  counts: Record<NonNullable<Conversation["modo_atencion"]>, number>;
+}) {
+  const options: Array<{ value: NonNullable<Conversation["modo_atencion"]>; label: string }> = [
+    { value: "BOT", label: `${MODE_LABEL.BOT} (${counts.BOT})` },
+    { value: "HUMANO", label: `${MODE_LABEL.HUMANO} (${counts.HUMANO})` },
+  ];
+
+  return (
+    <MultiSelectFilter
+      placeholder="Todos los modos"
+      options={options}
+      selected={value}
+      onChange={onChange}
+    />
+  );
+}
+
+function OperationPanel({
+  conversation,
+  selectedIncident,
+  operatorIds,
+  operators,
+  onOperatorChange,
+  onTake,
+  onAssign,
+  onActivateBot,
+  onClose,
+}: {
+  conversation: Conversation;
+  selectedIncident: Conversation["incidente"];
+  operatorIds: string[];
+  operators: OperatorOption[];
+  onOperatorChange: (value: string[]) => void;
+  onTake: () => void;
+  onAssign: () => void;
+  onActivateBot: () => void;
+  onClose: () => void;
+}) {
+  const isClosed = conversation.estado === "CERRADA";
+  const isBotMode = conversation.modo_atencion === "BOT";
+  const assignedOperators = conversation.operadores_asignados?.length
+    ? conversation.operadores_asignados
+    : conversation.operador_asignado
+      ? [conversation.operador_asignado]
+      : [];
+  const operatorOptions = operators.map((operator) => ({
+    value: operator.id,
+    label: operator.nombre_completo,
+  }));
+
+  return (
+    <>
+      <section className="rounded-lg border bg-white p-3">
+        <h2 className="text-sm font-semibold text-slate-900">Detalles</h2>
+        <div className="mt-3 grid gap-2">
+          <MetadataRow label="Estado" value={STATE_LABEL[conversation.estado]} />
+          <MetadataRow
+            label="Prioridad"
+            value={conversation.prioridad ? PRIORITY_LABEL[conversation.prioridad] : "Sin prioridad"}
+            badgeClassName={conversation.prioridad ? priorityTone(conversation.prioridad) : undefined}
+          />
+          <MetadataRow
+            label="Modo"
+            value={conversation.modo_atencion ? MODE_LABEL[conversation.modo_atencion] : "Sin modo"}
+          />
+          {conversation.chatbot && !isClosed ? (
+            <MetadataRow
+              label="Chatbot"
+              value={chatbotStatusLabel(conversation.chatbot.bot_status)}
+            />
+          ) : null}
+          <MetadataRow label="Última actividad" value={formatDateTime(conversation.ultimo_mensaje_at)} />
+          <MetadataRow label="Tiempo en cola" value={relativeTime(conversation.created_at)} />
+          <MetadataRow label="Creada" value={formatDateTime(conversation.created_at)} />
+          <MetadataRow
+            label="Operador"
+            value={
+              assignedOperators.length
+                ? assignedOperators.map((operator) => operator.nombre_completo).join(", ")
+                : "Sin asignar"
+            }
+          />
+        </div>
+      </section>
+
+      <section className="grid gap-2 rounded-lg border bg-white p-3">
+        <h2 className="text-sm font-semibold text-slate-900">Acciones</h2>
+        <Button
+          type="button"
+          className="bg-[#001C55]"
+          onClick={isBotMode ? onTake : onActivateBot}
+          disabled={isClosed}
+        >
+          {isBotMode ? <UserCheck className="mr-2 h-4 w-4" /> : <Bot className="mr-2 h-4 w-4" />}
+          {isBotMode ? "Tomar chat" : "Activar bot"}
+        </Button>
+        <div className="grid gap-2">
+          <MultiSelectFilter
+            placeholder="Asignar operadores"
+            options={operatorOptions}
+            selected={operatorIds}
+            onChange={onOperatorChange}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!operatorIds.length || isClosed}
+            onClick={onAssign}
+            className="w-full justify-center"
+          >
+            <UserPlus className="mr-2 h-4 w-4" />
+            Actualizar asignación
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Button asChild type="button" variant="outline">
+            <Link href={`/mensajes/historial?conversacion=${conversation.id}`}>
+              <History className="mr-2 h-4 w-4" />
+              Historial
+            </Link>
+          </Button>
+        </div>
+        <Button
+          asChild={Boolean(selectedIncident)}
+          type="button"
+          variant="outline"
+          disabled={!selectedIncident}
+          className="justify-start"
+        >
+          {selectedIncident ? (
+            <Link href={`/incidentes/${selectedIncident.id}`}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Ir a último incidente
+            </Link>
+          ) : (
+            <>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Ir a último incidente
+            </>
+          )}
+        </Button>
+        {!isClosed ? (
+          <Button type="button" variant="destructive" className="w-full" onClick={onClose}>
+            Cerrar chat
+          </Button>
+        ) : null}
+      </section>
+    </>
+  );
+}
+
+function MetadataRow({
+  label,
+  value,
+  badgeClassName,
+}: {
+  label: string;
+  value: string;
+  badgeClassName?: string;
+}) {
+  return (
+    <div className="grid grid-cols-[105px_minmax(0,1fr)] items-start gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm">
+      <span className="text-xs font-medium uppercase text-slate-500">{label}</span>
+      {badgeClassName ? (
+        <Badge className={cn("justify-self-end border font-semibold", badgeClassName)}>
+          {value}
+        </Badge>
+      ) : (
+        <span className="min-w-0 text-right font-semibold text-slate-900">{value}</span>
+      )}
+    </div>
   );
 }
 
@@ -827,8 +1174,6 @@ function ConversationCard({
   onClick: () => void;
 }) {
   const name = contactName(conversation);
-  const needsReview = getAiClassification(conversation).requiresHumanReview;
-  const chatbotState = conversation.chatbot;
 
   return (
     <button
@@ -852,34 +1197,22 @@ function ConversationCard({
             <div className="min-w-0">
               <p className="truncate font-semibold text-slate-950">{name}</p>
               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
-                <MessageCircleMore className="h-3.5 w-3.5 text-emerald-600" />
+                <WhatsAppIcon />
                 <span className="truncate">{normalizePhone(conversation.telefono_contacto || conversation.external_chat_id)}</span>
               </div>
             </div>
             <span className="shrink-0 text-xs text-slate-500">{relativeTime(conversation.ultimo_mensaje_at)}</span>
           </div>
-          <p className="mt-2 line-clamp-2 text-sm text-slate-700">
-            {conversation.ultimo_mensaje_preview || "Sin mensajes registrados"}
-          </p>
+          <div className="mt-2 flex items-start gap-2 text-sm text-slate-700">
+            <LastMessageAuthorIcon author={conversation.ultimo_mensaje_autor_tipo} />
+            <p className="line-clamp-2 min-w-0 flex-1">
+              {conversation.ultimo_mensaje_preview || "Sin mensajes registrados"}
+            </p>
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <Badge className={cn("border font-semibold", priorityTone(conversation.prioridad))}>
-              {conversation.prioridad}
-            </Badge>
-            <Badge className={cn("border", stateTone(conversation.estado))}>
-              {STATE_LABEL[conversation.estado]}
-            </Badge>
-            {chatbotState ? (
-              <Badge className={cn("border", chatbotStatusTone(chatbotState.bot_status))}>
-                <Bot className="mr-1 h-3 w-3" />
-                {chatbotStatusLabel(chatbotState.bot_status)}
-              </Badge>
-            ) : null}
-            {needsReview ? (
-              <Badge className="border border-violet-200 bg-violet-50 text-violet-700">
-                <BrainCircuit className="mr-1 h-3 w-3" />
-                IA pendiente
-              </Badge>
-            ) : null}
+            <ConversationStateBadge state={conversation.estado} />
+            {conversation.prioridad ? <ConversationPriorityBadge priority={conversation.prioridad} /> : null}
+            {conversation.modo_atencion ? <ConversationModeBadge mode={conversation.modo_atencion} /> : null}
           </div>
         </div>
       </div>
@@ -905,18 +1238,9 @@ function ChatHeader({
           </Avatar>
           <div className="min-w-0">
             <h2 className="truncate font-semibold text-slate-950">{contactName(conversation)}</h2>
-            <p className="text-xs text-slate-500">{normalizePhone(conversation.telefono_contacto || conversation.external_chat_id)}</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <Badge className={cn("border", stateTone(conversation.estado))}>
-                {STATE_LABEL[conversation.estado]}
-              </Badge>
-              <Badge className={cn("border", modeTone(conversation.modo_atencion))}>
-                {conversation.modo_atencion}
-              </Badge>
-              <Badge className={cn("border font-semibold", priorityTone(conversation.prioridad))}>
-                {conversation.prioridad}
-              </Badge>
-              <Badge variant="outline">En sistema {relativeTime(conversation.created_at)}</Badge>
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <WhatsAppIcon />
+              <span>{normalizePhone(conversation.telefono_contacto || conversation.external_chat_id)}</span>
             </div>
           </div>
         </div>
@@ -963,37 +1287,6 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
   );
 }
 
-function KpiCard({
-  label,
-  value,
-  tone,
-  icon: Icon,
-}: {
-  label: string;
-  value: number | string;
-  tone: "emerald" | "amber" | "indigo" | "sky" | "slate";
-  icon: typeof Activity;
-}) {
-  const hasValue = typeof value === "number" ? value > 0 : value !== "0m";
-  const tones = {
-    emerald: hasValue ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-400",
-    amber: hasValue ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-400",
-    indigo: hasValue ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-400",
-    sky: hasValue ? "border-sky-200 bg-sky-50 text-sky-700" : "border-slate-200 bg-white text-slate-400",
-    slate: hasValue ? "border-slate-300 bg-slate-100 text-slate-700" : "border-slate-200 bg-white text-slate-400",
-  };
-
-  return (
-    <div className={cn("min-w-28 rounded-xl border px-3 py-2", tones[tone])}>
-      <div className="flex items-center justify-between gap-2">
-        <Icon className="h-4 w-4" />
-        <p className="text-lg font-bold">{value}</p>
-      </div>
-      <p className="mt-1 text-xs font-medium">{label}</p>
-    </div>
-  );
-}
-
 function RealtimeBadge({ connected }: { connected: boolean }) {
   return (
     <Badge
@@ -1033,12 +1326,14 @@ function AiClassificationPanel({
       </div>
       <div className="mt-3 grid gap-3 text-sm">
         <InfoRow label="Categoría sugerida" value={classification.category} />
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-slate-500">Severidad</span>
-          <Badge className={cn("border font-semibold", priorityTone(conversation.prioridad))}>
-            {conversation.prioridad}
-          </Badge>
-        </div>
+        {conversation.prioridad ? (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-slate-500">Severidad</span>
+            <Badge className={cn("border font-semibold", priorityTone(conversation.prioridad))}>
+              {conversation.prioridad}
+            </Badge>
+          </div>
+        ) : null}
         <InfoRow
           label="Confidence score"
           value={classification.confidence === null ? "Pendiente" : `${classification.confidence}%`}
@@ -1078,7 +1373,7 @@ function ChatbotPanel({
     setDraftForm(buildDraftForm(conversation));
   }, [conversation]);
 
-  if (!chatbot) return null;
+  if (!chatbot || conversation.estado === "CERRADA") return null;
 
   async function saveDraft() {
     setSaving(true);
@@ -1181,10 +1476,10 @@ function ChatbotPanel({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="NONE">Sin severidad</SelectItem>
-                  <SelectItem value="BAJO">BAJO</SelectItem>
-                  <SelectItem value="MEDIO">MEDIO</SelectItem>
-                  <SelectItem value="ALTO">ALTO</SelectItem>
-                  <SelectItem value="CRITICO">CRITICO</SelectItem>
+                  <SelectItem value="BAJO">{PRIORITY_LABEL.BAJO}</SelectItem>
+                  <SelectItem value="MEDIO">{PRIORITY_LABEL.MEDIO}</SelectItem>
+                  <SelectItem value="ALTO">{PRIORITY_LABEL.ALTO}</SelectItem>
+                  <SelectItem value="CRITICO">{PRIORITY_LABEL.CRITICO}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1216,15 +1511,6 @@ function ChatbotPanel({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function InfoBlock({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border p-3">
-      <p className="text-xs font-medium uppercase text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
     </div>
   );
 }

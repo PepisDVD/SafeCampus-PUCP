@@ -27,6 +27,8 @@ type ButtonProps = PropsWithChildren<{
   disabled?: boolean;
   loading?: boolean;
   style?: ViewStyle;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }>;
 
 export function Button({
@@ -36,9 +38,13 @@ export function Button({
   disabled = false,
   loading = false,
   style,
+  accessibilityLabel,
+  accessibilityHint,
 }: ButtonProps) {
   return (
     <Pressable
+      accessibilityHint={accessibilityHint}
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
       disabled={disabled || loading}
       onPress={onPress}

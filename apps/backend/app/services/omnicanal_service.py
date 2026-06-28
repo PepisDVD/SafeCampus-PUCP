@@ -1,8 +1,9 @@
 """Business service for omnichannel inbound reports."""
 
+import base64
 from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -16,8 +17,11 @@ from app.schemas.omnicanal import (
     ChatbotBorradorUpdateInput,
     CerrarConversacionInput,
     ConversacionDetail,
+    ConversacionHistorialDetail,
+    ConversacionHistorialListItem,
     ConversacionListItem,
     ConversacionListResponse,
+    ConversacionesHistorialResponse,
     CrearIncidenteConversacionInput,
     EventoConversacionOut,
     EventosConversacionResponse,
@@ -36,6 +40,10 @@ from app.services.omnicanal_realtime import omnicanal_realtime_hub
 
 
 class OmnicanalService:
+    _IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+    _MAX_IMAGE_BYTES = 10 * 1024 * 1024
+    _MAX_IMAGES_PER_MESSAGE = 5
+
     def __init__(self, db: AsyncSession) -> None:
         self._repo = OmnicanalRepository(db)
         self._messaging = MessagingService()
@@ -192,10 +200,44 @@ class OmnicanalService:
             estado=estado,
             limit=safe_limit,
         )
-        total = await self._repo.count_conversaciones(search=search, estado=estado)
+        assigned = await self._repo.list_operadores_asignados(
+            [str(row["Conversacion"].id) for row in rows]
+        )
+        for row in rows:
+            row["operadores_asignados"] = assigned.get(str(row["Conversacion"].id), [])
+        total = len(rows)
         return ConversacionListResponse(
             items=[self._map_conversacion_row(row) for row in rows],
             total=total,
+        )
+
+    async def listar_historial_conversaciones(
+        self,
+        *,
+        search: str | None = None,
+        desde: str | None = None,
+        hasta: str | None = None,
+        limit: int = 80,
+    ) -> ConversacionesHistorialResponse:
+        safe_limit = max(1, min(limit, 200))
+        rows = await self._repo.list_conversaciones_historial(
+            search=search,
+            desde=desde,
+            hasta=hasta,
+            limit=safe_limit,
+        )
+        return ConversacionesHistorialResponse(
+            items=[self._map_historial_list_row(row) for row in rows],
+            total=len(rows),
+        )
+
+    async def obtener_historial_conversacion(self, conversacion_id: str) -> ConversacionHistorialDetail:
+        detail, rows = await self._repo.get_conversacion_historial(conversacion_id)
+        if not detail:
+            raise self._not_found()
+        return ConversacionHistorialDetail(
+            conversacion=self._map_conversacion_model(detail),
+            incidentes=[self._map_incidente_historial_row(row) for row in rows],
         )
 
     async def listar_mensajes(
@@ -228,6 +270,11 @@ class OmnicanalService:
             reason="Conversacion tomada manualmente por operador.",
         )
         await self._broadcast_conversacion("conversacion_actualizada", str(conversacion.id))
+        detail = await self._repo.get_conversacion_detail(str(conversacion.id))
+        if detail:
+            assigned = await self._repo.list_operadores_asignados([str(conversacion.id)])
+            detail["operadores_asignados"] = assigned.get(str(conversacion.id), [])
+            return self._map_conversacion_model(detail)
         return self._map_conversacion_model(conversacion)
 
     async def asignar_conversacion(
@@ -236,20 +283,29 @@ class OmnicanalService:
         data: AsignarConversacionInput,
         actor_id: str,
     ) -> ConversacionDetail:
-        conversacion = await self._repo.assign_conversacion(conversacion_id, data.operador_id)
+        operador_ids = data.operador_ids or ([data.operador_id] if data.operador_id else [])
+        operador_ids = [operator_id for operator_id in dict.fromkeys(operador_ids) if operator_id]
+        if not operador_ids:
+            raise HTTPException(status_code=422, detail="Selecciona al menos un operador activo.")
+        conversacion = await self._repo.assign_conversacion(conversacion_id, operador_ids, actor_id)
         if not conversacion:
             raise self._not_found()
         await self._repo.create_evento(
             conversacion_id=conversacion.id,
             tipo_evento="CHAT_ASIGNADO",
             actor_usuario_id=actor_id,
-            payload={"operador_id": data.operador_id},
+            payload={"operador_ids": operador_ids},
         )
         await self._chatbot.mark_human_takeover(
             str(conversacion.id),
             reason="Conversacion asignada a operador humano.",
         )
         await self._broadcast_conversacion("conversacion_actualizada", str(conversacion.id))
+        detail = await self._repo.get_conversacion_detail(str(conversacion.id))
+        if detail:
+            assigned = await self._repo.list_operadores_asignados([str(conversacion.id)])
+            detail["operadores_asignados"] = assigned.get(str(conversacion.id), [])
+            return self._map_conversacion_model(detail)
         return self._map_conversacion_model(conversacion)
 
     async def cerrar_conversacion(
@@ -258,6 +314,22 @@ class OmnicanalService:
         data: CerrarConversacionInput,
         usuario_id: str,
     ) -> ConversacionDetail:
+        detail = await self._repo.get_conversacion_detail(conversacion_id)
+        if not detail:
+            raise self._not_found()
+        current = detail["Conversacion"]
+        if current.incidente_id:
+            await self._repo.ensure_incident_association(
+                conversacion_id=conversacion_id,
+                incidente_id=str(current.incidente_id),
+                actor_usuario_id=usuario_id,
+                actor_tipo="OPERADOR",
+                tipo_asociacion="LEGACY_ACTIVA",
+            )
+            await self._repo.close_active_incident_association(
+                conversacion_id=conversacion_id,
+                motivo="CONVERSACION_CERRADA",
+            )
         conversacion = await self._repo.cerrar_conversacion(
             conversacion_id,
             usuario_id,
@@ -265,6 +337,7 @@ class OmnicanalService:
         )
         if not conversacion:
             raise self._not_found()
+        await self._repo.delete_chatbot_state(str(conversacion.id))
         await self._repo.create_evento(
             conversacion_id=conversacion.id,
             tipo_evento="CHAT_CERRADO",
@@ -327,6 +400,13 @@ class OmnicanalService:
         conversacion = await self._repo.vincular_incidente(conversacion_id, data.incidente_id)
         if not conversacion:
             raise self._not_found()
+        await self._repo.replace_active_incident_association(
+            conversacion_id=conversacion_id,
+            incidente_id=data.incidente_id,
+            actor_usuario_id=usuario_id,
+            actor_tipo="OPERADOR",
+            tipo_asociacion="VINCULO_MANUAL",
+        )
         await self._repo.create_evento(
             conversacion_id=conversacion.id,
             tipo_evento="INCIDENTE_VINCULADO",
@@ -363,6 +443,13 @@ class OmnicanalService:
             ),
         )
         await self._repo.vincular_incidente(conversacion_id, incidente.id)
+        await self._repo.replace_active_incident_association(
+            conversacion_id=conversacion_id,
+            incidente_id=incidente.id,
+            actor_usuario_id=usuario_id,
+            actor_tipo="OPERADOR",
+            tipo_asociacion="CREACION_MANUAL",
+        )
         await self._repo.create_evento(
             conversacion_id=conversacion.id,
             tipo_evento="INCIDENTE_CREADO",
@@ -466,6 +553,93 @@ class OmnicanalService:
         row = {"MensajeConversacion": mensaje}
         return self._map_mensaje_row(row)
 
+    async def enviar_imagenes(
+        self,
+        conversacion_id: str,
+        archivos: list[UploadFile],
+        usuario_id: str,
+        caption: str | None = None,
+    ) -> MensajesConversacionResponse:
+        detail = await self._repo.get_conversacion_detail(conversacion_id)
+        if not detail:
+            raise self._not_found()
+        conversacion = detail["Conversacion"]
+        if conversacion.estado == "CERRADA":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No se puede responder una conversacion cerrada.",
+            )
+
+        valid_files = [archivo for archivo in archivos if archivo and archivo.filename]
+        if not valid_files:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Adjunta al menos una imagen.")
+        if len(valid_files) > self._MAX_IMAGES_PER_MESSAGE:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Solo puedes adjuntar hasta {self._MAX_IMAGES_PER_MESSAGE} imagenes.",
+            )
+
+        created_messages = []
+        for index, archivo in enumerate(valid_files):
+            if archivo.content_type not in self._IMAGE_MIME_TYPES:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Tipo de archivo no permitido. Solo se aceptan imagenes jpg, png, webp o gif.",
+                )
+            content = await archivo.read()
+            if len(content) > self._MAX_IMAGE_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Cada imagen debe pesar 10MB o menos.",
+                )
+            response = await self._evolution.send_image(
+                chat_id=self._evolution_recipient(conversacion),
+                media_base64=base64.b64encode(content).decode("ascii"),
+                mimetype=archivo.content_type,
+                filename=archivo.filename or f"imagen-{index + 1}",
+                caption=caption if index == 0 else None,
+            )
+            external_id = self._extract_sent_message_id(response)
+            mensaje = await self._repo.create_mensaje_if_missing(
+                conversacion_id=conversacion.id,
+                external_message_id=external_id,
+                direccion="OUTBOUND",
+                autor_tipo="OPERADOR",
+                autor_usuario_id=usuario_id,
+                contenido=caption if index == 0 and caption else archivo.filename,
+                tipo_contenido="image",
+                estado_entrega="sent",
+                payload_raw={
+                    "provider_response": response,
+                    "filename": archivo.filename,
+                    "content_type": archivo.content_type,
+                },
+            )
+            if mensaje:
+                created_messages.append(mensaje)
+
+        preview = caption.strip() if caption and caption.strip() else f"{len(created_messages)} imagen(es)"
+        await self._repo.update_conversacion_after_message(
+            conversacion_id=conversacion.id,
+            preview=preview,
+            modo_atencion="HUMANO",
+            estado="EN_ATENCION",
+        )
+        await self._repo.create_evento(
+            conversacion_id=conversacion.id,
+            tipo_evento="IMAGENES_ENVIADAS",
+            actor_usuario_id=usuario_id,
+            payload={"total": len(created_messages)},
+        )
+        await self._chatbot.mark_human_takeover(
+            str(conversacion.id),
+            reason="Operador envio imagenes en la conversacion.",
+        )
+        await self._broadcast_conversacion("mensaje_enviado", str(conversacion.id))
+        return MensajesConversacionResponse(
+            items=[self._map_mensaje_row({"MensajeConversacion": mensaje}) for mensaje in created_messages]
+        )
+
     @staticmethod
     def _validate_webhook_secret(webhook_secret: str | None) -> None:
         expected_secret = settings.EVOLUTION_WEBHOOK_SECRET.strip()
@@ -514,9 +688,27 @@ class OmnicanalService:
         )
 
     @classmethod
+    def _assigned_users_from_rows(cls, rows: Any) -> list[UsuarioConversacionOut]:
+        if not rows:
+            return []
+        users: list[UsuarioConversacionOut] = []
+        for row in rows:
+            user = cls._user_from_parts(
+                row.get("operador_id"),
+                row.get("operador_nombre"),
+                row.get("operador_apellido"),
+                row.get("operador_email"),
+                row.get("operador_avatar_url"),
+            )
+            if user:
+                users.append(user)
+        return users
+
+    @classmethod
     def _map_conversacion_row(cls, row: dict[str, Any]) -> ConversacionListItem:
         conversacion = row["Conversacion"]
-        chatbot = cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
+        is_closed = conversacion.estado == "CERRADA"
+        chatbot = None if is_closed else cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
         incidente = None
         if row.get("incidente_id"):
             incidente = {
@@ -526,6 +718,15 @@ class OmnicanalService:
                 "estado": row["incidente_estado"],
                 "severidad": row["incidente_severidad"],
             }
+        ultimo_incidente = None
+        if row.get("ultimo_incidente_id"):
+            ultimo_incidente = {
+                "id": str(row["ultimo_incidente_id"]),
+                "codigo": row["ultimo_incidente_codigo"],
+                "titulo": row["ultimo_incidente_titulo"],
+                "estado": row["ultimo_incidente_estado"],
+                "severidad": row["ultimo_incidente_severidad"],
+            }
         return ConversacionListItem(
             id=str(conversacion.id),
             canal_id=str(conversacion.canal_id),
@@ -533,8 +734,8 @@ class OmnicanalService:
             telefono_contacto=conversacion.telefono_contacto,
             nombre_contacto=conversacion.nombre_contacto,
             estado=conversacion.estado,
-            modo_atencion=conversacion.modo_atencion,
-            prioridad=conversacion.prioridad,
+            modo_atencion=None if is_closed else conversacion.modo_atencion,
+            prioridad=None if is_closed else conversacion.prioridad,
             operador_asignado=cls._user_from_parts(
                 row.get("operador_id"),
                 row.get("operador_nombre"),
@@ -542,6 +743,7 @@ class OmnicanalService:
                 row.get("operador_email"),
                 row.get("operador_avatar_url"),
             ),
+            operadores_asignados=cls._assigned_users_from_rows(row.get("operadores_asignados")),
             tomado_por=cls._user_from_parts(
                 row.get("tomado_por_id"),
                 row.get("tomado_por_nombre"),
@@ -550,8 +752,11 @@ class OmnicanalService:
                 row.get("tomado_por_avatar_url"),
             ),
             incidente=incidente,
+            ultimo_incidente=ultimo_incidente,
+            historico_incidentes_count=int(row.get("historico_incidentes_count") or 0),
             chatbot=chatbot,
             ultimo_mensaje_preview=conversacion.ultimo_mensaje_preview,
+            ultimo_mensaje_autor_tipo=row.get("ultimo_mensaje_autor_tipo"),
             ultimo_mensaje_at=conversacion.ultimo_mensaje_at,
             unread_count=0,
             created_at=conversacion.created_at,
@@ -560,14 +765,20 @@ class OmnicanalService:
 
     @classmethod
     def _map_conversacion_model(cls, conversacion: Any) -> ConversacionDetail:
+        row: dict[str, Any] | None = None
         chatbot = None
         incidente = None
         operador_asignado = None
+        operadores_asignados: list[UsuarioConversacionOut] = []
         tomado_por = None
+        ultimo_incidente = None
+        historico_incidentes_count = 0
+        is_closed = False
         if isinstance(conversacion, dict):
             row = conversacion
             conversacion = row["Conversacion"]
-            chatbot = cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
+            is_closed = conversacion.estado == "CERRADA"
+            chatbot = None if is_closed else cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
             if row.get("incidente_id"):
                 incidente = {
                     "id": str(row["incidente_id"]),
@@ -576,6 +787,15 @@ class OmnicanalService:
                     "estado": row["incidente_estado"],
                     "severidad": row["incidente_severidad"],
                 }
+            if row.get("ultimo_incidente_id"):
+                ultimo_incidente = {
+                    "id": str(row["ultimo_incidente_id"]),
+                    "codigo": row["ultimo_incidente_codigo"],
+                    "titulo": row["ultimo_incidente_titulo"],
+                    "estado": row["ultimo_incidente_estado"],
+                    "severidad": row["ultimo_incidente_severidad"],
+                }
+            historico_incidentes_count = int(row.get("historico_incidentes_count") or 0)
             operador_asignado = cls._user_from_parts(
                 row.get("operador_id"),
                 row.get("operador_nombre"),
@@ -583,6 +803,7 @@ class OmnicanalService:
                 row.get("operador_email"),
                 row.get("operador_avatar_url"),
             )
+            operadores_asignados = cls._assigned_users_from_rows(row.get("operadores_asignados"))
             tomado_por = cls._user_from_parts(
                 row.get("tomado_por_id"),
                 row.get("tomado_por_nombre"),
@@ -590,6 +811,8 @@ class OmnicanalService:
                 row.get("tomado_por_email"),
                 row.get("tomado_por_avatar_url"),
             )
+        else:
+            is_closed = conversacion.estado == "CERRADA"
         return ConversacionDetail(
             id=str(conversacion.id),
             canal_id=str(conversacion.canal_id),
@@ -597,19 +820,65 @@ class OmnicanalService:
             telefono_contacto=conversacion.telefono_contacto,
             nombre_contacto=conversacion.nombre_contacto,
             estado=conversacion.estado,
-            modo_atencion=conversacion.modo_atencion,
-            prioridad=conversacion.prioridad,
+            modo_atencion=None if is_closed else conversacion.modo_atencion,
+            prioridad=None if is_closed else conversacion.prioridad,
             operador_asignado=operador_asignado,
+            operadores_asignados=operadores_asignados if not is_closed else [],
             tomado_por=tomado_por,
             incidente=incidente,
+            ultimo_incidente=ultimo_incidente,
+            historico_incidentes_count=historico_incidentes_count,
             chatbot=chatbot,
             ultimo_mensaje_preview=conversacion.ultimo_mensaje_preview,
+            ultimo_mensaje_autor_tipo=row.get("ultimo_mensaje_autor_tipo") if row else None,
             ultimo_mensaje_at=conversacion.ultimo_mensaje_at,
             unread_count=0,
             metadatos=conversacion.metadatos or {},
             created_at=conversacion.created_at,
             updated_at=conversacion.updated_at,
         )
+
+    @staticmethod
+    def _map_historial_list_row(row: dict[str, Any]) -> ConversacionHistorialListItem:
+        conversacion = row["Conversacion"]
+        return ConversacionHistorialListItem(
+            id=str(conversacion.id),
+            nombre_contacto=conversacion.nombre_contacto,
+            telefono_contacto=conversacion.telefono_contacto,
+            external_chat_id=conversacion.external_chat_id,
+            estado=conversacion.estado,
+            ultimo_mensaje_at=conversacion.ultimo_mensaje_at,
+            incidentes_count=int(row.get("incidentes_count") or 0),
+        )
+
+    @classmethod
+    def _map_incidente_historial_row(cls, row: dict[str, Any]) -> dict[str, Any]:
+        historial = row["ConversacionIncidenteHistorial"]
+        incidente = None
+        if row.get("incidente_id"):
+            incidente = {
+                "id": str(row["incidente_id"]),
+                "codigo": row["incidente_codigo"],
+                "titulo": row["incidente_titulo"],
+                "estado": row["incidente_estado"],
+                "severidad": row["incidente_severidad"],
+            }
+        return {
+            "id": str(historial.id),
+            "incidente": incidente,
+            "actor_usuario": cls._user_from_parts(
+                row.get("actor_id"),
+                row.get("actor_nombre"),
+                row.get("actor_apellido"),
+                row.get("actor_email"),
+                row.get("actor_avatar_url"),
+            ),
+            "actor_tipo": historial.actor_tipo,
+            "tipo_asociacion": historial.tipo_asociacion,
+            "asociado_at": historial.asociado_at,
+            "finalizado_at": historial.finalizado_at,
+            "motivo_finalizacion": historial.motivo_finalizacion,
+        }
 
     @staticmethod
     def _map_chatbot_state(chatbot_state: Any) -> dict[str, Any] | None:

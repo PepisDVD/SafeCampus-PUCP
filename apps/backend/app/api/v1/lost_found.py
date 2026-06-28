@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
 from uuid import UUID
@@ -48,6 +49,8 @@ from app.schemas.lost_found import (
     MotivoCierreLfCreate,
     MotivoCierreLfItem,
     ParticipacionLfInput,
+    RecepcionLfMobileInput,
+    RecepcionLfMobileResult,
     SupervisorLfItem,
 )
 from app.services.lost_found_service import LostFoundService
@@ -178,11 +181,30 @@ async def listar_feed(
     fecha_desde: datetime | None = Query(default=None),
     fecha_hasta: datetime | None = Query(default=None),
     color: str | None = Query(default=None),
+    publicado_desde: datetime | None = Query(default=None),
+    lat: float | None = Query(default=None, ge=-90, le=90),
+    lng: float | None = Query(default=None, ge=-180, le=180),
+    radio_km: float | None = Query(default=None, gt=0, le=10),
+    metadatos: str | None = Query(default=None, description="Filtros de metadatos como objeto JSON."),
+    origen: str | None = Query(default=None, pattern="^(COMUNIDAD|OPERADOR_MOVIL)$"),
     cursor: datetime | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     service: LostFoundService = Depends(get_service),
 ):
     page_limit = max(1, min(limit, 100))
+    geo_args = [lat, lng, radio_km]
+    if any(arg is not None for arg in geo_args) and any(arg is None for arg in geo_args):
+        raise HTTPException(status_code=422, detail="El filtro por ubicación requiere lat, lng y radio_km.")
+    metadatos_filtro: dict | None = None
+    if metadatos:
+        try:
+            parsed = json.loads(metadatos)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail="El filtro de metadatos no es un JSON válido.") from exc
+        if not isinstance(parsed, dict):
+            raise HTTPException(status_code=422, detail="El filtro de metadatos debe ser un objeto.")
+        metadatos_filtro = {str(k): v for k, v in parsed.items() if v not in (None, "")}
+        metadatos_filtro = metadatos_filtro or None
     items = await service.listar_feed(
         search=search,
         tipo=tipo.value if tipo else None,
@@ -192,6 +214,12 @@ async def listar_feed(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         color=color,
+        publicado_desde=publicado_desde,
+        lat=lat,
+        lng=lng,
+        radio_km=radio_km,
+        metadatos=metadatos_filtro,
+        origen=origen,
         cursor=cursor,
         limit=min(page_limit + 1, 100),
     )
@@ -202,10 +230,11 @@ async def listar_feed(
 @router.get("/casos/mis", response_model=CasoLfListResponse)
 async def listar_mis_casos(
     limit: int = Query(default=50, ge=1, le=100),
+    origen: str | None = Query(default=None, pattern="^(COMUNIDAD|OPERADOR_MOVIL)$"),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
 ):
-    items = await service.listar_mis_casos(current_user.id, limit)
+    items = await service.listar_mis_casos(current_user.id, limit, origen=origen)
     return CasoLfListResponse(items=items, total=len(items))
 
 
@@ -215,6 +244,7 @@ async def listar_casos_operativo(
     tipo: str | None = Query(default=None),
     estado: str | None = Query(default=None),
     categoria_id: str | None = Query(default=None),
+    origen: str | None = Query(default=None, pattern="^(COMUNIDAD|OPERADOR_MOVIL)$"),
     cursor: datetime | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     _user: AuthUserResponse = Depends(require_lost_found_access),
@@ -226,11 +256,21 @@ async def listar_casos_operativo(
         tipos=_parse_enum_csv(tipo, TipoCasoLF),
         estados=_parse_enum_csv(estado, EstadoCasoLF),
         categoria_ids=_parse_uuid_csv(categoria_id),
+        origen=origen,
         cursor=cursor,
         limit=min(page_limit + 1, 200),
     )
     next_cursor = items[page_limit - 1].created_at if len(items) > page_limit else None
     return CasoLfListResponse(items=items[:page_limit], total=len(items[:page_limit]), next_cursor=next_cursor)
+
+
+@router.post("/mobile/recepciones", response_model=RecepcionLfMobileResult, status_code=status.HTTP_201_CREATED)
+async def registrar_recepcion_mobile(
+    body: RecepcionLfMobileInput,
+    current_user: AuthUserResponse = Depends(require_lost_found_access),
+    service: LostFoundService = Depends(get_service),
+):
+    return await service.registrar_recepcion_mobile(current_user.id, body)
 
 
 @router.get("/casos/{ref}", response_model=CasoLfDetail)
@@ -467,6 +507,26 @@ async def registrar_descarte(
     service: LostFoundService = Depends(get_service),
 ):
     await service.registrar_descarte(custodia_id, current_user.id, body)
+
+
+@router.post("/custodias/{custodia_id}/revertir", response_model=CustodiaLfItem)
+async def revertir_devolucion(
+    custodia_id: str,
+    current_user: AuthUserResponse = Depends(require_lost_found_access),
+    service: LostFoundService = Depends(get_service),
+):
+    """Revierte la devolución de una custodia y reabre el caso asociado."""
+    return await service.revertir_devolucion(custodia_id, current_user.id)
+
+
+@router.post("/custodias/{custodia_id}/reactivar", response_model=CustodiaLfItem)
+async def reactivar_descarte(
+    custodia_id: str,
+    current_user: AuthUserResponse = Depends(require_lost_found_access),
+    service: LostFoundService = Depends(get_service),
+):
+    """Reactiva una custodia descartada recalculando su estado por vencimiento."""
+    return await service.reactivar_descarte(custodia_id, current_user.id)
 
 
 @router.patch("/comentarios/{comentario_id}/visibilidad", status_code=status.HTTP_204_NO_CONTENT)

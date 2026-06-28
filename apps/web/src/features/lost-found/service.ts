@@ -1,14 +1,13 @@
 import { serverApi } from "@/lib/api/server";
+import { listarUsuarios, type UsuarioConRoles } from "@/features/admin/services/usuario.service";
 import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CustodiaLf, CustodiaPoliticaLf, DashboardLf, ListResponse, MatchingConfigLf, MatchLf, MotivoCierreLf, UbicacionMaestra } from "./types";
 
 export async function getLostFoundBootstrap() {
-  const [categorias, feed, misCasos, ubicaciones] = await Promise.all([
+  const [categorias, feed] = await Promise.all([
     serverApi.get<CategoriaLf[]>("/lost-found/categorias"),
     serverApi.get<ListResponse<CasoLfListItem>>("/lost-found/casos/feed"),
-    serverApi.get<ListResponse<CasoLfListItem>>("/lost-found/casos/mis"),
-    serverApi.get<UbicacionMaestra[]>("/maestros/ubicaciones"),
   ]);
-  return { categorias, feed: feed.items, misCasos: misCasos.items, ubicaciones };
+  return { categorias, feed: feed.items };
 }
 
 export async function getLostFoundOperativo() {
@@ -28,7 +27,7 @@ export async function getLostFoundOperativo() {
 
 export async function getLostFoundLogistica(filters?: { search?: string }) {
   const search = filters?.search?.trim();
-  const [custodias, casos, motivosCierre] = await Promise.all([
+  const [custodias, casos, motivosCierre, ubicaciones, usuariosResult] = await Promise.all([
     serverApi.get<ListResponse<CustodiaLf> & { page: number; per_page: number }>("/lost-found/custodias", {
       estado: "ACTIVA,PROXIMA_VENCER,VENCIDA",
       ...(search ? { search } : {}),
@@ -37,11 +36,18 @@ export async function getLostFoundLogistica(filters?: { search?: string }) {
     }),
     serverApi.get<ListResponse<CasoLfListItem>>("/lost-found/casos", { tipo: "ENCONTRADO", limit: "100" }),
     serverApi.get<MotivoCierreLf[]>("/lost-found/motivos-cierre"),
+    serverApi.get<UbicacionMaestra[]>("/maestros/ubicaciones", { include_inactive: "false" }),
+    listarUsuarios({ estado: "ACTIVO" }).then(
+      (response) => ({ status: "fulfilled" as const, value: response.items }),
+      () => ({ status: "rejected" as const, value: [] as UsuarioConRoles[] }),
+    ),
   ]);
   return {
     custodias,
     casos: casos.items,
     initialSearch: search ?? "",
+    ubicacionesCustodia: ubicaciones.filter((ubicacion) => ubicacion.activa && ubicacion.tipo.toLowerCase() === "custodia"),
+    usuarios: usuariosResult.value,
     motivosDescarte: motivosCierre.filter((motivo) => motivo.clase_cierre === "DESCARTE" && motivo.activo),
   };
 }
@@ -80,4 +86,17 @@ export async function getLostFoundAdmin() {
     serverApi.get<MotivoCierreLf[]>("/lost-found/motivos-cierre", { include_inactive: "true" }),
   ]);
   return { categorias, matchingConfig, politicaCustodia, motivosCierre };
+}
+
+export async function getLostFoundAdminCategorias() {
+  return serverApi.get<CategoriaLf[]>("/lost-found/categorias", { include_inactive: "true" });
+}
+
+export async function getLostFoundAdminReglasOperativas() {
+  const [matchingConfig, politicaCustodia, motivosCierre] = await Promise.all([
+    serverApi.get<MatchingConfigLf>("/lost-found/matching/configuracion"),
+    serverApi.get<CustodiaPoliticaLf>("/lost-found/custodia/politica"),
+    serverApi.get<MotivoCierreLf[]>("/lost-found/motivos-cierre", { include_inactive: "true" }),
+  ]);
+  return { matchingConfig, politicaCustodia, motivosCierre };
 }

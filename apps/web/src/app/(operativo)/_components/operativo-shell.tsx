@@ -12,6 +12,8 @@ import {
 } from "@safecampus/ui-kit";
 import {
   BarChart3,
+  BotMessageSquare,
+  ClipboardList,
   LayoutDashboard,
   Megaphone,
   MapPinned,
@@ -48,7 +50,15 @@ const OPERATIVO_NAV: NavItem[] = [
       { href: "/lost-found-logistica", label: "Logistica", icon: PackageCheck },
     ],
   },
-  { href: "/mensajes", label: "Mensajes", icon: MessageSquare },
+  {
+    href: "/mensajes",
+    label: "ChatBot",
+    icon: BotMessageSquare,
+    children: [
+      { href: "/mensajes", label: "Bandeja operativa", icon: MessageSquare },
+      { href: "/mensajes/historial", label: "Historial", icon: ClipboardList },
+    ],
+  },
 ];
 
 type OperativoShellProps = {

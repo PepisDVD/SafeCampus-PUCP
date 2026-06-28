@@ -58,6 +58,7 @@ function startGoogleOauth({
     loginUrl.searchParams.set("email", email);
   }
   loginUrl.searchParams.set("next", safeNextPath);
+  loginUrl.searchParams.set("web_origin", window.location.origin);
   if (!institutional) {
     loginUrl.searchParams.set("institutional", "false");
   }

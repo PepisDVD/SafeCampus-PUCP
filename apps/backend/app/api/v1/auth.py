@@ -20,6 +20,7 @@ from app.schemas.auth import (
 from app.services.auth_service import AuthService
 
 router = APIRouter()
+OAUTH_STATE_COOKIE_NAME = "safecampus_oauth_state"
 
 
 def get_service(db: AsyncSession = Depends(get_session)) -> AuthService:
@@ -47,8 +48,29 @@ def clear_session_cookie(response: Response) -> None:
     )
 
 
+def set_oauth_state_cookie(response: Response, oauth_state: str) -> None:
+    response.set_cookie(
+        key=OAUTH_STATE_COOKIE_NAME,
+        value=oauth_state,
+        max_age=10 * 60,
+        httponly=True,
+        secure=settings.SESSION_COOKIE_SECURE,
+        samesite="lax",
+        path=f"{settings.API_V1_PREFIX}/auth/google",
+        domain=settings.SESSION_COOKIE_DOMAIN or None,
+    )
+
+
+def clear_oauth_state_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=OAUTH_STATE_COOKIE_NAME,
+        path=f"{settings.API_V1_PREFIX}/auth/google",
+        domain=settings.SESSION_COOKIE_DOMAIN or None,
+    )
+
+
 def web_login_error_url(code: str) -> str:
-    login_url = urljoin(settings.WEB_APP_URL.rstrip("/") + "/", "login")
+    login_url = urljoin(settings.web_app_url_effective.rstrip("/") + "/", "login")
     parts = urlsplit(login_url)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode({"error": code}), ""))
 
@@ -58,30 +80,42 @@ async def google_login(
     email: str | None = Query(default=None),
     next_path: str = Query(default="/dashboard", alias="next"),
     institutional: bool = Query(default=True),
+    web_origin: str | None = Query(default=None),
     service: AuthService = Depends(get_service),
 ) -> RedirectResponse:
     # institutional=True  → SSO exclusivo @pucp.edu.pe (auto-provisiona comunidad).
     # institutional=False → cuentas externas (Gmail) ya provisionadas por el admin.
-    return RedirectResponse(
-        service.build_google_login_url(
-            email=email,
-            next_path=next_path,
-            institutional=institutional,
-        ),
-        status_code=status.HTTP_303_SEE_OTHER,
+    login_url, oauth_state = service.build_google_login_url(
+        email=email,
+        next_path=next_path,
+        institutional=institutional,
+        web_origin=web_origin,
     )
+    response = RedirectResponse(login_url, status_code=status.HTTP_303_SEE_OTHER)
+    set_oauth_state_cookie(response, oauth_state)
+    return response
 
 
 @router.get("/google/callback", tags=["Auth"])
 async def google_callback(
     code: str = Query(...),
-    oauth_state: str = Query(...),
+    oauth_state: str | None = Query(default=None),
+    oauth_state_cookie: str | None = Cookie(default=None, alias=OAUTH_STATE_COOKIE_NAME),
     service: AuthService = Depends(get_service),
 ) -> RedirectResponse:
+    effective_oauth_state = oauth_state or oauth_state_cookie
+    if not effective_oauth_state:
+        response = RedirectResponse(
+            web_login_error_url("oauth_state_missing"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+        clear_oauth_state_cookie(response)
+        return response
+
     try:
-        _user, session_token, next_path = await service.complete_google_callback(
+        _user, session_token, next_path, web_origin = await service.complete_google_callback(
             code,
-            oauth_state,
+            effective_oauth_state,
         )
     except HTTPException as exc:
         detail = str(exc.detail or "").lower()
@@ -96,12 +130,17 @@ async def google_callback(
                 error_code = "acceso_denegado"
         else:
             error_code = "oauth_exchange_failed"
-        return RedirectResponse(
+        response = RedirectResponse(
             web_login_error_url(error_code),
             status_code=status.HTTP_303_SEE_OTHER,
         )
+        clear_oauth_state_cookie(response)
+        return response
 
-    redirect_url = urljoin(settings.WEB_APP_URL.rstrip("/") + "/", next_path.lstrip("/"))
+    redirect_url = urljoin(
+        (web_origin or settings.web_app_url_effective).rstrip("/") + "/",
+        next_path.lstrip("/"),
+    )
     parts = urlsplit(redirect_url)
     query = dict(parse_qsl(parts.query))
     query["auth"] = "ok"
@@ -110,6 +149,7 @@ async def google_callback(
     )
     response = RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
     set_session_cookie(response, session_token)
+    clear_oauth_state_cookie(response)
     return response
 
 

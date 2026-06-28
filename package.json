@@ -5,7 +5,10 @@
   "description": "Plataforma omnicanal para gestión centralizada de incidentes en campus universitario — PUCP",
   "scripts": {
     "dev:web": "turbo run dev --filter=@safecampus/web",
+    "dev:web:lan": "pnpm --filter @safecampus/web dev:lan",
     "dev:backend": "cd apps/backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:backend:lan": "node apps/backend/scripts/start-backend-lan.mjs",
+    "dev:pwa:lan": "node scripts/start-pwa-lan.mjs",
     "dev:mobile": "turbo run dev --filter=@safecampus/mobile",
     "dev:deps:up": "docker compose -f infra/docker/docker-compose.dev.yml up -d",
     "dev:deps:down": "docker compose -f infra/docker/docker-compose.dev.yml down",

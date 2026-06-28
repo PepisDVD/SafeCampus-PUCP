@@ -58,13 +58,17 @@ export type Conversation = {
   telefono_contacto?: string | null;
   nombre_contacto?: string | null;
   estado: ConversationState;
-  modo_atencion: AttentionMode;
-  prioridad: ConversationPriority;
+  modo_atencion: AttentionMode | null;
+  prioridad: ConversationPriority | null;
   operador_asignado?: ConversationUser | null;
+  operadores_asignados: ConversationUser[];
   tomado_por?: ConversationUser | null;
   incidente?: ConversationIncident | null;
+  ultimo_incidente?: ConversationIncident | null;
+  historico_incidentes_count: number;
   chatbot?: ConversationChatbotState | null;
   ultimo_mensaje_preview?: string | null;
+  ultimo_mensaje_autor_tipo?: MessageAuthor | null;
   ultimo_mensaje_at: string;
   unread_count: number;
   created_at: string;
@@ -74,6 +78,37 @@ export type Conversation = {
 export type ConversationListResponse = {
   items: Conversation[];
   total: number;
+};
+
+export type ConversationHistoryListItem = {
+  id: string;
+  nombre_contacto?: string | null;
+  telefono_contacto?: string | null;
+  external_chat_id: string;
+  estado: ConversationState;
+  ultimo_mensaje_at: string;
+  incidentes_count: number;
+};
+
+export type ConversationHistoryListResponse = {
+  items: ConversationHistoryListItem[];
+  total: number;
+};
+
+export type ConversationIncidentHistoryItem = {
+  id: string;
+  incidente: ConversationIncident | null;
+  actor_usuario?: ConversationUser | null;
+  actor_tipo: string;
+  tipo_asociacion: string;
+  asociado_at: string;
+  finalizado_at?: string | null;
+  motivo_finalizacion?: string | null;
+};
+
+export type ConversationHistoryDetail = {
+  conversacion: Conversation;
+  incidentes: ConversationIncidentHistoryItem[];
 };
 
 export type ConversationMessage = {

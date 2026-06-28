@@ -156,6 +156,12 @@ class ChatbotService:
             incident_id, incident_code = await self._create_incident_from_chatbot(draft, final)
             if incident_id:
                 await self._repo.vincular_incidente(str(conversacion.id), incident_id)
+                await self._repo.replace_active_incident_association(
+                    conversacion_id=str(conversacion.id),
+                    incidente_id=incident_id,
+                    actor_tipo="BOT",
+                    tipo_asociacion="AUTOMATICA_BOT",
+                )
 
         if decision.should_handoff:
             await self._repo.update_conversacion_chatbot_routing(

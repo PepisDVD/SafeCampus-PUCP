@@ -7,55 +7,49 @@ const BACKEND_URL =
   "http://localhost:8000/api/v1";
 
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME ?? "safecampus_session";
-
-const LAYOUT_GUARDED_PREFIXES = [
-  "/bienvenida",
-  "/inicio",
-  "/reportar",
-  "/mis-casos",
-  "/notificaciones",
-  "/lost-found",
-  "/dashboard",
-  "/incidentes",
-  "/mapa",
-  "/kpis",
-  "/mensajes",
-  "/usuarios",
-  "/roles",
-  "/integraciones",
-  "/auditoria",
-  "/perfil",
-];
+const AUTH_CHECK_TIMEOUT_MS = 3000;
+type AuthCheckResult = "authenticated" | "unauthenticated" | "unknown";
 
 function isPublicPath(pathname: string): boolean {
   // Toda la zona de login (incluida la pantalla de credenciales) es pública.
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
+  if (pathname === "/auth/callback") return true;
   return false;
 }
 
-async function hasBackendSession(request: NextRequest): Promise<boolean> {
+async function checkBackendSession(request: NextRequest): Promise<AuthCheckResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AUTH_CHECK_TIMEOUT_MS);
   const response = await fetch(`${BACKEND_URL.replace(/\/$/, "")}/auth/me`, {
     headers: {
       cookie: request.headers.get("cookie") ?? "",
     },
     cache: "no-store",
+    signal: controller.signal,
   }).catch(() => null);
+  clearTimeout(timeout);
 
-  return response?.ok ?? false;
+  if (!response) return "unknown";
+  if (response.ok) return "authenticated";
+  if (response.status === 401 || response.status === 403) return "unauthenticated";
+  return "unknown";
 }
 
 function hasSessionCookie(request: NextRequest): boolean {
   return Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
 }
 
-function isLayoutGuardedPath(pathname: string): boolean {
-  return LAYOUT_GUARDED_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
-}
-
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  if (
+    pathname === "/" &&
+    (request.nextUrl.searchParams.has("code") ||
+      request.nextUrl.searchParams.has("error") ||
+      request.nextUrl.searchParams.has("error_code"))
+  ) {
+    return NextResponse.next();
+  }
 
   if (isPublicPath(pathname)) {
     return NextResponse.next();
@@ -72,14 +66,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isLayoutGuardedPath(pathname)) {
-    return NextResponse.next();
-  }
+  const authStatus = await checkBackendSession(request);
 
-  const isAuthenticated = await hasBackendSession(request);
-
-  if (!isAuthenticated) {
+  if (authStatus === "unauthenticated") {
     const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("error", "session_expired");
     loginUrl.searchParams.set(
       "next",
       `${request.nextUrl.pathname}${request.nextUrl.search}`,
@@ -87,6 +78,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Si la cookie existe pero el backend no respondio a tiempo, no hacemos logout
+  // desde el proxy. Los layouts vuelven a validar la sesion con un timeout mayor.
   return NextResponse.next();
 }
 

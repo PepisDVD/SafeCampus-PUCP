@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   addIncidentComment,
@@ -26,10 +26,14 @@ export function useOperatorData(token: string | null) {
   const [selected, setSelected] = useState<IncidentDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
 
   const isDemo = !token || token === "demo-token";
 
   const refresh = useCallback(async () => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+
+    const run = (async () => {
     if (isDemo) {
       setIncidents(mockIncidents);
       setStats(mockStats);
@@ -51,6 +55,12 @@ export function useOperatorData(token: string | null) {
     } finally {
       setLoading(false);
     }
+    })().finally(() => {
+      refreshInFlightRef.current = null;
+    });
+
+    refreshInFlightRef.current = run;
+    return run;
   }, [isDemo, token]);
 
   const openIncident = useCallback(
