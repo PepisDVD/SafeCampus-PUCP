@@ -16,6 +16,7 @@ from app.models.sc_omnicanal import (
     ChatbotEstadoConversacion,
     ChatbotLlmUsage,
     Conversacion,
+    ConversacionCiclo,
     ConversacionIncidenteHistorial,
     ConversacionOperadorAsignado,
     EventoConversacion,
@@ -32,6 +33,18 @@ class OmnicanalRepository:
     def _conversation_projection(self):
         operador = aliased(Usuario, name="operador")
         tomado_por = aliased(Usuario, name="tomado_por")
+        active_cycle_id = (
+            select(ConversacionCiclo.id)
+            .where(
+                and_(
+                    ConversacionCiclo.conversacion_id == Conversacion.id,
+                    ConversacionCiclo.estado == "ACTIVO",
+                )
+            )
+            .limit(1)
+            .correlate(Conversacion)
+            .scalar_subquery()
+        )
         historico_count = (
             select(func.count(ConversacionIncidenteHistorial.id))
             .where(ConversacionIncidenteHistorial.conversacion_id == Conversacion.id)
@@ -53,7 +66,12 @@ class OmnicanalRepository:
         )
         latest_message_author = (
             select(MensajeConversacion.autor_tipo)
-            .where(MensajeConversacion.conversacion_id == Conversacion.id)
+            .where(
+                and_(
+                    MensajeConversacion.conversacion_id == Conversacion.id,
+                    MensajeConversacion.ciclo_id == active_cycle_id,
+                )
+            )
             .order_by(MensajeConversacion.created_at.desc())
             .limit(1)
             .correlate(Conversacion)
@@ -96,6 +114,45 @@ class OmnicanalRepository:
                 ChatbotEstadoConversacion.conversacion_id == Conversacion.id,
             )
         )
+
+    async def get_active_cycle(self, conversacion_id: str | Any) -> ConversacionCiclo | None:
+        conversation_uuid = conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id))
+        statement = (
+            select(ConversacionCiclo)
+            .where(
+                ConversacionCiclo.conversacion_id == conversation_uuid,
+                ConversacionCiclo.estado == "ACTIVO",
+            )
+            .limit(1)
+        )
+        return await self.db.scalar(statement)
+
+    async def get_or_create_active_cycle(
+        self,
+        conversacion_id: str | Any,
+        *,
+        incidente_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ConversacionCiclo:
+        existing = await self.get_active_cycle(conversacion_id)
+        if existing:
+            if incidente_id and not existing.incidente_id:
+                existing.incidente_id = UUID(incidente_id)
+                await self.db.flush()
+                await self.db.refresh(existing)
+            return existing
+
+        conversation_uuid = conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id))
+        cycle = ConversacionCiclo(
+            conversacion_id=conversation_uuid,
+            incidente_id=UUID(incidente_id) if incidente_id else None,
+            estado="ACTIVO",
+            metadatos=metadata or {},
+        )
+        self.db.add(cycle)
+        await self.db.flush()
+        await self.db.refresh(cycle)
+        return cycle
 
     async def get_or_create_whatsapp_channel(
         self,
@@ -196,6 +253,7 @@ class OmnicanalRepository:
         self.db.add(conversacion)
         await self.db.flush()
         await self.db.refresh(conversacion)
+        await self.get_or_create_active_cycle(conversacion.id, metadata={"created_from": "whatsapp_webhook"})
         return conversacion
 
     async def create_mensaje_if_missing(
@@ -210,9 +268,23 @@ class OmnicanalRepository:
         tipo_contenido: str,
         estado_entrega: str,
         payload_raw: dict[str, Any],
+        ciclo_id: str | None = None,
     ) -> MensajeConversacion | None:
+        ciclo = None
+        if ciclo_id:
+            ciclo = await self.db.get(ConversacionCiclo, UUID(ciclo_id))
+        else:
+            ciclo = await self.get_active_cycle(conversacion_id)
+            if not ciclo:
+                conversation = await self.db.get(
+                    Conversacion,
+                    conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id)),
+                )
+                if conversation and conversation.estado != "CERRADA":
+                    ciclo = await self.get_or_create_active_cycle(conversacion_id)
         values = {
             "conversacion_id": conversacion_id,
+            "ciclo_id": ciclo.id if ciclo else None,
             "external_message_id": external_message_id,
             "direccion": direccion,
             "autor_tipo": autor_tipo,
@@ -283,9 +355,19 @@ class OmnicanalRepository:
         tipo_evento: str,
         actor_usuario_id: str | None = None,
         payload: dict[str, Any] | None = None,
+        ciclo_id: str | None = None,
     ) -> EventoConversacion:
+        ciclo = await self.db.get(ConversacionCiclo, UUID(ciclo_id)) if ciclo_id else await self.get_active_cycle(conversacion_id)
+        if not ciclo:
+            conversation = await self.db.get(
+                Conversacion,
+                conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id)),
+            )
+            if conversation and conversation.estado != "CERRADA":
+                ciclo = await self.get_or_create_active_cycle(conversacion_id)
         evento = EventoConversacion(
             conversacion_id=conversacion_id,
+            ciclo_id=ciclo.id if ciclo else None,
             tipo_evento=tipo_evento,
             actor_usuario_id=UUID(actor_usuario_id) if actor_usuario_id else None,
             payload=payload or {},
@@ -557,9 +639,16 @@ class OmnicanalRepository:
         fallback_applied: bool,
         fallback_reason: str | None,
         raw_response: dict[str, Any] | None,
+        ciclo_id: str | None = None,
     ) -> ChatbotLlmUsage:
+        ciclo = await self.db.get(ConversacionCiclo, UUID(ciclo_id)) if ciclo_id else await self.get_active_cycle(conversacion_id)
+        if not ciclo:
+            conversation = await self.db.get(Conversacion, UUID(conversacion_id))
+            if conversation and conversation.estado != "CERRADA":
+                ciclo = await self.get_or_create_active_cycle(conversacion_id)
         usage = ChatbotLlmUsage(
             conversacion_id=UUID(conversacion_id),
+            ciclo_id=ciclo.id if ciclo else None,
             incidente_id=UUID(incidente_id) if incidente_id else None,
             correlation_id=correlation_id,
             provider=provider,
@@ -596,6 +685,9 @@ class OmnicanalRepository:
             values["modo_atencion"] = modo_atencion
         if incidente_id is not None:
             values["incidente_id"] = UUID(incidente_id)
+            cycle = await self.get_active_cycle(conversacion_id)
+            if cycle and not cycle.incidente_id:
+                cycle.incidente_id = UUID(incidente_id)
         statement = (
             update(Conversacion)
             .where(Conversacion.id == UUID(conversacion_id))
@@ -606,6 +698,12 @@ class OmnicanalRepository:
         return result.scalar_one_or_none()
 
     async def list_mensajes(self, conversacion_id: str, limit: int) -> list[dict[str, Any]]:
+        active_cycle = await self.get_active_cycle(conversacion_id)
+        if not active_cycle:
+            return []
+        return await self.list_mensajes_ciclo(str(active_cycle.id), limit=limit)
+
+    async def list_mensajes_ciclo(self, ciclo_id: str, limit: int = 500) -> list[dict[str, Any]]:
         statement = (
             select(
                 MensajeConversacion,
@@ -616,7 +714,7 @@ class OmnicanalRepository:
                 Usuario.avatar_url.label("autor_avatar_url"),
             )
             .outerjoin(Usuario, Usuario.id == MensajeConversacion.autor_usuario_id)
-            .where(MensajeConversacion.conversacion_id == UUID(conversacion_id))
+            .where(MensajeConversacion.ciclo_id == UUID(ciclo_id))
             .order_by(MensajeConversacion.created_at.asc())
             .limit(limit)
         )
@@ -624,6 +722,12 @@ class OmnicanalRepository:
         return [dict(row) for row in result.mappings()]
 
     async def list_eventos(self, conversacion_id: str, limit: int) -> list[dict[str, Any]]:
+        active_cycle = await self.get_active_cycle(conversacion_id)
+        if not active_cycle:
+            return []
+        return await self.list_eventos_ciclo(str(active_cycle.id), limit=limit)
+
+    async def list_eventos_ciclo(self, ciclo_id: str, limit: int = 300) -> list[dict[str, Any]]:
         statement = (
             select(
                 EventoConversacion,
@@ -634,7 +738,7 @@ class OmnicanalRepository:
                 Usuario.avatar_url.label("actor_avatar_url"),
             )
             .outerjoin(Usuario, Usuario.id == EventoConversacion.actor_usuario_id)
-            .where(EventoConversacion.conversacion_id == UUID(conversacion_id))
+            .where(EventoConversacion.ciclo_id == UUID(ciclo_id))
             .order_by(EventoConversacion.created_at.desc())
             .limit(limit)
         )
@@ -715,7 +819,7 @@ class OmnicanalRepository:
     async def cerrar_conversacion(
         self,
         conversacion_id: str,
-        usuario_id: str,
+        usuario_id: str | None,
         motivo: str | None,
     ) -> Conversacion | None:
         await self.db.execute(
@@ -734,7 +838,8 @@ class OmnicanalRepository:
                 tomado_por_id=None,
                 tomado_at=None,
                 incidente_id=None,
-                cerrado_por_id=UUID(usuario_id),
+                ultimo_mensaje_preview="",
+                cerrado_por_id=UUID(usuario_id) if usuario_id else None,
                 cerrado_at=func.now(),
                 motivo_cierre=motivo,
                 updated_at=func.now(),
@@ -743,6 +848,42 @@ class OmnicanalRepository:
         )
         result = await self.db.execute(statement)
         return result.scalar_one_or_none()
+
+    async def close_active_cycle(
+        self,
+        *,
+        conversacion_id: str,
+        usuario_id: str | None,
+        motivo: str | None,
+        cierre_tipo: str,
+        mensajes_snapshot: list[dict[str, Any]],
+        eventos_snapshot: list[dict[str, Any]],
+        chatbot_snapshot: dict[str, Any] | None,
+        asignaciones_snapshot: list[dict[str, Any]],
+        clasificacion_snapshot: dict[str, Any] | None,
+        metadatos: dict[str, Any] | None = None,
+    ) -> ConversacionCiclo | None:
+        cycle = await self.get_active_cycle(conversacion_id)
+        if not cycle:
+            return None
+
+        conversation = await self.db.get(Conversacion, UUID(conversacion_id))
+        cycle.estado = "CERRADO"
+        cycle.incidente_id = conversation.incidente_id if conversation and conversation.incidente_id else cycle.incidente_id
+        cycle.closed_at = datetime.now(UTC)
+        cycle.cerrado_por_id = UUID(usuario_id) if usuario_id else None
+        cycle.cierre_motivo = motivo
+        cycle.cierre_tipo = cierre_tipo
+        cycle.mensajes_snapshot = mensajes_snapshot
+        cycle.eventos_snapshot = eventos_snapshot
+        cycle.chatbot_snapshot = chatbot_snapshot or {}
+        cycle.asignaciones_snapshot = asignaciones_snapshot
+        cycle.clasificacion_snapshot = clasificacion_snapshot or {}
+        cycle.metadatos = {**(cycle.metadatos or {}), **(metadatos or {})}
+        cycle.updated_at = datetime.now(UTC)
+        await self.db.flush()
+        await self.db.refresh(cycle)
+        return cycle
 
     async def reabrir_conversacion(self, conversacion_id: str) -> Conversacion | None:
         statement = (
@@ -760,6 +901,63 @@ class OmnicanalRepository:
             .returning(Conversacion)
         )
         result = await self.db.execute(statement)
+        return result.scalar_one_or_none()
+
+    async def reabrir_ciclo(self, ciclo_id: str, usuario_id: str) -> Conversacion | None:
+        cycle = await self.db.get(ConversacionCiclo, UUID(ciclo_id))
+        if not cycle:
+            return None
+        existing_active = await self.get_active_cycle(cycle.conversacion_id)
+        if existing_active and existing_active.id != cycle.id:
+            return None
+
+        metadata = dict(cycle.metadatos or {})
+        if cycle.closed_at:
+            metadata["reopened_from_close"] = {
+                "closed_at": cycle.closed_at.isoformat(),
+                "cierre_tipo": cycle.cierre_tipo,
+                "cierre_motivo": cycle.cierre_motivo,
+            }
+        metadata["reopened_at"] = datetime.now(UTC).isoformat()
+        metadata["reopened_by"] = usuario_id
+
+        latest_message = await self.db.scalar(
+            select(MensajeConversacion)
+            .where(MensajeConversacion.ciclo_id == cycle.id)
+            .order_by(MensajeConversacion.created_at.desc())
+            .limit(1)
+        )
+        preview = latest_message.contenido if latest_message else ""
+        latest_at = latest_message.created_at if latest_message else datetime.now(UTC)
+        severity = (cycle.clasificacion_snapshot or {}).get("classification_severity") or "MEDIO"
+
+        cycle.estado = "ACTIVO"
+        cycle.closed_at = None
+        cycle.cerrado_por_id = None
+        cycle.cierre_motivo = None
+        cycle.cierre_tipo = "REABIERTO"
+        cycle.metadatos = metadata
+        cycle.updated_at = datetime.now(UTC)
+
+        statement = (
+            update(Conversacion)
+            .where(Conversacion.id == cycle.conversacion_id)
+            .values(
+                estado="EN_COLA",
+                modo_atencion="HUMANO",
+                prioridad=severity if severity in {"BAJO", "MEDIO", "ALTO", "CRITICO"} else "MEDIO",
+                incidente_id=cycle.incidente_id,
+                cerrado_por_id=None,
+                cerrado_at=None,
+                motivo_cierre=None,
+                ultimo_mensaje_preview=(preview or "")[:500],
+                ultimo_mensaje_at=latest_at,
+                updated_at=func.now(),
+            )
+            .returning(Conversacion)
+        )
+        result = await self.db.execute(statement)
+        await self.db.flush()
         return result.scalar_one_or_none()
 
     async def set_modo(self, conversacion_id: str, modo: str) -> Conversacion | None:
@@ -817,7 +1015,113 @@ class OmnicanalRepository:
 
         await self.db.flush()
         await self.db.refresh(conversacion)
+        await self.get_or_create_active_cycle(
+            str(conversacion.id),
+            metadata={"created_from": "new_inbound_cycle", "started_at": metadata["chatbot_cycle_started_at"]},
+        )
         return conversacion
+
+    async def list_conversaciones_ciclos(
+        self,
+        *,
+        search: str | None,
+        desde: str | None,
+        hasta: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        cycles_count = func.count(ConversacionCiclo.id)
+        statement = (
+            select(
+                Conversacion,
+                cycles_count.label("ciclos_count"),
+                func.max(func.coalesce(ConversacionCiclo.closed_at, ConversacionCiclo.started_at)).label("ultimo_ciclo_at"),
+            )
+            .join(ConversacionCiclo, ConversacionCiclo.conversacion_id == Conversacion.id)
+            .group_by(Conversacion.id)
+            .order_by(func.max(func.coalesce(ConversacionCiclo.closed_at, ConversacionCiclo.started_at)).desc())
+            .limit(limit)
+        )
+        if search:
+            pattern = f"%{search}%"
+            statement = statement.where(
+                or_(
+                    Conversacion.nombre_contacto.ilike(pattern),
+                    Conversacion.telefono_contacto.ilike(pattern),
+                    Conversacion.external_chat_id.ilike(pattern),
+                )
+            )
+        if desde:
+            statement = statement.where(cast(ConversacionCiclo.started_at, Date) >= desde)
+        if hasta:
+            statement = statement.where(cast(ConversacionCiclo.started_at, Date) <= hasta)
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def get_conversacion_ciclos(self, conversacion_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        summary_rows = await self.list_conversaciones_ciclos(search=None, desde=None, hasta=None, limit=1000)
+        summary = next((row for row in summary_rows if str(row["Conversacion"].id) == conversacion_id), None)
+        if not summary:
+            conversation = await self.db.get(Conversacion, UUID(conversacion_id))
+            if not conversation:
+                return None, []
+            summary = {"Conversacion": conversation, "ciclos_count": 0, "ultimo_ciclo_at": None}
+        rows = await self.list_ciclos_for_conversacion(conversacion_id)
+        return summary, rows
+
+    async def list_ciclos_for_conversacion(self, conversacion_id: str) -> list[dict[str, Any]]:
+        closed_by = aliased(Usuario, name="ciclo_closed_by")
+        message_count = (
+            select(func.count(MensajeConversacion.id))
+            .where(MensajeConversacion.ciclo_id == ConversacionCiclo.id)
+            .correlate(ConversacionCiclo)
+            .scalar_subquery()
+        )
+        image_count = (
+            select(func.count(MensajeConversacion.id))
+            .where(
+                MensajeConversacion.ciclo_id == ConversacionCiclo.id,
+                MensajeConversacion.tipo_contenido == "image",
+            )
+            .correlate(ConversacionCiclo)
+            .scalar_subquery()
+        )
+        statement = (
+            select(
+                ConversacionCiclo,
+                Incidente.id.label("incidente_id"),
+                Incidente.codigo.label("incidente_codigo"),
+                Incidente.titulo.label("incidente_titulo"),
+                Incidente.estado.label("incidente_estado"),
+                Incidente.severidad.label("incidente_severidad"),
+                closed_by.id.label("cerrado_por_id"),
+                closed_by.nombre.label("cerrado_por_nombre"),
+                closed_by.apellido.label("cerrado_por_apellido"),
+                closed_by.email.label("cerrado_por_email"),
+                closed_by.avatar_url.label("cerrado_por_avatar_url"),
+                message_count.label("mensajes_count"),
+                image_count.label("imagenes_count"),
+            )
+            .outerjoin(Incidente, Incidente.id == ConversacionCiclo.incidente_id)
+            .outerjoin(closed_by, closed_by.id == ConversacionCiclo.cerrado_por_id)
+            .where(ConversacionCiclo.conversacion_id == UUID(conversacion_id))
+            .order_by(func.coalesce(ConversacionCiclo.closed_at, ConversacionCiclo.started_at).desc())
+        )
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def get_ciclo_detail(self, ciclo_id: str) -> dict[str, Any] | None:
+        cycle = await self.db.get(ConversacionCiclo, UUID(ciclo_id))
+        if not cycle:
+            return None
+        rows = await self.list_ciclos_for_conversacion(str(cycle.conversacion_id))
+        cycle_row = next((row for row in rows if str(row["ConversacionCiclo"].id) == ciclo_id), None)
+        if not cycle_row:
+            return None
+        return {
+            "cycle": cycle_row,
+            "messages": await self.list_mensajes_ciclo(ciclo_id, limit=1000),
+            "events": await self.list_eventos_ciclo(ciclo_id, limit=1000),
+        }
 
     # ---------------------------------------------------------------------------
     # LLM Usage Audit

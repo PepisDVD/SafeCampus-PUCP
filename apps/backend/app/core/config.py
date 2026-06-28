@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     CHATBOT_ENABLED: bool = True
     CHATBOT_AUTO_CREATE_INCIDENTS: bool = True
     CHATBOT_SYSTEM_USER_ID: str = ""
+    CHATBOT_INACTIVITY_CLOSE_HOURS: int = 5
     WHATSAPP_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_PROVIDER: str = "evolution"

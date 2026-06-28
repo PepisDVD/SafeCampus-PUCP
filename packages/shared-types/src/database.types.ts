@@ -1971,6 +1971,7 @@ export type Database = {
           notas: string | null
           observaciones_cierre: string | null
           oculto: boolean
+          origen: string
           reportante_id: string
           subcategoria: string | null
           tipo: Database["public"]["Enums"]["tipo_caso_lf"]
@@ -2003,6 +2004,7 @@ export type Database = {
           notas?: string | null
           observaciones_cierre?: string | null
           oculto?: boolean
+          origen?: string
           reportante_id: string
           subcategoria?: string | null
           tipo: Database["public"]["Enums"]["tipo_caso_lf"]
@@ -2035,6 +2037,7 @@ export type Database = {
           notas?: string | null
           observaciones_cierre?: string | null
           oculto?: boolean
+          origen?: string
           reportante_id?: string
           subcategoria?: string | null
           tipo?: Database["public"]["Enums"]["tipo_caso_lf"]
@@ -2777,6 +2780,7 @@ export type Database = {
       }
       chatbot_llm_usage: {
         Row: {
+          ciclo_id: string | null
           completion_tokens: number
           conversacion_id: string
           correlation_id: string
@@ -2794,6 +2798,7 @@ export type Database = {
           total_tokens: number
         }
         Insert: {
+          ciclo_id?: string | null
           completion_tokens?: number
           conversacion_id: string
           correlation_id: string
@@ -2811,6 +2816,7 @@ export type Database = {
           total_tokens?: number
         }
         Update: {
+          ciclo_id?: string | null
           completion_tokens?: number
           conversacion_id?: string
           correlation_id?: string
@@ -2833,6 +2839,13 @@ export type Database = {
             columns: ["conversacion_id"]
             isOneToOne: false
             referencedRelation: "conversacion"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_chatbot_llm_usage_ciclo"
+            columns: ["ciclo_id"]
+            isOneToOne: false
+            referencedRelation: "conversacion_ciclo"
             referencedColumns: ["id"]
           },
         ]
@@ -2910,6 +2923,74 @@ export type Database = {
             columns: ["canal_id"]
             isOneToOne: false
             referencedRelation: "canal_reporte"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversacion_ciclo: {
+        Row: {
+          asignaciones_snapshot: Json | null
+          cerrado_por_id: string | null
+          chatbot_snapshot: Json | null
+          cierre_motivo: string | null
+          cierre_tipo: string
+          clasificacion_snapshot: Json | null
+          closed_at: string | null
+          conversacion_id: string
+          created_at: string
+          estado: string
+          eventos_snapshot: Json | null
+          id: string
+          incidente_id: string | null
+          mensajes_snapshot: Json | null
+          metadatos: Json | null
+          started_at: string
+          updated_at: string
+        }
+        Insert: {
+          asignaciones_snapshot?: Json | null
+          cerrado_por_id?: string | null
+          chatbot_snapshot?: Json | null
+          cierre_motivo?: string | null
+          cierre_tipo?: string
+          clasificacion_snapshot?: Json | null
+          closed_at?: string | null
+          conversacion_id: string
+          created_at?: string
+          estado?: string
+          eventos_snapshot?: Json | null
+          id?: string
+          incidente_id?: string | null
+          mensajes_snapshot?: Json | null
+          metadatos?: Json | null
+          started_at?: string
+          updated_at?: string
+        }
+        Update: {
+          asignaciones_snapshot?: Json | null
+          cerrado_por_id?: string | null
+          chatbot_snapshot?: Json | null
+          cierre_motivo?: string | null
+          cierre_tipo?: string
+          clasificacion_snapshot?: Json | null
+          closed_at?: string | null
+          conversacion_id?: string
+          created_at?: string
+          estado?: string
+          eventos_snapshot?: Json | null
+          id?: string
+          incidente_id?: string | null
+          mensajes_snapshot?: Json | null
+          metadatos?: Json | null
+          started_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversacion_ciclo_conversacion_id_fkey"
+            columns: ["conversacion_id"]
+            isOneToOne: false
+            referencedRelation: "conversacion"
             referencedColumns: ["id"]
           },
         ]
@@ -2996,6 +3077,7 @@ export type Database = {
       evento_conversacion: {
         Row: {
           actor_usuario_id: string | null
+          ciclo_id: string | null
           conversacion_id: string
           created_at: string
           id: string
@@ -3004,6 +3086,7 @@ export type Database = {
         }
         Insert: {
           actor_usuario_id?: string | null
+          ciclo_id?: string | null
           conversacion_id: string
           created_at?: string
           id?: string
@@ -3012,6 +3095,7 @@ export type Database = {
         }
         Update: {
           actor_usuario_id?: string | null
+          ciclo_id?: string | null
           conversacion_id?: string
           created_at?: string
           id?: string
@@ -3026,12 +3110,20 @@ export type Database = {
             referencedRelation: "conversacion"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fk_evento_conversacion_ciclo"
+            columns: ["ciclo_id"]
+            isOneToOne: false
+            referencedRelation: "conversacion_ciclo"
+            referencedColumns: ["id"]
+          },
         ]
       }
       mensaje_conversacion: {
         Row: {
           autor_tipo: string
           autor_usuario_id: string | null
+          ciclo_id: string | null
           contenido: string | null
           conversacion_id: string
           created_at: string
@@ -3045,6 +3137,7 @@ export type Database = {
         Insert: {
           autor_tipo: string
           autor_usuario_id?: string | null
+          ciclo_id?: string | null
           contenido?: string | null
           conversacion_id: string
           created_at?: string
@@ -3058,6 +3151,7 @@ export type Database = {
         Update: {
           autor_tipo?: string
           autor_usuario_id?: string | null
+          ciclo_id?: string | null
           contenido?: string | null
           conversacion_id?: string
           created_at?: string
@@ -3069,6 +3163,13 @@ export type Database = {
           tipo_contenido?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_mensaje_conversacion_ciclo"
+            columns: ["ciclo_id"]
+            isOneToOne: false
+            referencedRelation: "conversacion_ciclo"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "mensaje_conversacion_conversacion_id_fkey"
             columns: ["conversacion_id"]

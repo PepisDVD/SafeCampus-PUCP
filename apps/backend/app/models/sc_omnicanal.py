@@ -242,6 +242,67 @@ class ConversacionIncidenteHistorial(Base):
     metadatos: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
 
 
+class ConversacionCiclo(Base):
+    __tablename__ = "conversacion_ciclo"
+    __table_args__ = (
+        Index("idx_conversacion_ciclo_conversacion", "conversacion_id", "started_at"),
+        Index("idx_conversacion_ciclo_incidente", "incidente_id"),
+        Index("idx_conversacion_ciclo_estado", "estado"),
+        Index(
+            "uq_conversacion_ciclo_activo",
+            "conversacion_id",
+            unique=True,
+            postgresql_where=text("estado = 'ACTIVO'"),
+        ),
+        {"schema": "sc_omnicanal"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    conversacion_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_omnicanal.conversacion.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    incidente_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_incidentes.incidente.id", ondelete="SET NULL"),
+    )
+    estado: Mapped[str] = mapped_column(String(16), nullable=False, server_default="ACTIVO")
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cerrado_por_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_users.usuario.id"),
+    )
+    cierre_motivo: Mapped[str | None] = mapped_column(Text)
+    cierre_tipo: Mapped[str] = mapped_column(String(32), nullable=False, server_default="MANUAL")
+    mensajes_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, server_default="[]")
+    eventos_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, server_default="[]")
+    chatbot_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
+    asignaciones_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, server_default="[]")
+    clasificacion_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
+    metadatos: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class MensajeConversacion(Base):
     __tablename__ = "mensaje_conversacion"
     __table_args__ = (
@@ -264,6 +325,10 @@ class MensajeConversacion(Base):
         UUID(as_uuid=True),
         ForeignKey("sc_omnicanal.conversacion.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    ciclo_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_omnicanal.conversacion_ciclo.id", ondelete="SET NULL"),
     )
     external_message_id: Mapped[str | None] = mapped_column(Text)
     direccion: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -304,6 +369,10 @@ class EventoConversacion(Base):
         UUID(as_uuid=True),
         ForeignKey("sc_omnicanal.conversacion.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    ciclo_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_omnicanal.conversacion_ciclo.id", ondelete="SET NULL"),
     )
     tipo_evento: Mapped[str] = mapped_column(String(64), nullable=False)
     actor_usuario_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -392,6 +461,10 @@ class ChatbotLlmUsage(Base):
         UUID(as_uuid=True),
         ForeignKey("sc_omnicanal.conversacion.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    ciclo_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_omnicanal.conversacion_ciclo.id", ondelete="SET NULL"),
     )
     incidente_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

@@ -27,6 +27,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Skeleton,
   Tabs,
   TabsContent,
   TabsList,
@@ -345,10 +346,12 @@ export function WhatsAppConsole() {
   const [operators, setOperators] = useState<OperatorOption[]>([]);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const messagesRequestRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -400,6 +403,7 @@ export function WhatsAppConsole() {
       null,
     [filteredConversations, selectedId],
   );
+  const selectedConversationId = selectedConversation?.id ?? null;
 
   const loadConversations = useCallback(async () => {
     const params: Record<string, string> = { limit: "100" };
@@ -417,13 +421,30 @@ export function WhatsAppConsole() {
     return response.items;
   }, [search]);
 
-  const loadMessages = useCallback(async (conversationId: string) => {
-    const response = await api.get<ConversationMessagesResponse>(
-      `/omnicanal/conversaciones/${conversationId}/mensajes`,
-      { params: { limit: "300" } },
-    );
-    setErrorMessage(null);
-    setMessages(response.items);
+  const loadMessages = useCallback(async (
+    conversationId: string,
+    options: { clearBeforeLoad?: boolean; showLoader?: boolean } = {},
+  ) => {
+    const requestId = messagesRequestRef.current + 1;
+    messagesRequestRef.current = requestId;
+    const showLoader = options.showLoader ?? true;
+
+    if (options.clearBeforeLoad) setMessages([]);
+    if (showLoader) setLoadingMessages(true);
+
+    try {
+      const response = await api.get<ConversationMessagesResponse>(
+        `/omnicanal/conversaciones/${conversationId}/mensajes`,
+        { params: { limit: "300" } },
+      );
+      if (messagesRequestRef.current !== requestId) return;
+      setErrorMessage(null);
+      setMessages(response.items);
+    } finally {
+      if (messagesRequestRef.current === requestId && showLoader) {
+        setLoadingMessages(false);
+      }
+    }
   }, []);
 
   const refreshSelectedConversation = useCallback(async () => {
@@ -457,7 +478,7 @@ export function WhatsAppConsole() {
         const nextId = current && items.some((item) => item.id === current)
           ? current
           : items[0]?.id;
-        if (nextId) return loadMessages(nextId);
+        if (nextId) return loadMessages(nextId, { clearBeforeLoad: true });
         return undefined;
       })
       .catch((error) => {
@@ -473,14 +494,16 @@ export function WhatsAppConsole() {
   }, [loadOperators]);
 
   useEffect(() => {
-    if (!selectedConversation) {
+    if (!selectedConversationId) {
+      messagesRequestRef.current += 1;
       setMessages([]);
+      setLoadingMessages(false);
       return;
     }
-    loadMessages(selectedConversation.id).catch((error) => {
+    loadMessages(selectedConversationId, { clearBeforeLoad: true }).catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar mensajes.");
     });
-  }, [loadMessages, selectedConversation]);
+  }, [loadMessages, selectedConversationId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -679,12 +702,16 @@ export function WhatsAppConsole() {
               />
 
               <ScrollArea className="min-h-0 flex-1 p-5">
-                <div className="mx-auto flex max-w-4xl flex-col gap-3">
-                  {messages.map((message) => (
-                    <MessageBubble key={message.id} message={message} />
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
+                {loadingMessages ? (
+                  <MessageListSkeleton />
+                ) : (
+                  <div className="mx-auto flex max-w-4xl flex-col gap-3">
+                    {messages.map((message) => (
+                      <MessageBubble key={message.id} message={message} />
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
               </ScrollArea>
 
               <div className="border-t bg-white p-4">
@@ -875,9 +902,9 @@ export function WhatsAppConsole() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cerrar chat</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Confirmas que deseas cerrar esta conversación? Se limpiarán la
-              prioridad, el modo de atención y los operadores asignados para
-              dejarla lista para un nuevo ciclo.
+              ¿Confirmas que deseas cerrar esta conversación? Se archivará el ciclo
+              como evidencia, se enviará un mensaje final al contacto y la bandeja
+              quedará limpia para un nuevo caso.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1253,10 +1280,40 @@ function ChatHeader({
   );
 }
 
+function MessageListSkeleton() {
+  const rows = [
+    { align: "justify-start", width: "w-[68%]" },
+    { align: "justify-end", width: "w-[58%]" },
+    { align: "justify-start", width: "w-[72%]" },
+    { align: "justify-end", width: "w-[46%]" },
+  ];
+
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-3">
+      {rows.map((row, index) => (
+        <div key={index} className={cn("flex", row.align)}>
+          <div className={cn("rounded-xl border bg-white px-3 py-3 shadow-sm", row.width)}>
+            <div className="mb-3 flex items-center gap-2">
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="mt-2 h-3 w-5/6" />
+            <div className="mt-3 flex justify-end">
+              <Skeleton className="h-3 w-12" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const outgoing = message.direccion === "OUTBOUND";
   const isBot = message.autor_tipo === "BOT";
   const isOperator = message.autor_tipo === "OPERADOR";
+  const mediaSrc = message.media?.data_url || message.media?.url || message.media?.thumbnail_data_url;
 
   return (
     <div className={cn("flex", outgoing ? "justify-end" : "justify-start")}>
@@ -1275,6 +1332,13 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
             {authorLabel(message.autor_tipo)}
           </Badge>
         </div>
+        {mediaSrc ? (
+          <img
+            src={mediaSrc}
+            alt={message.media?.filename || message.contenido || "Imagen de WhatsApp"}
+            className="mb-2 max-h-64 w-full rounded-lg border object-contain"
+          />
+        ) : null}
         <p className="whitespace-pre-wrap leading-6">
           {message.contenido || `[${message.tipo_contenido}]`}
         </p>

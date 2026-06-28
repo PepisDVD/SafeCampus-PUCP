@@ -434,6 +434,19 @@ Reglas:
 - Si tiene valores, ignora numeros que no esten en la lista.
 - Los grupos se ignoran por defecto con `WHATSAPP_IGNORE_GROUP_MESSAGES=true`.
 
+## Evidencia multimedia en ciclos cerrados
+
+SafeCampus archiva los mensajes de cada ciclo operativo al cerrar chat. Para
+imagenes enviadas desde la consola web, el backend conserva la evidencia en el
+snapshot del ciclo. Para imagenes recibidas desde WhatsApp, el frontend puede
+mostrar la evidencia si el payload de EvolutionAPI incluye `url`, `mediaUrl`,
+`base64` o `jpegThumbnail` dentro del webhook `messages.upsert`.
+
+Si la instancia local no envia media completa en el webhook, la trazabilidad
+mantendra el mensaje, caption y payload crudo, pero solo mostrara thumbnail o
+metadata disponible. En produccion se debe habilitar entrega/descarga de media
+en EvolutionAPI o agregar un storage persistente para adjuntos entrantes.
+
 Respuesta esperada para un mensaje ignorado:
 
 ```json

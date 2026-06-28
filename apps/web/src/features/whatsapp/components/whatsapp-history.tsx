@@ -11,6 +11,10 @@ import {
   Input,
   ScrollArea,
   SearchInput,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   cn,
 } from "@safecampus/ui-kit";
 import {
@@ -19,8 +23,11 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api/client";
+import { CycleDetailDialog, CycleList } from "./whatsapp-cycles";
 import type {
   Conversation,
+  ConversationCycleDetail,
+  ConversationCyclesDetail,
   ConversationHistoryDetail,
   ConversationHistoryListItem,
   ConversationHistoryListResponse,
@@ -99,6 +106,29 @@ function associationLabel(value: string) {
   }[value] ?? value.replaceAll("_", " ");
 }
 
+function closureReasonLabel(value: string | null | undefined) {
+  if (!value) return "Sin motivo";
+  const labels: Record<string, string> = {
+    CONVERSACION_CERRADA: "Conversacion cerrada",
+    REEMPLAZADO: "Reemplazado por otro incidente",
+    MANUAL: "Cierre manual",
+    INACTIVIDAD: "Cierre por inactividad",
+    REABIERTO: "Ciclo reabierto",
+  };
+  return labels[value] ?? value.replaceAll("_", " ").toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+function closureReasonTone(value: string | null | undefined) {
+  const tones: Record<string, string> = {
+    CONVERSACION_CERRADA: "border-slate-300 bg-slate-100 text-slate-700",
+    REEMPLAZADO: "border-amber-300 bg-amber-50 text-amber-800",
+    MANUAL: "border-indigo-200 bg-indigo-50 text-indigo-700",
+    INACTIVIDAD: "border-orange-300 bg-orange-50 text-orange-800",
+    REABIERTO: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  };
+  return tones[value ?? ""] ?? "border-slate-200 bg-slate-50 text-slate-700";
+}
+
 function WhatsAppIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
     <img
@@ -121,6 +151,10 @@ export function WhatsAppHistory() {
   const [hasta, setHasta] = useState("");
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingCycles, setLoadingCycles] = useState(false);
+  const [activeTab, setActiveTab] = useState<"incidentes" | "ciclos">("incidentes");
+  const [cyclesDetail, setCyclesDetail] = useState<ConversationCyclesDetail | null>(null);
+  const [cycleDetail, setCycleDetail] = useState<ConversationCycleDetail | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const selectedItem = useMemo(
@@ -163,6 +197,35 @@ export function WhatsAppHistory() {
     }
   }, []);
 
+  const loadCycles = useCallback(async (conversationId: string) => {
+    setLoadingCycles(true);
+    try {
+      const response = await api.get<ConversationCyclesDetail>(
+        `/omnicanal/ciclos/conversaciones/${conversationId}`,
+      );
+      setCyclesDetail(response);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar ciclos.");
+    } finally {
+      setLoadingCycles(false);
+    }
+  }, []);
+
+  async function openCycle(cycleId: string) {
+    const response = await api.get<ConversationCycleDetail>(`/omnicanal/ciclos/${cycleId}`);
+    setCycleDetail(response);
+  }
+
+  async function reopenCycle(cycleId: string) {
+    await api.post(`/omnicanal/ciclos/${cycleId}/reabrir`);
+    setCycleDetail(null);
+    if (selectedId) {
+      await loadCycles(selectedId);
+      await loadDetail(selectedId);
+    }
+  }
+
   useEffect(() => {
     setLoadingList(true);
     loadItems()
@@ -175,10 +238,20 @@ export function WhatsAppHistory() {
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
+      setCyclesDetail(null);
+      setCycleDetail(null);
       return;
     }
+    setCyclesDetail(null);
+    setCycleDetail(null);
     void loadDetail(selectedId);
   }, [loadDetail, selectedId]);
+
+  useEffect(() => {
+    if (activeTab !== "ciclos" || !selectedId) return;
+    if (cyclesDetail?.conversacion.id === selectedId) return;
+    void loadCycles(selectedId);
+  }, [activeTab, cyclesDetail?.conversacion.id, loadCycles, selectedId]);
 
   return (
     <div className="flex h-[calc(100vh-5rem)] min-h-180 flex-col bg-slate-50 p-6">
@@ -236,7 +309,32 @@ export function WhatsAppHistory() {
               {detail ? (
                 <>
                   <ConversationSummary conversation={detail.conversacion} fallback={selectedItem} />
-                  <IncidentTimeline items={detail.incidentes} loading={loadingDetail} />
+                  <Tabs
+                    value={activeTab}
+                    onValueChange={(value) => setActiveTab(value as "incidentes" | "ciclos")}
+                    className="space-y-4"
+                  >
+                    <TabsList className="grid h-10 w-full max-w-sm grid-cols-2 rounded-lg">
+                      <TabsTrigger value="incidentes">Incidentes</TabsTrigger>
+                      <TabsTrigger value="ciclos">Ciclos</TabsTrigger>
+                    </TabsList>
+                    <TabsContent
+                      value="incidentes"
+                      className="mt-0 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:duration-200"
+                    >
+                      <IncidentTimeline items={detail.incidentes} loading={loadingDetail} />
+                    </TabsContent>
+                    <TabsContent
+                      value="ciclos"
+                      className="mt-0 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:duration-200"
+                    >
+                      <CycleList
+                        items={cyclesDetail?.ciclos ?? []}
+                        loading={loadingCycles}
+                        onOpen={(cycleId) => void openCycle(cycleId)}
+                      />
+                    </TabsContent>
+                  </Tabs>
                 </>
               ) : (
                 <div className="flex min-h-96 items-center justify-center rounded-lg border border-dashed bg-white text-sm text-slate-500">
@@ -247,6 +345,14 @@ export function WhatsAppHistory() {
           </ScrollArea>
         </section>
       </main>
+
+      <CycleDetailDialog
+        detail={cycleDetail}
+        onOpenChange={(open) => {
+          if (!open) setCycleDetail(null);
+        }}
+        onReopen={(cycleId) => void reopenCycle(cycleId)}
+      />
     </div>
   );
 }
@@ -430,9 +536,11 @@ function IncidentMetadata({ item }: { item: ConversationIncidentHistoryItem }) {
         </p>
 
         <p className="text-xs font-medium uppercase text-slate-500">Motivo</p>
-        <p className="font-medium text-slate-900">
-          {item.motivo_finalizacion || "Sin motivo"}
-        </p>
+        <div>
+          <Badge className={cn("border font-semibold", closureReasonTone(item.motivo_finalizacion))}>
+            {closureReasonLabel(item.motivo_finalizacion)}
+          </Badge>
+        </div>
       </div>
     </div>
   );

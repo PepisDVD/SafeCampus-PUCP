@@ -25,7 +25,10 @@ from app.schemas.omnicanal import (
     AsignarConversacionInput,
     ChatbotBorradorUpdateInput,
     CerrarConversacionInput,
+    ConversacionCicloDetail,
     ConversacionDetail,
+    ConversacionCiclosDetail,
+    ConversacionCiclosListResponse,
     ConversacionHistorialDetail,
     ConversacionListResponse,
     ConversacionesHistorialResponse,
@@ -138,6 +141,59 @@ async def obtener_historial_conversacion(
     service: Annotated[OmnicanalService, Depends(get_service)],
 ):
     return await service.obtener_historial_conversacion(conversacion_id)
+
+
+@router.get(
+    "/ciclos/conversaciones",
+    response_model=ConversacionCiclosListResponse,
+    dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
+)
+async def listar_conversaciones_ciclos(
+    service: Annotated[OmnicanalService, Depends(get_service)],
+    search: str | None = None,
+    desde: str | None = None,
+    hasta: str | None = None,
+    limit: int = 80,
+):
+    return await service.listar_conversaciones_ciclos(
+        search=search,
+        desde=desde,
+        hasta=hasta,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/ciclos/conversaciones/{conversacion_id}",
+    response_model=ConversacionCiclosDetail,
+    dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
+)
+async def obtener_ciclos_conversacion(
+    conversacion_id: str,
+    service: Annotated[OmnicanalService, Depends(get_service)],
+):
+    return await service.obtener_ciclos_conversacion(conversacion_id)
+
+
+@router.get(
+    "/ciclos/{ciclo_id}",
+    response_model=ConversacionCicloDetail,
+    dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
+)
+async def obtener_ciclo(
+    ciclo_id: str,
+    service: Annotated[OmnicanalService, Depends(get_service)],
+):
+    return await service.obtener_ciclo(ciclo_id)
+
+
+@router.post("/ciclos/{ciclo_id}/reabrir", response_model=ConversacionDetail)
+async def reabrir_ciclo(
+    ciclo_id: str,
+    service: Annotated[OmnicanalService, Depends(get_service)],
+    current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
+):
+    return await service.reabrir_ciclo(ciclo_id, current_user.id)
 
 
 @router.get(

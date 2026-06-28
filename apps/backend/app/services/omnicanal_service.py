@@ -1,6 +1,7 @@
 """Business service for omnichannel inbound reports."""
 
 import base64
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
@@ -16,6 +17,11 @@ from app.schemas.omnicanal import (
     AsignarConversacionInput,
     ChatbotBorradorUpdateInput,
     CerrarConversacionInput,
+    ConversacionCicloDetail,
+    ConversacionCicloListItem,
+    ConversacionCiclosDetail,
+    ConversacionCiclosListResponse,
+    ConversacionCiclosResumen,
     ConversacionDetail,
     ConversacionHistorialDetail,
     ConversacionHistorialListItem,
@@ -26,6 +32,7 @@ from app.schemas.omnicanal import (
     EventoConversacionOut,
     EventosConversacionResponse,
     MensajeConversacionOut,
+    MensajeMediaOut,
     MensajesConversacionResponse,
     OmnicanalRealtimeEvent,
     OmnicanalStats,
@@ -115,9 +122,32 @@ class OmnicanalService:
                     "chat_id": incoming.chat_id,
                 },
             )
-            auto_reactivate_new_cycle = (
-                conversacion.estado == "CERRADA" and not incoming.metadata.get("from_me")
-            )
+            is_contact_message = not incoming.metadata.get("from_me")
+            if is_contact_message and conversacion.estado == "CERRADA":
+                conversacion = await self._repo.reactivar_conversacion_nuevo_ciclo(
+                    conversacion_id=str(conversacion.id),
+                    preview="",
+                )
+                await self._chatbot.reset_for_new_cycle(
+                    str(conversacion.id),
+                    reason="AUTO_REOPEN_AFTER_CLOSE",
+                )
+            elif is_contact_message and self._should_close_for_inactivity(conversacion):
+                await self._close_and_reset_conversation(
+                    conversacion_id=str(conversacion.id),
+                    usuario_id=None,
+                    motivo="Cierre automatico por inactividad.",
+                    cierre_tipo="INACTIVIDAD",
+                    send_final_message=False,
+                )
+                conversacion = await self._repo.reactivar_conversacion_nuevo_ciclo(
+                    conversacion_id=str(conversacion.id),
+                    preview="",
+                )
+                await self._chatbot.reset_for_new_cycle(
+                    str(conversacion.id),
+                    reason="AUTO_REOPEN_AFTER_INACTIVITY",
+                )
             mensaje = await self._repo.create_mensaje_if_missing(
                 conversacion_id=conversacion.id,
                 external_message_id=incoming.external_message_id,
@@ -128,21 +158,11 @@ class OmnicanalService:
                 estado_entrega="sent" if incoming.metadata.get("from_me") else "received",
                 payload_raw=incoming.raw_payload,
             )
-            if auto_reactivate_new_cycle:
-                conversacion = await self._repo.reactivar_conversacion_nuevo_ciclo(
-                    conversacion_id=str(conversacion.id),
-                    preview=incoming.content_for_storage,
-                )
-                await self._chatbot.reset_for_new_cycle(
-                    str(conversacion.id),
-                    reason="AUTO_REOPEN_AFTER_CLOSE",
-                )
-            else:
-                conversacion = await self._repo.update_conversacion_after_message(
-                    conversacion_id=conversacion.id,
-                    preview=incoming.content_for_storage,
-                    estado="EN_BOT" if conversacion.estado == "ABIERTA" else None,
-                )
+            conversacion = await self._repo.update_conversacion_after_message(
+                conversacion_id=conversacion.id,
+                preview=incoming.content_for_storage,
+                estado="EN_BOT" if conversacion.estado == "ABIERTA" else None,
+            )
             if mensaje:
                 await self._repo.create_evento(
                     conversacion_id=conversacion.id,
@@ -240,6 +260,50 @@ class OmnicanalService:
             incidentes=[self._map_incidente_historial_row(row) for row in rows],
         )
 
+    async def listar_conversaciones_ciclos(
+        self,
+        *,
+        search: str | None = None,
+        desde: str | None = None,
+        hasta: str | None = None,
+        limit: int = 80,
+    ) -> ConversacionCiclosListResponse:
+        rows = await self._repo.list_conversaciones_ciclos(
+            search=search,
+            desde=desde,
+            hasta=hasta,
+            limit=max(1, min(limit, 200)),
+        )
+        return ConversacionCiclosListResponse(
+            items=[self._map_ciclos_resumen_row(row) for row in rows],
+            total=len(rows),
+        )
+
+    async def obtener_ciclos_conversacion(self, conversacion_id: str) -> ConversacionCiclosDetail:
+        summary, rows = await self._repo.get_conversacion_ciclos(conversacion_id)
+        if not summary:
+            raise self._not_found()
+        return ConversacionCiclosDetail(
+            conversacion=self._map_ciclos_resumen_row(summary),
+            ciclos=[self._map_ciclo_row(row) for row in rows],
+        )
+
+    async def obtener_ciclo(self, ciclo_id: str) -> ConversacionCicloDetail:
+        detail = await self._repo.get_ciclo_detail(ciclo_id)
+        if not detail:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ciclo de conversacion no encontrado.")
+        cycle_row = detail["cycle"]
+        cycle = cycle_row["ConversacionCiclo"]
+        return ConversacionCicloDetail(
+            ciclo=self._map_ciclo_row(cycle_row),
+            mensajes=[self._map_mensaje_row(row) for row in detail["messages"]],
+            eventos=[self._map_evento_row(row) for row in detail["events"]],
+            chatbot_snapshot=cycle.chatbot_snapshot or {},
+            clasificacion_snapshot=cycle.clasificacion_snapshot or {},
+            asignaciones_snapshot=cycle.asignaciones_snapshot or [],
+            metadatos=cycle.metadatos or {},
+        )
+
     async def listar_mensajes(
         self,
         conversacion_id: str,
@@ -314,37 +378,40 @@ class OmnicanalService:
         data: CerrarConversacionInput,
         usuario_id: str,
     ) -> ConversacionDetail:
-        detail = await self._repo.get_conversacion_detail(conversacion_id)
-        if not detail:
-            raise self._not_found()
-        current = detail["Conversacion"]
-        if current.incidente_id:
-            await self._repo.ensure_incident_association(
-                conversacion_id=conversacion_id,
-                incidente_id=str(current.incidente_id),
-                actor_usuario_id=usuario_id,
-                actor_tipo="OPERADOR",
-                tipo_asociacion="LEGACY_ACTIVA",
-            )
-            await self._repo.close_active_incident_association(
-                conversacion_id=conversacion_id,
-                motivo="CONVERSACION_CERRADA",
-            )
-        conversacion = await self._repo.cerrar_conversacion(
+        conversacion = await self._close_and_reset_conversation(
             conversacion_id,
-            usuario_id,
-            data.motivo,
-        )
-        if not conversacion:
-            raise self._not_found()
-        await self._repo.delete_chatbot_state(str(conversacion.id))
-        await self._repo.create_evento(
-            conversacion_id=conversacion.id,
-            tipo_evento="CHAT_CERRADO",
-            actor_usuario_id=usuario_id,
-            payload={"motivo": data.motivo},
+            usuario_id=usuario_id,
+            motivo=data.motivo,
+            cierre_tipo="MANUAL",
+            send_final_message=True,
+            custom_final_message=data.mensaje_cierre,
         )
         await self._broadcast_conversacion("conversacion_actualizada", str(conversacion.id))
+        return self._map_conversacion_model(conversacion)
+
+    async def reabrir_ciclo(self, ciclo_id: str, usuario_id: str) -> ConversacionDetail:
+        conversacion = await self._repo.reabrir_ciclo(ciclo_id, usuario_id)
+        if not conversacion:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No se pudo reabrir el ciclo. Verifica que no exista otro ciclo activo.",
+            )
+        await self._repo.create_evento(
+            conversacion_id=conversacion.id,
+            tipo_evento="CICLO_REABIERTO",
+            actor_usuario_id=usuario_id,
+            payload={"ciclo_id": ciclo_id},
+        )
+        await self._chatbot.mark_human_takeover(
+            str(conversacion.id),
+            reason="Ciclo historico reabierto por operador.",
+        )
+        await self._broadcast_conversacion("conversacion_actualizada", str(conversacion.id))
+        detail = await self._repo.get_conversacion_detail(str(conversacion.id))
+        if detail:
+            assigned = await self._repo.list_operadores_asignados([str(conversacion.id)])
+            detail["operadores_asignados"] = assigned.get(str(conversacion.id), [])
+            return self._map_conversacion_model(detail)
         return self._map_conversacion_model(conversacion)
 
     async def reabrir_conversacion(
@@ -592,9 +659,10 @@ class OmnicanalService:
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail="Cada imagen debe pesar 10MB o menos.",
                 )
+            encoded_media = base64.b64encode(content).decode("ascii")
             response = await self._evolution.send_image(
                 chat_id=self._evolution_recipient(conversacion),
-                media_base64=base64.b64encode(content).decode("ascii"),
+                media_base64=encoded_media,
                 mimetype=archivo.content_type,
                 filename=archivo.filename or f"imagen-{index + 1}",
                 caption=caption if index == 0 else None,
@@ -613,6 +681,7 @@ class OmnicanalService:
                     "provider_response": response,
                     "filename": archivo.filename,
                     "content_type": archivo.content_type,
+                    "media_data_url": f"data:{archivo.content_type};base64,{encoded_media}",
                 },
             )
             if mensaje:
@@ -639,6 +708,173 @@ class OmnicanalService:
         return MensajesConversacionResponse(
             items=[self._map_mensaje_row({"MensajeConversacion": mensaje}) for mensaje in created_messages]
         )
+
+    async def _close_and_reset_conversation(
+        self,
+        conversacion_id: str,
+        *,
+        usuario_id: str | None,
+        motivo: str | None,
+        cierre_tipo: str,
+        send_final_message: bool,
+        custom_final_message: str | None = None,
+    ) -> Any:
+        detail = await self._repo.get_conversacion_detail(conversacion_id)
+        if not detail:
+            raise self._not_found()
+        current = detail["Conversacion"]
+
+        if send_final_message and current.estado != "CERRADA":
+            final_message = custom_final_message or self._compose_close_message(detail)
+            await self._send_system_close_message(current, final_message)
+
+        if current.incidente_id:
+            await self._repo.ensure_incident_association(
+                conversacion_id=conversacion_id,
+                incidente_id=str(current.incidente_id),
+                actor_usuario_id=usuario_id,
+                actor_tipo="OPERADOR" if usuario_id else "SISTEMA",
+                tipo_asociacion="LEGACY_ACTIVA",
+            )
+            await self._repo.close_active_incident_association(
+                conversacion_id=conversacion_id,
+                motivo="CONVERSACION_CERRADA",
+            )
+
+        await self._repo.create_evento(
+            conversacion_id=current.id,
+            tipo_evento="CHAT_CERRADO" if cierre_tipo == "MANUAL" else "CHAT_CERRADO_INACTIVIDAD",
+            actor_usuario_id=usuario_id,
+            payload={"motivo": motivo, "cierre_tipo": cierre_tipo},
+        )
+
+        chatbot_state = await self._repo.get_or_create_chatbot_state(conversacion_id)
+        assigned = await self._repo.list_operadores_asignados([conversacion_id])
+        messages = await self._repo.list_mensajes(conversacion_id, limit=1000)
+        events = await self._repo.list_eventos(conversacion_id, limit=1000)
+        chatbot_snapshot = self._chatbot_snapshot(chatbot_state)
+        classification_snapshot = {
+            "classification_category": chatbot_snapshot.get("classification_category"),
+            "classification_severity": chatbot_snapshot.get("classification_severity"),
+            "classification_confidence": chatbot_snapshot.get("classification_confidence"),
+            "ai_summary": chatbot_snapshot.get("ai_summary"),
+            "incident_draft": chatbot_snapshot.get("incident_draft") or {},
+        }
+
+        await self._repo.close_active_cycle(
+            conversacion_id=conversacion_id,
+            usuario_id=usuario_id,
+            motivo=motivo,
+            cierre_tipo=cierre_tipo,
+            mensajes_snapshot=[
+                self._map_mensaje_row(row).model_dump(mode="json")
+                for row in messages
+            ],
+            eventos_snapshot=[
+                self._map_evento_row(row).model_dump(mode="json")
+                for row in events
+            ],
+            chatbot_snapshot=chatbot_snapshot,
+            asignaciones_snapshot=assigned.get(conversacion_id, []),
+            clasificacion_snapshot=classification_snapshot,
+            metadatos={
+                "closed_by": usuario_id,
+                "closed_from": "manual_action" if cierre_tipo == "MANUAL" else "inactivity_guard",
+            },
+        )
+
+        conversacion = await self._repo.cerrar_conversacion(
+            conversacion_id,
+            usuario_id,
+            motivo,
+        )
+        if not conversacion:
+            raise self._not_found()
+        await self._repo.delete_chatbot_state(str(conversacion.id))
+        return conversacion
+
+    async def _send_system_close_message(self, conversacion: Any, message: str) -> None:
+        response = await self._evolution.send_text(
+            chat_id=self._evolution_recipient(conversacion),
+            text=message,
+        )
+        external_id = self._extract_sent_message_id(response)
+        await self._repo.create_mensaje_if_missing(
+            conversacion_id=conversacion.id,
+            external_message_id=external_id,
+            direccion="OUTBOUND",
+            autor_tipo="SISTEMA",
+            contenido=message,
+            tipo_contenido="text",
+            estado_entrega="sent",
+            payload_raw=response,
+        )
+        await self._repo.update_conversacion_after_message(
+            conversacion_id=conversacion.id,
+            preview=message,
+        )
+        await self._repo.create_evento(
+            conversacion_id=conversacion.id,
+            tipo_evento="MENSAJE_CIERRE_ENVIADO",
+            payload={"message_id": external_id},
+        )
+
+    def _should_close_for_inactivity(self, conversacion: Any) -> bool:
+        threshold_hours = max(0, int(settings.CHATBOT_INACTIVITY_CLOSE_HOURS or 0))
+        if threshold_hours <= 0 or conversacion.estado == "CERRADA":
+            return False
+        last_at = conversacion.ultimo_mensaje_at
+        if not last_at:
+            return False
+        if last_at.tzinfo is None:
+            last_at = last_at.replace(tzinfo=UTC)
+        return datetime.now(UTC) - last_at >= timedelta(hours=threshold_hours)
+
+    @staticmethod
+    def _compose_close_message(detail: dict[str, Any]) -> str:
+        conversacion = detail["Conversacion"]
+        incident_code = detail.get("incidente_codigo")
+        if incident_code:
+            return (
+                f"Tu reporte {incident_code} fue cerrado operativamente por el equipo SafeCampus. "
+                "Si necesitas reportar un nuevo hecho, escribe nuevamente por este chat."
+            )
+        if conversacion.incidente_id:
+            return (
+                "Tu reporte fue cerrado operativamente por el equipo SafeCampus. "
+                "Si necesitas reportar un nuevo hecho, escribe nuevamente por este chat."
+            )
+        return (
+            "Cerramos esta atencion en SafeCampus. "
+            "Si necesitas reportar un nuevo caso, escribe nuevamente por este chat."
+        )
+
+    @staticmethod
+    def _chatbot_snapshot(chatbot_state: Any) -> dict[str, Any]:
+        return {
+            "bot_status": chatbot_state.bot_status,
+            "last_intent": chatbot_state.last_intent,
+            "last_action": chatbot_state.last_action,
+            "requires_human_review": chatbot_state.requires_human_review,
+            "handoff_reason": chatbot_state.handoff_reason,
+            "ai_summary": chatbot_state.ai_summary,
+            "classification_category": chatbot_state.classification_category,
+            "classification_severity": chatbot_state.classification_severity,
+            "classification_confidence": chatbot_state.classification_confidence,
+            "missing_fields": chatbot_state.missing_fields or [],
+            "incident_draft": chatbot_state.incident_draft or {},
+            "suggested_reply": chatbot_state.suggested_reply,
+            "last_bot_reply": chatbot_state.last_bot_reply,
+            "last_user_message_at": chatbot_state.last_user_message_at.isoformat()
+            if chatbot_state.last_user_message_at
+            else None,
+            "last_bot_message_at": chatbot_state.last_bot_message_at.isoformat()
+            if chatbot_state.last_bot_message_at
+            else None,
+            "last_processed_at": chatbot_state.last_processed_at.isoformat()
+            if chatbot_state.last_processed_at
+            else None,
+        }
 
     @staticmethod
     def _validate_webhook_secret(webhook_secret: str | None) -> None:
@@ -851,6 +1087,50 @@ class OmnicanalService:
             incidentes_count=int(row.get("incidentes_count") or 0),
         )
 
+    @staticmethod
+    def _map_ciclos_resumen_row(row: dict[str, Any]) -> ConversacionCiclosResumen:
+        conversacion = row["Conversacion"]
+        return ConversacionCiclosResumen(
+            id=str(conversacion.id),
+            nombre_contacto=conversacion.nombre_contacto,
+            telefono_contacto=conversacion.telefono_contacto,
+            external_chat_id=conversacion.external_chat_id,
+            ciclos_count=int(row.get("ciclos_count") or 0),
+            ultimo_ciclo_at=row.get("ultimo_ciclo_at"),
+        )
+
+    @classmethod
+    def _map_ciclo_row(cls, row: dict[str, Any]) -> ConversacionCicloListItem:
+        ciclo = row["ConversacionCiclo"]
+        incidente = None
+        if row.get("incidente_id"):
+            incidente = {
+                "id": str(row["incidente_id"]),
+                "codigo": row["incidente_codigo"],
+                "titulo": row["incidente_titulo"],
+                "estado": row["incidente_estado"],
+                "severidad": row["incidente_severidad"],
+            }
+        return ConversacionCicloListItem(
+            id=str(ciclo.id),
+            conversacion_id=str(ciclo.conversacion_id),
+            incidente=incidente,
+            estado=ciclo.estado,
+            cierre_tipo=ciclo.cierre_tipo,
+            cierre_motivo=ciclo.cierre_motivo,
+            mensajes_count=int(row.get("mensajes_count") or 0),
+            imagenes_count=int(row.get("imagenes_count") or 0),
+            started_at=ciclo.started_at,
+            closed_at=ciclo.closed_at,
+            cerrado_por=cls._user_from_parts(
+                row.get("cerrado_por_id"),
+                row.get("cerrado_por_nombre"),
+                row.get("cerrado_por_apellido"),
+                row.get("cerrado_por_email"),
+                row.get("cerrado_por_avatar_url"),
+            ),
+        )
+
     @classmethod
     def _map_incidente_historial_row(cls, row: dict[str, Any]) -> dict[str, Any]:
         historial = row["ConversacionIncidenteHistorial"]
@@ -909,6 +1189,7 @@ class OmnicanalService:
         return MensajeConversacionOut(
             id=str(mensaje.id),
             conversacion_id=str(mensaje.conversacion_id),
+            ciclo_id=str(mensaje.ciclo_id) if mensaje.ciclo_id else None,
             external_message_id=mensaje.external_message_id,
             direccion=mensaje.direccion,
             autor_tipo=mensaje.autor_tipo,
@@ -922,6 +1203,7 @@ class OmnicanalService:
             contenido=mensaje.contenido,
             tipo_contenido=mensaje.tipo_contenido,
             estado_entrega=mensaje.estado_entrega,
+            media=cls._extract_message_media(mensaje),
             created_at=mensaje.created_at,
         )
 
@@ -931,6 +1213,7 @@ class OmnicanalService:
         return EventoConversacionOut(
             id=str(evento.id),
             conversacion_id=str(evento.conversacion_id),
+            ciclo_id=str(evento.ciclo_id) if evento.ciclo_id else None,
             tipo_evento=evento.tipo_evento,
             actor_usuario=cls._user_from_parts(
                 row.get("actor_id"),
@@ -941,6 +1224,52 @@ class OmnicanalService:
             ),
             payload=evento.payload or {},
             created_at=evento.created_at,
+        )
+
+    @staticmethod
+    def _extract_message_media(mensaje: Any) -> MensajeMediaOut | None:
+        if mensaje.tipo_contenido != "image":
+            return None
+        payload = mensaje.payload_raw or {}
+        message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        nested_message = data.get("message") if isinstance(data.get("message"), dict) else message
+        image = nested_message.get("imageMessage") if isinstance(nested_message.get("imageMessage"), dict) else {}
+        base64_value = (
+            payload.get("base64")
+            or data.get("base64")
+            or image.get("base64")
+            or payload.get("media_base64")
+            or data.get("media_base64")
+        )
+        mimetype = (
+            payload.get("content_type")
+            or payload.get("mimetype")
+            or data.get("mimetype")
+            or image.get("mimetype")
+            or "image/jpeg"
+        )
+        data_url = payload.get("media_data_url")
+        if not data_url and isinstance(base64_value, str) and base64_value.strip():
+            data_url = f"data:{mimetype};base64,{base64_value}"
+        thumbnail = image.get("jpegThumbnail") or data.get("jpegThumbnail") or payload.get("jpegThumbnail")
+        thumbnail_data_url = None
+        if isinstance(thumbnail, str) and thumbnail.strip():
+            thumbnail_data_url = f"data:image/jpeg;base64,{thumbnail}"
+        url = (
+            payload.get("media_url")
+            or payload.get("url")
+            or data.get("mediaUrl")
+            or data.get("media_url")
+            or image.get("url")
+        )
+        return MensajeMediaOut(
+            url=str(url) if url else None,
+            data_url=str(data_url) if data_url else None,
+            thumbnail_data_url=thumbnail_data_url,
+            mimetype=str(mimetype) if mimetype else None,
+            filename=payload.get("filename") or image.get("fileName"),
+            caption=mensaje.contenido,
         )
 
     async def _broadcast_conversacion(self, event_type: str, conversacion_id: str) -> None:
