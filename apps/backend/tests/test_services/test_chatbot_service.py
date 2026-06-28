@@ -12,6 +12,7 @@ class FakeRepo:
         self.routing_updates: list[dict] = []
         self.chatbot_updates: list[dict] = []
         self.llm_usage_entries: list[dict] = []
+        self.active_incident_associations: list[dict] = []
         self.vinculated_incident_id: str | None = None
 
     async def get_or_create_chatbot_state(self, conversacion_id: str):
@@ -26,6 +27,10 @@ class FakeRepo:
 
     async def vincular_incidente(self, conversacion_id: str, incidente_id: str):
         self.vinculated_incident_id = incidente_id
+        return None
+
+    async def replace_active_incident_association(self, **kwargs):
+        self.active_incident_associations.append(kwargs)
         return None
 
     async def create_chatbot_llm_usage(self, **kwargs):
@@ -113,6 +118,7 @@ async def test_chatbot_handoffs_critical_cases(monkeypatch):
     assert service._repo.routing_updates[-1]["modo_atencion"] == "HUMANO"  # noqa: SLF001
     assert service._repo.routing_updates[-1]["estado"] == "EN_COLA"  # noqa: SLF001
     assert service._repo.vinculated_incident_id == "incident-id"  # noqa: SLF001
+    assert service._repo.active_incident_associations[-1]["incidente_id"] == "incident-id"  # noqa: SLF001
     assert service._repo.llm_usage_entries  # noqa: SLF001
     assert service._evolution.sent_messages  # noqa: SLF001
     assert service._repo.chatbot_updates[-1]["bot_status"] == "BOT_ESCALATED"  # noqa: SLF001
@@ -150,6 +156,7 @@ async def test_chatbot_creates_incident_for_complete_non_critical_report(monkeyp
 
     assert service._repo.routing_updates[-1]["modo_atencion"] == "BOT"  # noqa: SLF001
     assert service._repo.vinculated_incident_id == "incident-id"  # noqa: SLF001
+    assert service._repo.active_incident_associations[-1]["incidente_id"] == "incident-id"  # noqa: SLF001
     assert service._repo.llm_usage_entries  # noqa: SLF001
     assert service._repo.chatbot_updates[-1]["bot_status"] == "BOT_INCIDENT_DRAFTED"  # noqa: SLF001
     assert service._evolution.sent_messages  # noqa: SLF001
