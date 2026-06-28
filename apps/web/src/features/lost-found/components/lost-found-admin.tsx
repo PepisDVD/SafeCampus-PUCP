@@ -67,10 +67,11 @@ type MotivoSortValue = "nombre_asc" | "nombre_desc" | "orden_visual";
 const MOTIVOS_PER_PAGE = 8;
 
 type Props = {
-  categorias: CategoriaLf[];
-  matchingConfig: MatchingConfigLf;
-  politicaCustodia: CustodiaPoliticaLf;
-  motivosCierre: MotivoCierreLf[];
+  activeTab?: string;
+  categorias?: CategoriaLf[];
+  matchingConfig?: MatchingConfigLf;
+  politicaCustodia?: CustodiaPoliticaLf;
+  motivosCierre?: MotivoCierreLf[];
 };
 
 function TooltipSubtitle({
@@ -99,18 +100,26 @@ function TooltipSubtitle({
   );
 }
 
-export function LostFoundAdmin({ categorias, matchingConfig, politicaCustodia, motivosCierre }: Props) {
+export function LostFoundAdmin({ activeTab, categorias, matchingConfig, politicaCustodia, motivosCierre }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  const rawTab = requestedTab === "matching" || requestedTab === "ciclo-vida" ? "reglas-operativas" : requestedTab;
-  const tab: TabValue = VALID_TABS.has(rawTab ?? "") ? (rawTab as TabValue) : DEFAULT_TAB;
+  const rawTab = requestedTab === "matching" || requestedTab === "ciclo-vida" ? "reglas-operativas" : requestedTab ?? activeTab;
+  const resolvedTab: TabValue = VALID_TABS.has(rawTab ?? "") ? (rawTab as TabValue) : DEFAULT_TAB;
+  const [optimisticTab, setOptimisticTab] = useState<TabValue | null>(null);
+  const [isNavigating, startNavigation] = useTransition();
+  const tab = isNavigating && optimisticTab ? optimisticTab : resolvedTab;
 
   const setTab = (value: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", value);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    if (VALID_TABS.has(value)) {
+      setOptimisticTab(value as TabValue);
+    }
+    startNavigation(() => {
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    });
   };
 
   return (
@@ -130,16 +139,41 @@ export function LostFoundAdmin({ categorias, matchingConfig, politicaCustodia, m
           ))}
         </TabsList>
 
-        <TabsContent value="categorias">
-          <CategoriasTab categorias={categorias} />
-        </TabsContent>
-        <TabsContent value="reglas-operativas">
-          <ReglasOperativasTab config={matchingConfig} politica={politicaCustodia} motivos={motivosCierre} />
-        </TabsContent>
-        <TabsContent value="custodia">
-          <SupervisoresAccesoTab />
-        </TabsContent>
+        {isNavigating && <AdminTabSkeleton />}
+
+        {!isNavigating && tab === "categorias" && (
+          <TabsContent value="categorias">
+            {categorias ? <CategoriasTab categorias={categorias} /> : <AdminTabSkeleton />}
+          </TabsContent>
+        )}
+        {!isNavigating && tab === "reglas-operativas" && (
+          <TabsContent value="reglas-operativas">
+            {matchingConfig && politicaCustodia && motivosCierre ? (
+              <ReglasOperativasTab config={matchingConfig} politica={politicaCustodia} motivos={motivosCierre} />
+            ) : (
+              <AdminTabSkeleton />
+            )}
+          </TabsContent>
+        )}
+        {!isNavigating && tab === "custodia" && (
+          <TabsContent value="custodia">
+            <SupervisoresAccesoTab />
+          </TabsContent>
+        )}
       </Tabs>
+    </div>
+  );
+}
+
+function AdminTabSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-live="polite">
+      <div className="h-10 animate-pulse rounded-lg border border-slate-200 bg-white" />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="h-36 animate-pulse rounded-lg border border-slate-200 bg-white" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -166,7 +200,7 @@ function SupervisoresAccesoTab() {
     lostFoundClient
       .accesoSupervisores()
       .then((rows) => active && aplicar(rows))
-      .catch((error) => active && toast.error(error instanceof Error ? error.message : "No se pudieron cargar los supervisores"))
+      .catch((error) => active && toast.error(error instanceof Error ? error.message : "No se pudo cargar el personal operativo"))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
@@ -205,7 +239,7 @@ function SupervisoresAccesoTab() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <TooltipSubtitle
           title="Acceso al módulo"
-          description="Solo los supervisores habilitados pueden ver y operar el módulo Lost & Found (Dashboard, Hilos y Logística). Los administradores siempre tienen acceso."
+          description="Solo el personal operativo habilitado puede ver y operar el módulo Lost & Found. Los administradores siempre tienen acceso."
           prominent
         />
         <Button onClick={save} disabled={isPending || !dirty}>
@@ -217,26 +251,26 @@ function SupervisoresAccesoTab() {
       <Card>
         <CardContent className="space-y-4 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-slate-500">{selected.size} de {supervisores?.length ?? 0} supervisores con acceso.</p>
+            <p className="text-sm text-slate-500">{selected.size} de {supervisores?.length ?? 0} usuarios operativos con acceso.</p>
             <SearchInput
               containerClassName="w-full sm:w-72"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar supervisor..."
+              placeholder="Buscar personal..."
             />
           </div>
 
           {loading ? (
             <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-500">
-              <Spinner className="h-4 w-4" /> Cargando supervisores...
+              <Spinner className="h-4 w-4" /> Cargando personal...
             </div>
           ) : (supervisores ?? []).length === 0 ? (
             <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
-              No hay supervisores registrados en el sistema.
+              No hay personal operativo registrado en el sistema.
             </p>
           ) : filtered.length === 0 ? (
             <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
-              No se encontraron supervisores con ese criterio.
+              No se encontro personal con ese criterio.
             </p>
           ) : (
             <div className="divide-y rounded-lg border">

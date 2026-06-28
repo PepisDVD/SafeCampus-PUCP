@@ -1797,6 +1797,9 @@ export type Database = {
           fecha_resolucion: string | null
           geom: unknown
           id: string
+          live_location_enabled: boolean
+          live_location_expires_at: string | null
+          live_location_updated_at: string | null
           lugar_referencia: string | null
           notas_internas: string | null
           operador_asignado_id: string | null
@@ -1821,6 +1824,9 @@ export type Database = {
           fecha_resolucion?: string | null
           geom?: unknown
           id?: string
+          live_location_enabled?: boolean
+          live_location_expires_at?: string | null
+          live_location_updated_at?: string | null
           lugar_referencia?: string | null
           notas_internas?: string | null
           operador_asignado_id?: string | null
@@ -1845,6 +1851,9 @@ export type Database = {
           fecha_resolucion?: string | null
           geom?: unknown
           id?: string
+          live_location_enabled?: boolean
+          live_location_expires_at?: string | null
+          live_location_updated_at?: string | null
           lugar_referencia?: string | null
           notas_internas?: string | null
           operador_asignado_id?: string | null
@@ -1915,6 +1924,27 @@ export type Database = {
   }
   sc_lost_found: {
     Tables: {
+      acceso_modulo_lf: {
+        Row: {
+          asignado_por_id: string | null
+          created_at: string
+          id: string
+          usuario_id: string
+        }
+        Insert: {
+          asignado_por_id?: string | null
+          created_at?: string
+          id?: string
+          usuario_id: string
+        }
+        Update: {
+          asignado_por_id?: string | null
+          created_at?: string
+          id?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
       caso_lost_found: {
         Row: {
           categoria_id: string | null
@@ -1935,9 +1965,12 @@ export type Database = {
           id: string
           lugar_referencia: string | null
           marca: string | null
+          metadatos: Json
           motivo_cierre: Database["public"]["Enums"]["motivo_cierre_lf"] | null
+          motivo_cierre_id: string | null
           notas: string | null
           observaciones_cierre: string | null
+          oculto: boolean
           reportante_id: string
           subcategoria: string | null
           tipo: Database["public"]["Enums"]["tipo_caso_lf"]
@@ -1964,9 +1997,12 @@ export type Database = {
           id?: string
           lugar_referencia?: string | null
           marca?: string | null
+          metadatos?: Json
           motivo_cierre?: Database["public"]["Enums"]["motivo_cierre_lf"] | null
+          motivo_cierre_id?: string | null
           notas?: string | null
           observaciones_cierre?: string | null
+          oculto?: boolean
           reportante_id: string
           subcategoria?: string | null
           tipo: Database["public"]["Enums"]["tipo_caso_lf"]
@@ -1993,9 +2029,12 @@ export type Database = {
           id?: string
           lugar_referencia?: string | null
           marca?: string | null
+          metadatos?: Json
           motivo_cierre?: Database["public"]["Enums"]["motivo_cierre_lf"] | null
+          motivo_cierre_id?: string | null
           notas?: string | null
           observaciones_cierre?: string | null
+          oculto?: boolean
           reportante_id?: string
           subcategoria?: string | null
           tipo?: Database["public"]["Enums"]["tipo_caso_lf"]
@@ -2011,11 +2050,19 @@ export type Database = {
             referencedRelation: "categoria_objeto"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "caso_lost_found_motivo_cierre_id_fkey"
+            columns: ["motivo_cierre_id"]
+            isOneToOne: false
+            referencedRelation: "motivo_cierre_lf"
+            referencedColumns: ["id"]
+          },
         ]
       }
       categoria_objeto: {
         Row: {
           activa: boolean
+          codigo: string
           created_at: string
           descripcion: string | null
           es_perecible: boolean
@@ -2023,9 +2070,12 @@ export type Database = {
           id: string
           metadatos_schema: Json | null
           nombre: string
+          orden_visual: number
+          updated_at: string
         }
         Insert: {
           activa?: boolean
+          codigo: string
           created_at?: string
           descripcion?: string | null
           es_perecible?: boolean
@@ -2033,9 +2083,12 @@ export type Database = {
           id?: string
           metadatos_schema?: Json | null
           nombre: string
+          orden_visual?: number
+          updated_at?: string
         }
         Update: {
           activa?: boolean
+          codigo?: string
           created_at?: string
           descripcion?: string | null
           es_perecible?: boolean
@@ -2043,6 +2096,8 @@ export type Database = {
           id?: string
           metadatos_schema?: Json | null
           nombre?: string
+          orden_visual?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -2053,10 +2108,16 @@ export type Database = {
           contenido: string
           created_at: string
           deleted_at: string | null
+          destacados_count: number
+          fijado: boolean
+          fijado_at: string | null
+          fijado_por_id: string | null
           id: string
+          imagenes: Json
           motivo_ocultamiento: string | null
           ocultado_por_id: string | null
           parent_id: string | null
+          tag: string | null
           updated_at: string
           visible: boolean
         }
@@ -2066,10 +2127,16 @@ export type Database = {
           contenido: string
           created_at?: string
           deleted_at?: string | null
+          destacados_count?: number
+          fijado?: boolean
+          fijado_at?: string | null
+          fijado_por_id?: string | null
           id?: string
+          imagenes?: Json
           motivo_ocultamiento?: string | null
           ocultado_por_id?: string | null
           parent_id?: string | null
+          tag?: string | null
           updated_at?: string
           visible?: boolean
         }
@@ -2079,10 +2146,16 @@ export type Database = {
           contenido?: string
           created_at?: string
           deleted_at?: string | null
+          destacados_count?: number
+          fijado?: boolean
+          fijado_at?: string | null
+          fijado_por_id?: string | null
           id?: string
+          imagenes?: Json
           motivo_ocultamiento?: string | null
           ocultado_por_id?: string | null
           parent_id?: string | null
+          tag?: string | null
           updated_at?: string
           visible?: boolean
         }
@@ -2296,6 +2369,48 @@ export type Database = {
           },
         ]
       }
+      motivo_cierre_lf: {
+        Row: {
+          activo: boolean
+          clase_cierre: string
+          codigo: string
+          created_at: string
+          descripcion: string | null
+          id: string
+          nombre: string
+          orden_visual: number
+          requiere_observacion: boolean
+          requiere_validacion_entrega: boolean
+          updated_at: string
+        }
+        Insert: {
+          activo?: boolean
+          clase_cierre: string
+          codigo: string
+          created_at?: string
+          descripcion?: string | null
+          id?: string
+          nombre: string
+          orden_visual?: number
+          requiere_observacion?: boolean
+          requiere_validacion_entrega?: boolean
+          updated_at?: string
+        }
+        Update: {
+          activo?: boolean
+          clase_cierre?: string
+          codigo?: string
+          created_at?: string
+          descripcion?: string | null
+          id?: string
+          nombre?: string
+          orden_visual?: number
+          requiere_observacion?: boolean
+          requiere_validacion_entrega?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       participante_hilo_lf: {
         Row: {
           caso_id: string
@@ -2330,6 +2445,73 @@ export type Database = {
             columns: ["caso_id"]
             isOneToOne: false
             referencedRelation: "caso_lost_found"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reaccion_comentario_lf: {
+        Row: {
+          comentario_id: string
+          created_at: string
+          id: string
+          usuario_id: string
+        }
+        Insert: {
+          comentario_id: string
+          created_at?: string
+          id?: string
+          usuario_id: string
+        }
+        Update: {
+          comentario_id?: string
+          created_at?: string
+          id?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reaccion_comentario_lf_comentario_id_fkey"
+            columns: ["comentario_id"]
+            isOneToOne: false
+            referencedRelation: "comentario_caso_lf"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recordatorio_custodia_lf: {
+        Row: {
+          created_at: string
+          custodia_id: string
+          enviado_at: string | null
+          estado: string
+          fecha_referencia: string
+          id: string
+          tipo: string
+        }
+        Insert: {
+          created_at?: string
+          custodia_id: string
+          enviado_at?: string | null
+          estado?: string
+          fecha_referencia: string
+          id?: string
+          tipo: string
+        }
+        Update: {
+          created_at?: string
+          custodia_id?: string
+          enviado_at?: string | null
+          estado?: string
+          fecha_referencia?: string
+          id?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recordatorio_custodia_lf_custodia_id_fkey"
+            columns: ["custodia_id"]
+            isOneToOne: false
+            referencedRelation: "custodia_objeto"
             referencedColumns: ["id"]
           },
         ]
@@ -2666,11 +2848,11 @@ export type Database = {
           id: string
           incidente_id: string | null
           metadatos: Json | null
-          modo_atencion: string
+          modo_atencion: string | null
           motivo_cierre: string | null
           nombre_contacto: string | null
           operador_asignado_id: string | null
-          prioridad: string
+          prioridad: string | null
           telefono_contacto: string | null
           tomado_at: string | null
           tomado_por_id: string | null
@@ -2688,11 +2870,11 @@ export type Database = {
           id?: string
           incidente_id?: string | null
           metadatos?: Json | null
-          modo_atencion?: string
+          modo_atencion?: string | null
           motivo_cierre?: string | null
           nombre_contacto?: string | null
           operador_asignado_id?: string | null
-          prioridad?: string
+          prioridad?: string | null
           telefono_contacto?: string | null
           tomado_at?: string | null
           tomado_por_id?: string | null
@@ -2710,11 +2892,11 @@ export type Database = {
           id?: string
           incidente_id?: string | null
           metadatos?: Json | null
-          modo_atencion?: string
+          modo_atencion?: string | null
           motivo_cierre?: string | null
           nombre_contacto?: string | null
           operador_asignado_id?: string | null
-          prioridad?: string
+          prioridad?: string | null
           telefono_contacto?: string | null
           tomado_at?: string | null
           tomado_por_id?: string | null
@@ -2728,6 +2910,85 @@ export type Database = {
             columns: ["canal_id"]
             isOneToOne: false
             referencedRelation: "canal_reporte"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversacion_incidente_historial: {
+        Row: {
+          actor_tipo: string
+          actor_usuario_id: string | null
+          asociado_at: string
+          conversacion_id: string
+          finalizado_at: string | null
+          id: string
+          incidente_id: string | null
+          metadatos: Json | null
+          motivo_finalizacion: string | null
+          tipo_asociacion: string
+        }
+        Insert: {
+          actor_tipo?: string
+          actor_usuario_id?: string | null
+          asociado_at?: string
+          conversacion_id: string
+          finalizado_at?: string | null
+          id?: string
+          incidente_id?: string | null
+          metadatos?: Json | null
+          motivo_finalizacion?: string | null
+          tipo_asociacion: string
+        }
+        Update: {
+          actor_tipo?: string
+          actor_usuario_id?: string | null
+          asociado_at?: string
+          conversacion_id?: string
+          finalizado_at?: string | null
+          id?: string
+          incidente_id?: string | null
+          metadatos?: Json | null
+          motivo_finalizacion?: string | null
+          tipo_asociacion?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversacion_incidente_historial_conversacion_id_fkey"
+            columns: ["conversacion_id"]
+            isOneToOne: false
+            referencedRelation: "conversacion"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversacion_operador_asignado: {
+        Row: {
+          asignado_por_id: string | null
+          conversacion_id: string
+          created_at: string
+          id: string
+          operador_id: string
+        }
+        Insert: {
+          asignado_por_id?: string | null
+          conversacion_id: string
+          created_at?: string
+          id?: string
+          operador_id: string
+        }
+        Update: {
+          asignado_por_id?: string | null
+          conversacion_id?: string
+          created_at?: string
+          id?: string
+          operador_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversacion_operador_asignado_conversacion_id_fkey"
+            columns: ["conversacion_id"]
+            isOneToOne: false
+            referencedRelation: "conversacion"
             referencedColumns: ["id"]
           },
         ]

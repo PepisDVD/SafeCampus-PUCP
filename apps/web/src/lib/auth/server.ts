@@ -29,6 +29,7 @@ const BACKEND_URL =
   process.env.BACKEND_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
   "http://localhost:8000/api/v1";
+const AUTH_FETCH_TIMEOUT_MS = 20000;
 
 const fetchCurrentUserProfile = cache(async (): Promise<UserProfile | null> => {
   const cookieStore = await cookies();
@@ -37,12 +38,16 @@ const fetchCurrentUserProfile = cache(async (): Promise<UserProfile | null> => {
     .map((cookie) => `${cookie.name}=${cookie.value}`)
     .join("; ");
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AUTH_FETCH_TIMEOUT_MS);
   const response = await fetch(`${BACKEND_URL.replace(/\/$/, "")}/auth/me`, {
     headers: {
       cookie: cookieHeader,
     },
     cache: "no-store",
+    signal: controller.signal,
   }).catch(() => null);
+  clearTimeout(timeout);
 
   if (!response?.ok) return null;
 

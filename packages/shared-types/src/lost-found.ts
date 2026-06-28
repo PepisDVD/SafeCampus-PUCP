@@ -74,12 +74,15 @@ export type CasoLfListItem = {
   longitud?: number | null;
   fecha_evento?: string | null;
   foto_url?: string | null;
+  foto_adicional_urls?: string[];
   color_principal?: string | null;
   marca?: string | null;
   conteo_comentarios: number;
   ultimo_comentario?: string | null;
   ultimo_comentario_at?: string | null;
   reportante?: UsuarioMiniLf | null;
+  origen?: "COMUNIDAD" | "OPERADOR_MOVIL";
+  comentarios_habilitados?: boolean;
   created_at: string;
 };
 

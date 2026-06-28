@@ -46,7 +46,7 @@ if (lanIp) {
   console.warn("[web:lan] No se pudo detectar una IP LAN; Next usara la configuracion por defecto.");
 }
 
-const child = spawn("next", ["dev", "--hostname", "0.0.0.0", "--port", webPort], {
+const child = spawn("next", ["dev", "--webpack", "--hostname", "0.0.0.0", "--port", webPort], {
   cwd: new URL("..", import.meta.url),
   env,
   shell: process.platform === "win32",

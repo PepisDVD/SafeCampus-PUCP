@@ -59,6 +59,8 @@ from app.schemas.lost_found import (
     MotivoCierreLfCreate,
     MotivoCierreLfItem,
     ParticipacionLfInput,
+    RecepcionLfMobileInput,
+    RecepcionLfMobileResult,
 )
 from app.services.storage_service import StorageService
 
@@ -83,6 +85,8 @@ COMENTARIOS_PROFUNDIDAD_KEY = "comentarios.profundidad_maxima"
 COMENTARIOS_PROFUNDIDAD_DEFAULT = 6
 COMENTARIOS_PROFUNDIDAD_MAX = 12
 COMENTARIO_ELIMINADO_PLACEHOLDER = "Comentario eliminado."
+ORIGEN_COMUNIDAD = "COMUNIDAD"
+ORIGEN_OPERADOR_MOVIL = "OPERADOR_MOVIL"
 LISTA_NEGRA_DEFAULT = [
     "idiota", "imbecil", "estupido", "estupida", "tarado", "tarada", "mierda",
     "puta", "puto", "pendejo", "pendeja", "cabron", "cabrona", "marica",
@@ -180,9 +184,10 @@ class LostFoundService:
         await self._audit_categoria(actor_id, accion, row["id"], before=before, after=row, resumen=resumen)
         return CategoriaLfItem(**row)
 
-    async def crear_caso(self, reportante_id: str, data: CasoLfCreateInput) -> CasoLfCreated:
+    async def crear_caso(self, reportante_id: str, data: CasoLfCreateInput, *, origen: str = ORIGEN_COMUNIDAD) -> CasoLfCreated:
         payload = data.model_dump()
         payload["tipo"] = data.tipo.value
+        payload["origen"] = origen
         categoria = await self._repo.get_categoria(data.categoria_id)
         if not categoria:
             raise HTTPException(status_code=422, detail="La categoría seleccionada no existe.")
@@ -195,6 +200,29 @@ class LostFoundService:
         await self._audit_lf(reportante_id, "LF_CASO_CREADO", "caso_lost_found", creado["id"], {"codigo": creado["codigo"], "tipo_caso": data.tipo.value, "categoria_id": data.categoria_id})
         matches = await self._generar_matches(creado["id"], reportante_id)
         return CasoLfCreated(**creado, matches_generados=matches)
+
+    async def registrar_recepcion_mobile(self, actor_id: str, data: RecepcionLfMobileInput) -> RecepcionLfMobileResult:
+        if data.tipo.value != "ENCONTRADO":
+            raise HTTPException(status_code=422, detail="La app operativa solo registra objetos encontrados.")
+        caso_payload = CasoLfCreateInput(**data.model_dump(exclude={"ubicacion_custodia", "observaciones_custodia", "es_perecible"}))
+        creado = await self.crear_caso(actor_id, caso_payload, origen=ORIGEN_OPERADOR_MOVIL)
+        custodia = await self.crear_custodia(
+            creado.id,
+            actor_id,
+            CustodiaLfCreateInput(
+                ubicacion_custodia=data.ubicacion_custodia,
+                observaciones=data.observaciones_custodia,
+                es_perecible=data.es_perecible,
+            ),
+        )
+        await self._audit_lf(
+            actor_id,
+            "LF_RECEPCION_MOVIL_REGISTRADA",
+            "caso_lost_found",
+            creado.id,
+            {"codigo": creado.codigo, "custodia_id": custodia.id},
+        )
+        return RecepcionLfMobileResult(caso=creado, custodia=custodia)
 
     async def listar_feed(
         self,
@@ -214,6 +242,7 @@ class LostFoundService:
         lng: float | None = None,
         radio_km: float | None = None,
         metadatos: dict[str, Any] | None = None,
+        origen: str | None = None,
     ) -> list[CasoLfListItem]:
         rows = await self._repo.list_feed(
             search=search,
@@ -229,13 +258,14 @@ class LostFoundService:
             lng=lng,
             radio_km=radio_km,
             metadatos=metadatos,
+            origen=origen,
             cursor=cursor,
             limit=max(1, min(limit, 100)),
         )
         return [self._map_list(row, public=True) for row in rows]
 
-    async def listar_mis_casos(self, usuario_id: str, limit: int) -> list[CasoLfListItem]:
-        return [self._map_list(row) for row in await self._repo.list_by_reportante(usuario_id, max(1, min(limit, 100)))]
+    async def listar_mis_casos(self, usuario_id: str, limit: int, origen: str | None = None) -> list[CasoLfListItem]:
+        return [self._map_list(row) for row in await self._repo.list_by_reportante(usuario_id, max(1, min(limit, 100)), origen)]
 
     async def listar_operativo(
         self,
@@ -244,6 +274,7 @@ class LostFoundService:
         tipos: list[str] | None,
         estados: list[str] | None,
         categoria_ids: list[str] | None,
+        origen: str | None,
         cursor: datetime | None,
         limit: int,
     ) -> list[CasoLfListItem]:
@@ -254,6 +285,7 @@ class LostFoundService:
                 tipos=tipos,
                 estados=estados,
                 categoria_ids=categoria_ids,
+                origen=origen,
                 cursor=cursor,
                 limit=max(1, min(limit, 200)),
             )
@@ -271,9 +303,12 @@ class LostFoundService:
         if row.get("oculto") and not is_owner and not is_operativo:
             raise HTTPException(status_code=404, detail="Caso Lost & Found no encontrado.")
         historial = await self._repo.list_historial(str(row["id"])) if is_owner or is_operativo else []
-        comentarios = await self._repo.list_comentarios(str(row["id"]), include_hidden=is_operativo, usuario_id=usuario_id)
-        comentarios = self._compute_profundidades(comentarios)
-        comentarios = self._mark_comment_flags(comentarios, usuario_id, is_operativo, is_owner=is_owner, caso_tipo=str(row["tipo"]))
+        comentarios_habilitados = str(row.get("origen") or ORIGEN_COMUNIDAD) != ORIGEN_OPERADOR_MOVIL
+        comentarios = []
+        if comentarios_habilitados:
+            comentarios = await self._repo.list_comentarios(str(row["id"]), include_hidden=is_operativo, usuario_id=usuario_id)
+            comentarios = self._compute_profundidades(comentarios)
+            comentarios = self._mark_comment_flags(comentarios, usuario_id, is_operativo, is_owner=is_owner, caso_tipo=str(row["tipo"]))
         max_profundidad = await self._obtener_profundidad_maxima()
         return self._map_detail(
             row,
@@ -601,6 +636,8 @@ class LostFoundService:
     async def listar_comentarios(self, caso_id: str, roles: list[str], usuario_id: str) -> list[ComentarioLfItem]:
         is_operativo = bool(OPERATIVO_ROLES.intersection(roles))
         caso = await self._repo.get_estado(caso_id)
+        if caso and str(caso.get("origen") or ORIGEN_COMUNIDAD) == ORIGEN_OPERADOR_MOVIL:
+            return []
         is_owner = bool(caso and str(caso["reportante_id"]) == usuario_id)
         caso_tipo = str(caso["tipo"]) if caso else None
         rows = await self._repo.list_comentarios(caso_id, include_hidden=is_operativo, usuario_id=usuario_id)
@@ -612,6 +649,8 @@ class LostFoundService:
         actual = await self._repo.get_estado(caso_id)
         if not actual or str(actual["estado"]) not in CHAT_STATES:
             raise HTTPException(status_code=404, detail="Caso activo no encontrado.")
+        if str(actual.get("origen") or ORIGEN_COMUNIDAD) == ORIGEN_OPERADOR_MOVIL:
+            raise HTTPException(status_code=403, detail="Los registros operativos no admiten comentarios.")
         contenido = data.contenido.strip()
         await self._validar_contenido(contenido)
         tag = data.tag or None
@@ -715,7 +754,7 @@ class LostFoundService:
                 id=str(r["id"]),
                 nombre_completo=f"{r.get('nombre') or ''} {r.get('apellido') or ''}".strip() or "Usuario",
                 email=r.get("email"),
-                rol="supervisor",
+                rol=r.get("rol") or "operador",
                 asignado=bool(r.get("asignado")),
             )
             for r in rows
@@ -729,7 +768,7 @@ class LostFoundService:
     async def tiene_acceso_lf(self, usuario_id: str, roles: list[str]) -> bool:
         # Administradores y operadores conservan el acceso operativo del módulo.
         # La restricción aplica a los supervisores: solo los asignados pueden entrar.
-        if "administrador" in roles or "operador" in roles:
+        if "administrador" in roles:
             return True
         return await self._repo.tiene_acceso_lf(usuario_id)
 
@@ -1528,12 +1567,15 @@ class LostFoundService:
             longitud=row.get("longitud"),
             fecha_evento=row.get("fecha_evento"),
             foto_url=row.get("foto_url"),
+            foto_adicional_urls=row.get("foto_adicional_urls") or [],
             color_principal=row.get("color_principal"),
             marca=row.get("marca"),
             conteo_comentarios=row.get("conteo_comentarios") or 0,
             ultimo_comentario=row.get("ultimo_comentario"),
             ultimo_comentario_at=row.get("ultimo_comentario_at"),
             reportante=cls._usuario(row, public=public),
+            origen=row.get("origen") or ORIGEN_COMUNIDAD,
+            comentarios_habilitados=(row.get("origen") or ORIGEN_COMUNIDAD) != ORIGEN_OPERADOR_MOVIL,
             created_at=row["created_at"],
         )
 
@@ -1541,6 +1583,7 @@ class LostFoundService:
     def _map_detail(cls, row: dict[str, Any], historial: list[dict[str, Any]], comentarios: list[dict[str, Any]], public: bool = False, *, mostrar_eliminado: bool = False, profundidad_maxima: int = COMENTARIOS_PROFUNDIDAD_DEFAULT) -> CasoLfDetail:
         base = cls._map_list(row, public=public).model_dump()
         base.pop("reportante", None)
+        base.pop("foto_adicional_urls", None)
         return CasoLfDetail(
             **base,
             comentarios_profundidad_maxima=profundidad_maxima,

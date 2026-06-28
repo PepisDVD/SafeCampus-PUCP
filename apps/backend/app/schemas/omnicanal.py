@@ -92,13 +92,17 @@ class ConversacionListItem(BaseModel):
     telefono_contacto: str | None = None
     nombre_contacto: str | None = None
     estado: ConversacionEstado
-    modo_atencion: ModoAtencion
-    prioridad: PrioridadConversacion
+    modo_atencion: ModoAtencion | None = None
+    prioridad: PrioridadConversacion | None = None
     operador_asignado: UsuarioConversacionOut | None = None
+    operadores_asignados: list[UsuarioConversacionOut] = Field(default_factory=list)
     tomado_por: UsuarioConversacionOut | None = None
     incidente: IncidenteConversacionOut | None = None
+    ultimo_incidente: IncidenteConversacionOut | None = None
+    historico_incidentes_count: int = 0
     chatbot: ChatbotConversationStateOut | None = None
     ultimo_mensaje_preview: str | None = None
+    ultimo_mensaje_autor_tipo: AutorMensaje | None = None
     ultimo_mensaje_at: datetime
     unread_count: int = 0
     created_at: datetime
@@ -112,6 +116,37 @@ class ConversacionListResponse(BaseModel):
 
 class ConversacionDetail(ConversacionListItem):
     metadatos: dict = Field(default_factory=dict)
+
+
+class ConversacionHistorialListItem(BaseModel):
+    id: str
+    nombre_contacto: str | None = None
+    telefono_contacto: str | None = None
+    external_chat_id: str
+    estado: ConversacionEstado
+    ultimo_mensaje_at: datetime
+    incidentes_count: int = 0
+
+
+class ConversacionesHistorialResponse(BaseModel):
+    items: list[ConversacionHistorialListItem]
+    total: int
+
+
+class IncidenteHistorialConversacionOut(BaseModel):
+    id: str
+    incidente: IncidenteConversacionOut | None = None
+    actor_usuario: UsuarioConversacionOut | None = None
+    actor_tipo: str
+    tipo_asociacion: str
+    asociado_at: datetime
+    finalizado_at: datetime | None = None
+    motivo_finalizacion: str | None = None
+
+
+class ConversacionHistorialDetail(BaseModel):
+    conversacion: ConversacionDetail
+    incidentes: list[IncidenteHistorialConversacionOut]
 
 
 class MensajesConversacionResponse(BaseModel):
@@ -136,7 +171,8 @@ class EnviarMensajeInput(BaseModel):
 
 
 class AsignarConversacionInput(BaseModel):
-    operador_id: str
+    operador_id: str | None = None
+    operador_ids: list[str] | None = Field(default=None, max_length=12)
 
 
 class CerrarConversacionInput(BaseModel):

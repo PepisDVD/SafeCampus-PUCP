@@ -496,7 +496,7 @@ function StepCaseSummary({ custodia, caso }: { custodia: CustodiaLf | null; caso
         Verifica que el objeto y el caso correspondan a la devolucion que estas por registrar.
       </SupportText>
       <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
-        <div className="relative aspect-[4/3] overflow-hidden rounded-lg border bg-slate-50">
+        <div className="relative aspect-4/3 overflow-hidden rounded-lg border bg-slate-50">
           {caso?.foto_url ? (
             <Image src={caso.foto_url} alt="" fill unoptimized className="object-cover" />
           ) : (
@@ -768,7 +768,7 @@ function RelatedCaseDetail({ caso }: { caso?: CasoLfListItem }) {
           {caso.descripcion && (
             <div className="rounded-lg border bg-white p-3">
               <dt className="text-xs text-slate-500">Descripcion</dt>
-              <dd className="mt-1 text-sm break-words text-slate-800">{caso.descripcion}</dd>
+              <dd className="mt-1 text-sm wrap-break-words text-slate-800">{caso.descripcion}</dd>
             </div>
           )}
         </div>
@@ -1177,7 +1177,7 @@ function SummaryBlock({ title, items }: { title: string; items: Array<[string, s
         {items.map(([label, value]) => (
           <div key={label} className="grid grid-cols-[120px_1fr] gap-3">
             <dt className="text-slate-500">{label}</dt>
-            <dd className="min-w-0 break-words font-medium text-slate-800">{value || "No registrado"}</dd>
+            <dd className="min-w-0 wrap-break-words font-medium text-slate-800">{value || "No registrado"}</dd>
           </div>
         ))}
       </dl>

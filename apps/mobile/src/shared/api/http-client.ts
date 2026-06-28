@@ -47,6 +47,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       withRetry(
         async () => {
           const url = `${CONFIG.API_BASE_URL}${path}`;
+          const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
           if (__DEV__) {
             console.info("[api:request]", { method: options.method ?? "GET", url });
           }
@@ -54,10 +55,10 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
             method: options.method ?? "GET",
             headers: {
               Accept: "application/json",
-              "Content-Type": "application/json",
+              ...(!isFormData ? { "Content-Type": "application/json" } : {}),
               ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
             },
-            body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+            body: options.body !== undefined ? (isFormData ? (options.body as BodyInit_) : JSON.stringify(options.body)) : undefined,
           });
           if (res.status >= 500) throw new ServerError(res.status);
           return res;

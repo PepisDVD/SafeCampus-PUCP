@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "dev:lan": "node scripts/start-next-with-lan-api.mjs",
     "build": "next build",
     "start": "next start",

@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
   Separator,
+  Spinner,
   Switch,
   Tabs,
   TabsContent,
@@ -88,8 +89,8 @@ import type { CasoLfDetail, CasoLfListItem, CategoriaLf, MatchLf, UbicacionMaest
 type Props = {
   categorias: CategoriaLf[];
   initialFeed: CasoLfListItem[];
-  initialMine: CasoLfListItem[];
-  ubicaciones: UbicacionMaestra[];
+  initialMine?: CasoLfListItem[];
+  ubicaciones?: UbicacionMaestra[];
 };
 
 type FotoAdjunta = {
@@ -121,10 +122,17 @@ const terminalStates = new Set(["CERRADO", "DEVUELTO", "DESCARTADO"]);
 
 export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubicaciones }: Props) {
   const [feed, setFeed] = useState(initialFeed);
-  const [mine, setMine] = useState(initialMine);
+  const [operatorFeed, setOperatorFeed] = useState<CasoLfListItem[]>([]);
+  const [mine, setMine] = useState(initialMine ?? []);
+  const [mineLoaded, setMineLoaded] = useState(Boolean(initialMine));
+  const [mineLoading, setMineLoading] = useState(false);
+  const [ubicacionesMaestras, setUbicacionesMaestras] = useState(ubicaciones ?? []);
+  const [ubicacionesLoading, setUbicacionesLoading] = useState(false);
+  const ubicacionesLoadedRef = useRef(Boolean(ubicaciones?.length));
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [filters, setFilters] = useState<CommunityFilters>(emptyCommunityFilters);
   const [feedLoading, setFeedLoading] = useState(false);
+  const [operatorFeedLoading, setOperatorFeedLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -206,6 +214,18 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
     }
   }, []);
 
+  const reloadOperatorFeed = useCallback(async () => {
+    setOperatorFeedLoading(true);
+    try {
+      const next = await lostFoundClient.feed({ ...toFeedParams(filtersRef.current), origen: "OPERADOR_MOVIL" });
+      setOperatorFeed(next.items);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron cargar las recepciones");
+    } finally {
+      setOperatorFeedLoading(false);
+    }
+  }, []);
+
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !nextCursorRef.current) return;
     loadingMoreRef.current = true;
@@ -230,9 +250,18 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
       mountedRef.current = true;
       return;
     }
-    const handle = window.setTimeout(() => void reloadFeed(), 300);
+    const handle = window.setTimeout(() => {
+      if (activeTab === "recepciones") void reloadOperatorFeed();
+      else void reloadFeed();
+    }, 300);
     return () => window.clearTimeout(handle);
-  }, [filters, reloadFeed]);
+  }, [activeTab, filters, reloadFeed, reloadOperatorFeed]);
+
+  useEffect(() => {
+    if (activeTab === "recepciones" && operatorFeed.length === 0 && !operatorFeedLoading) {
+      void reloadOperatorFeed();
+    }
+  }, [activeTab, operatorFeed.length, operatorFeedLoading, reloadOperatorFeed]);
 
   const patchFilters = (partial: Partial<CommunityFilters>) => setFilters((current) => ({ ...current, ...partial }));
 
@@ -243,6 +272,42 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
       radio_km: value?.radio_km ?? null,
     });
   };
+
+  const loadMine = useCallback(async () => {
+    if (mineLoading) return;
+    setMineLoading(true);
+    try {
+      const nextMine = await lostFoundClient.misCasos();
+      setMine(nextMine.items);
+      setMineLoaded(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron cargar tus casos");
+    } finally {
+      setMineLoading(false);
+    }
+  }, [mineLoading]);
+
+  const loadUbicaciones = useCallback(async () => {
+    if (ubicacionesLoadedRef.current || ubicacionesLoading) return;
+    setUbicacionesLoading(true);
+    try {
+      const nextUbicaciones = await lostFoundClient.ubicacionesMaestras();
+      ubicacionesLoadedRef.current = true;
+      setUbicacionesMaestras(nextUbicaciones);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron cargar las ubicaciones");
+    } finally {
+      setUbicacionesLoading(false);
+    }
+  }, [ubicacionesLoading]);
+
+  useEffect(() => {
+    if (activeTab === "mis" && !mineLoaded) void loadMine();
+  }, [activeTab, loadMine, mineLoaded]);
+
+  useEffect(() => {
+    if (newCaseOpen) void loadUbicaciones();
+  }, [loadUbicaciones, newCaseOpen]);
 
   const openDetail = (item: CasoLfListItem) => {
     setOpeningDetail(true);
@@ -315,6 +380,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
   const refreshMine = async () => {
     const nextMine = await lostFoundClient.misCasos();
     setMine(nextMine.items);
+    setMineLoaded(true);
   };
 
   const handleUbicacionChange = (value: string) => {
@@ -324,7 +390,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
       setForm((current) => ({ ...current, lugar_referencia: "" }));
       return;
     }
-    const ubicacion = ubicaciones.find((item) => item.id === value);
+    const ubicacion = ubicacionesMaestras.find((item) => item.id === value);
     if (ubicacion) setForm((current) => ({ ...current, lugar_referencia: ubicacion.nombre }));
   };
 
@@ -540,8 +606,9 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
       </section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="feed">Feed</TabsTrigger>
+          <TabsTrigger value="recepciones">Recepciones</TabsTrigger>
           <TabsTrigger value="mis">Mis casos</TabsTrigger>
         </TabsList>
 
@@ -634,6 +701,72 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
           />
         </TabsContent>
 
+        <TabsContent value="recepciones" className="space-y-3">
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={filters.search}
+                onChange={(e) => patchFilters({ search: e.target.value })}
+                placeholder="Buscar recepciones operativas"
+                className="pl-9"
+              />
+            </div>
+            <Button
+              variant="outline"
+              className="relative gap-1.5"
+              onClick={() => setFiltersOpen(true)}
+              aria-label="Mas filtros"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtros
+              {advancedCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#001C55] px-1 text-[10px] font-semibold text-white">
+                  {advancedCount}
+                </span>
+              )}
+            </Button>
+          </div>
+
+          <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+            <QuickChip active={isPristine} onClick={() => setFilters(emptyCommunityFilters)}>
+              Todas
+            </QuickChip>
+            <Select
+              value={filters.categoria_id || ALL_CATEGORIES}
+              onValueChange={(value) =>
+                patchFilters({ categoria_id: value === ALL_CATEGORIES ? "" : value, metadatos: {} })
+              }
+            >
+              <SelectTrigger
+                className={cn(
+                  "h-9 w-auto gap-1 rounded-full border-slate-200 text-xs",
+                  filters.categoria_id && "border-[#001C55] bg-[#001C55]/5 text-[#001C55]",
+                )}
+                aria-label="Filtrar por categoria"
+              >
+                <SelectValue placeholder="Categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_CATEGORIES}>Categoria</SelectItem>
+                {categorias.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <QuickChip active={hasLocation} icon={<MapPin className="h-3.5 w-3.5" />} onClick={() => setLocationOpen(true)}>
+              {hasLocation ? `Cerca · ${formatRadius(filters.radio_km! * 1000)}` : "Lugar"}
+            </QuickChip>
+          </div>
+
+          <FeedList
+            items={operatorFeed}
+            loading={operatorFeedLoading}
+            loadingMore={false}
+            nextCursor={null}
+            onOpen={openDetail}
+            onLoadMore={() => undefined}
+          />
+        </TabsContent>
+
         <TabsContent value="mis" className="space-y-3">
           <Select value={mineStatus} onValueChange={setMineStatus}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -644,7 +777,9 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
               ))}
             </SelectContent>
           </Select>
-          {filteredMine.length === 0 ? (
+          {mineLoading && !mineLoaded ? (
+            <CaseListSkeleton />
+          ) : filteredMine.length === 0 ? (
             <p className="rounded-lg border border-dashed p-4 text-center text-sm text-slate-500">No tienes casos con ese estado.</p>
           ) : (
             <div className="space-y-3">
@@ -658,7 +793,10 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
       <div className="pointer-events-none fixed inset-x-0 bottom-24 z-30">
         <div className="mx-auto max-w-md px-4">
           <Button
-            onClick={() => setNewCaseOpen(true)}
+            onClick={() => {
+              setNewCaseOpen(true);
+              void loadUbicaciones();
+            }}
             aria-label="Registrar nuevo caso"
             className="pointer-events-auto ml-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#001C55] p-0 shadow-lg shadow-[#001C55]/30 transition active:scale-95"
           >
@@ -714,7 +852,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
                     rows={5}
                     maxLength={LF_TEXT_LIMITS.descripcion.max}
                     aria-invalid={Boolean(visibleFormError(formErrors.descripcion, formTouched.descripcion, formSubmitted))}
-                    className="max-h-60 min-h-28 w-full resize-y overflow-x-hidden break-words field-sizing-fixed"
+                    className="max-h-60 min-h-28 w-full resize-y overflow-x-hidden wrap-break-words field-sizing-fixed"
                     onBlur={() => setFormTouched((current) => ({ ...current, descripcion: true }))}
                     onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
                   />
@@ -758,7 +896,13 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
                   <Select value={ubicacionSeleccionada} onValueChange={handleUbicacionChange}>
                     <SelectTrigger><SelectValue placeholder="Ubicacion" /></SelectTrigger>
                     <SelectContent>
-                      {ubicaciones.map((ubicacion) => <SelectItem key={ubicacion.id} value={ubicacion.id}>{ubicacion.nombre}</SelectItem>)}
+                      {ubicacionesLoading && (
+                        <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-500">
+                          <Spinner className="h-3.5 w-3.5" />
+                          Cargando ubicaciones...
+                        </div>
+                      )}
+                      {ubicacionesMaestras.map((ubicacion) => <SelectItem key={ubicacion.id} value={ubicacion.id}>{ubicacion.nombre}</SelectItem>)}
                       <SelectItem value="OTRO">Otro</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1086,7 +1230,8 @@ function CaseDetail(props: {
   onToggleParticipation: (checked: boolean) => void;
 }) {
   const { caso, matches, isOwn, canEdit, onEdit, threadSubscribed, comment, commentTag, onCommentTagChange, replyingTo, loading, onCommentChange, onReply, onClearReply, onSendComment, onReactComment, onPinComment, onDeleteComment, onRespondMatch, onCancel, onToggleParticipation } = props;
-  const canComment = commentableStates.has(caso.estado);
+  const chatEnabled = caso.comentarios_habilitados !== false;
+  const canComment = chatEnabled && commentableStates.has(caso.estado);
   const canCancel = isOwn && !terminalStates.has(caso.estado);
   const [commentSort, setCommentSort] = useState<CommentSort>("recientes");
   const [tagFilters, setTagFilters] = useState<string[]>([]);
@@ -1096,12 +1241,15 @@ function CaseDetail(props: {
   const [commentPhotos, setCommentPhotos] = useState<FotoAdjunta[]>([]);
   const commentFileRef = useRef<HTMLInputElement | null>(null);
   const commentPhotosRef = useRef<FotoAdjunta[]>([]);
+  const fotoAdicionalUrls = useMemo(() => caso.foto_adicional_urls ?? [], [caso.foto_adicional_urls]);
+  const comentarios = useMemo(() => caso.comentarios ?? [], [caso.comentarios]);
+  const historial = useMemo(() => caso.historial ?? [], [caso.historial]);
   const galleryImages = useMemo(
-    () => [caso.foto_url, ...caso.foto_adicional_urls].filter((src): src is string => Boolean(src)),
-    [caso.foto_url, caso.foto_adicional_urls],
+    () => [caso.foto_url, ...fotoAdicionalUrls].filter((src): src is string => Boolean(src)),
+    [caso.foto_url, fotoAdicionalUrls],
   );
   const maxDepth = caso.comentarios_profundidad_maxima ?? 6;
-  const childrenMap = useMemo(() => buildCommentChildrenMap(caso.comentarios), [caso.comentarios]);
+  const childrenMap = useMemo(() => buildCommentChildrenMap(comentarios), [comentarios]);
 
   useEffect(() => {
     commentPhotosRef.current = commentPhotos;
@@ -1136,12 +1284,12 @@ function CaseDetail(props: {
     });
   };
   const commentTags = tagsForTipo(caso.tipo);
-  const commentIds = new Set(caso.comentarios.map((comentario) => comentario.id));
+  const commentIds = new Set(comentarios.map((comentario) => comentario.id));
   // Raíz = sin padre, o cuyo padre ya no es visible (huérfano), igual que en la web de gestión.
-  const rawRoots = caso.comentarios.filter((comentario) => !comentario.parent_id || !commentIds.has(comentario.parent_id));
+  const rawRoots = comentarios.filter((comentario) => !comentario.parent_id || !commentIds.has(comentario.parent_id));
   const rootComments = sortRootComments(filterByTags(rawRoots, tagFilters), commentSort);
-  const replyingComment = replyingTo ? caso.comentarios.find((item) => item.id === replyingTo) : null;
-  const hasHistory = isOwn && caso.historial.length > 0;
+  const replyingComment = replyingTo ? comentarios.find((item) => item.id === replyingTo) : null;
+  const hasHistory = isOwn && historial.length > 0;
   return (
     <>
     <Card>
@@ -1191,9 +1339,9 @@ function CaseDetail(props: {
             {caso.foto_url && (
               <Photo src={caso.foto_url} onClick={() => setLightbox({ images: galleryImages, index: galleryImages.indexOf(caso.foto_url!) })} />
             )}
-            {caso.foto_adicional_urls.length > 0 && (
+            {fotoAdicionalUrls.length > 0 && (
               <div className="grid grid-cols-3 gap-2">
-                {caso.foto_adicional_urls.map((src) => (
+                {fotoAdicionalUrls.map((src) => (
                   <Photo key={src} src={src} small onClick={() => setLightbox({ images: galleryImages, index: galleryImages.indexOf(src) })} />
                 ))}
               </div>
@@ -1237,6 +1385,8 @@ function CaseDetail(props: {
           </section>
         )}
 
+        {chatEnabled && (
+          <>
         <Separator />
 
         <section className="space-y-2">
@@ -1378,6 +1528,8 @@ function CaseDetail(props: {
             </div>
           </div>
         </section>
+          </>
+        )}
       </CardContent>
     </Card>
 
@@ -1390,7 +1542,7 @@ function CaseDetail(props: {
           </DialogTitle>
         </DialogHeader>
         <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-          {caso.historial.map((item) => (
+          {historial.map((item) => (
             <div key={item.id} className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
               <p className="font-medium text-slate-800">{estadoLabel(item.estado_nuevo)} · {item.accion}</p>
               <p>{formatDate(item.created_at)}{item.comentario ? ` · ${item.comentario}` : ""}</p>

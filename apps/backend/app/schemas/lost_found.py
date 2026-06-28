@@ -95,6 +95,26 @@ class CasoLfCreateInput(BaseModel):
     longitud: float | None = None
 
 
+class RecepcionLfMobileInput(CasoLfCreateInput):
+    ubicacion_custodia: str = Field(min_length=2, max_length=255)
+    observaciones_custodia: str | None = Field(default=None, max_length=2000)
+    es_perecible: bool | None = None
+
+    @field_validator("ubicacion_custodia")
+    @classmethod
+    def _ubicacion_valida(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("La ubicacion debe tener al menos 2 caracteres.")
+        return value
+
+    @field_validator("observaciones_custodia")
+    @classmethod
+    def _normalizar_observaciones(cls, value: str | None) -> str | None:
+        value = value.strip() if value else None
+        return value or None
+
+
 class CasoLfUpdateInput(BaseModel):
     """Edición de datos descriptivos de un caso (no cambia tipo ni estado)."""
     titulo: str = Field(min_length=3, max_length=200)
@@ -148,12 +168,15 @@ class CasoLfListItem(BaseModel):
     longitud: float | None = None
     fecha_evento: datetime | None = None
     foto_url: str | None = None
+    foto_adicional_urls: list[str] = Field(default_factory=list, max_length=3)
     color_principal: str | None = None
     marca: str | None = None
     conteo_comentarios: int = 0
     ultimo_comentario: str | None = None
     ultimo_comentario_at: datetime | None = None
     reportante: UsuarioMini | None = None
+    origen: str = "COMUNIDAD"
+    comentarios_habilitados: bool = True
     created_at: datetime
 
 
@@ -339,6 +362,9 @@ class CustodiaLfItem(BaseModel):
     caso_id: str
     codigo: str | None = None
     titulo: str | None = None
+    categoria_nombre: str | None = None
+    foto_url: str | None = None
+    foto_adicional_urls: list[str] = Field(default_factory=list, max_length=3)
     estado: EstadoCustodia
     ubicacion_custodia: str
     observaciones: str | None = None
@@ -356,6 +382,11 @@ class CustodiaLfListResponse(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class RecepcionLfMobileResult(BaseModel):
+    caso: CasoLfCreated
+    custodia: CustodiaLfItem
 
 
 class DevolucionLfInput(BaseModel):

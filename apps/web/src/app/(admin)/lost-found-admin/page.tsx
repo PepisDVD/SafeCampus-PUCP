@@ -2,19 +2,42 @@ import { Suspense } from "react";
 
 import { LostFoundAdmin } from "@/features/lost-found/components/lost-found-admin";
 import { LfBreadcrumb } from "@/features/lost-found/components/lf-breadcrumb";
-import { getLostFoundAdmin } from "@/features/lost-found/service";
+import {
+  getLostFoundAdminCategorias,
+  getLostFoundAdminReglasOperativas,
+} from "@/features/lost-found/service";
 
-export default async function LostFoundAdminPage() {
-  const { categorias, matchingConfig, politicaCustodia, motivosCierre } = await getLostFoundAdmin();
+type Props = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const VALID_TABS = new Set(["categorias", "reglas-operativas", "custodia"]);
+
+function normalizeTab(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const normalized = raw === "matching" || raw === "ciclo-vida" ? "reglas-operativas" : raw;
+  return VALID_TABS.has(normalized ?? "") ? normalized : "categorias";
+}
+
+export default async function LostFoundAdminPage({ searchParams }: Props) {
+  const params = await searchParams;
+  const tab = normalizeTab(params?.tab);
+  const data =
+    tab === "categorias"
+      ? { categorias: await getLostFoundAdminCategorias() }
+      : tab === "reglas-operativas"
+        ? await getLostFoundAdminReglasOperativas()
+        : {};
+
   return (
     <Suspense>
       <LfBreadcrumb
         items={[
           { label: "Lost & Found", href: "/lost-found-operaciones" },
-          { label: "Configuración" },
+          { label: "Configuracion" },
         ]}
       />
-      <LostFoundAdmin categorias={categorias} matchingConfig={matchingConfig} politicaCustodia={politicaCustodia} motivosCierre={motivosCierre} />
+      <LostFoundAdmin activeTab={tab} {...data} />
     </Suspense>
   );
 }

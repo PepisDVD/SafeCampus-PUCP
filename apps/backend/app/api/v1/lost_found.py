@@ -49,6 +49,8 @@ from app.schemas.lost_found import (
     MotivoCierreLfCreate,
     MotivoCierreLfItem,
     ParticipacionLfInput,
+    RecepcionLfMobileInput,
+    RecepcionLfMobileResult,
     SupervisorLfItem,
 )
 from app.services.lost_found_service import LostFoundService
@@ -184,6 +186,7 @@ async def listar_feed(
     lng: float | None = Query(default=None, ge=-180, le=180),
     radio_km: float | None = Query(default=None, gt=0, le=10),
     metadatos: str | None = Query(default=None, description="Filtros de metadatos como objeto JSON."),
+    origen: str | None = Query(default=None, pattern="^(COMUNIDAD|OPERADOR_MOVIL)$"),
     cursor: datetime | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     service: LostFoundService = Depends(get_service),
@@ -216,6 +219,7 @@ async def listar_feed(
         lng=lng,
         radio_km=radio_km,
         metadatos=metadatos_filtro,
+        origen=origen,
         cursor=cursor,
         limit=min(page_limit + 1, 100),
     )
@@ -226,10 +230,11 @@ async def listar_feed(
 @router.get("/casos/mis", response_model=CasoLfListResponse)
 async def listar_mis_casos(
     limit: int = Query(default=50, ge=1, le=100),
+    origen: str | None = Query(default=None, pattern="^(COMUNIDAD|OPERADOR_MOVIL)$"),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
 ):
-    items = await service.listar_mis_casos(current_user.id, limit)
+    items = await service.listar_mis_casos(current_user.id, limit, origen=origen)
     return CasoLfListResponse(items=items, total=len(items))
 
 
@@ -239,6 +244,7 @@ async def listar_casos_operativo(
     tipo: str | None = Query(default=None),
     estado: str | None = Query(default=None),
     categoria_id: str | None = Query(default=None),
+    origen: str | None = Query(default=None, pattern="^(COMUNIDAD|OPERADOR_MOVIL)$"),
     cursor: datetime | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     _user: AuthUserResponse = Depends(require_lost_found_access),
@@ -250,11 +256,21 @@ async def listar_casos_operativo(
         tipos=_parse_enum_csv(tipo, TipoCasoLF),
         estados=_parse_enum_csv(estado, EstadoCasoLF),
         categoria_ids=_parse_uuid_csv(categoria_id),
+        origen=origen,
         cursor=cursor,
         limit=min(page_limit + 1, 200),
     )
     next_cursor = items[page_limit - 1].created_at if len(items) > page_limit else None
     return CasoLfListResponse(items=items[:page_limit], total=len(items[:page_limit]), next_cursor=next_cursor)
+
+
+@router.post("/mobile/recepciones", response_model=RecepcionLfMobileResult, status_code=status.HTTP_201_CREATED)
+async def registrar_recepcion_mobile(
+    body: RecepcionLfMobileInput,
+    current_user: AuthUserResponse = Depends(require_lost_found_access),
+    service: LostFoundService = Depends(get_service),
+):
+    return await service.registrar_recepcion_mobile(current_user.id, body)
 
 
 @router.get("/casos/{ref}", response_model=CasoLfDetail)

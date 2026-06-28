@@ -38,10 +38,8 @@ import {
   SelectValue,
   Skeleton,
   Textarea,
-  ToggleGroup,
-  ToggleGroupItem,
 } from "@safecampus/ui-kit";
-import { Eye, Grid2X2, List, MapPin, MessageSquare, PackageSearch, Plus, Search, Trash2 } from "lucide-react";
+import { Eye, MapPin, MessageSquare, PackageSearch, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient, type CasoLfCreatePayload } from "../client";
 import { tipoLabel } from "../presentation";
@@ -77,6 +75,11 @@ const ESTADO_OPTIONS = [
   { value: "EN_CUSTODIA", label: "En custodia" },
   { value: "CERRADO", label: "Cerrados" },
 ] as const;
+const ORIGEN_OPTIONS = [
+  { value: "TODOS", label: "Todos los origenes" },
+  { value: "COMUNIDAD", label: "Comunidad" },
+  { value: "OPERADOR_MOVIL", label: "Mobile" },
+] as const;
 
 const LeafletCoordinatePicker = dynamic(
   () => import("@/features/admin/components/maestros/leaflet-coordinate-picker").then((mod) => mod.LeafletCoordinatePicker),
@@ -103,8 +106,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
   const [tipos, setTipos] = useState<string[]>([]);
   const [estados, setEstados] = useState<string[]>([]);
   const [categoriasSeleccionadas, setCategoriasSeleccionadas] = useState<string[]>([]);
-  const [columns, setColumns] = useState("4");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [origen, setOrigen] = useState("TODOS");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<CasoLfCreatePayload>(emptyForm);
   const [touched, setTouched] = useState<TouchedFields>({});
@@ -134,8 +136,9 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
     ...(categoriasSeleccionadas.length
       ? { categoria_id: categoriasSeleccionadas.join(",") }
       : {}),
+    ...(origen !== "TODOS" ? { origen } : {}),
     ...(cursor ? { cursor } : {}),
-  }), [categoriasSeleccionadas, estados, query, tipos]);
+  }), [categoriasSeleccionadas, estados, origen, query, tipos]);
 
   const loadMore = useCallback(() => {
     if (!nextCursor || isPending) return;
@@ -466,7 +469,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
       </div>
 
       <FilterBar>
-        <div className="grid gap-3 lg:grid-cols-[1.4fr_160px_180px_220px_150px_auto_auto]">
+        <div className="grid gap-3 lg:grid-cols-[1.4fr_160px_180px_220px_170px_auto]">
         <SearchInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por código, objeto, lugar o marca" />
         <MultiSelectFilter
           placeholder="Todos"
@@ -489,26 +492,12 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
           selected={categoriasSeleccionadas}
           onChange={setCategoriasSeleccionadas}
         />
-        <Select value={columns} onValueChange={setColumns}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="3">3 por fila</SelectItem>
-            <SelectItem value="4">4 por fila</SelectItem>
-          </SelectContent>
-        </Select>
-        <ToggleGroup
-          type="single"
-          value={viewMode}
-          onValueChange={(value) => value && setViewMode(value as "grid" | "list")}
-          className="justify-start"
-        >
-          <ToggleGroupItem value="grid" aria-label="Vista grid">
-            <Grid2X2 className="h-4 w-4" />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="list" aria-label="Vista lista compacta">
-            <List className="h-4 w-4" />
-          </ToggleGroupItem>
-        </ToggleGroup>
+        <MultiSelectFilter
+          placeholder="Todos los origenes"
+          options={ORIGEN_OPTIONS.filter((item) => item.value !== "TODOS")}
+          selected={origen === "TODOS" ? [] : [origen]}
+          onChange={(values) => setOrigen(values.at(-1) ?? "TODOS")}
+        />
         <Button onClick={search} disabled={isPending}>
           <Search className="mr-2 h-4 w-4" />
           Buscar
@@ -570,7 +559,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className={viewMode === "grid" ? gridClass(columns) : "grid gap-2"}>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {/*
             <Link key={caso.id} href={`/lost-found-hilos/${caso.id}`} className="block">
               <Card className="h-full transition hover:border-[#001C55]/30 hover:shadow-sm">
@@ -601,11 +590,11 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
               </Card>
             </Link>
           */}
-          {casos.map((caso) => <ThreadCard key={caso.id} caso={caso} viewMode={viewMode} />)}
+          {casos.map((caso) => <ThreadCard key={caso.id} caso={caso} />)}
           {casos.length === 0 && !isPending && (
             <p className="rounded-lg border border-dashed p-6 text-center text-sm text-slate-500">No hay hilos para mostrar.</p>
           )}
-          {isPending && <ThreadSkeletons viewMode={viewMode} count={viewMode === "grid" ? 4 : 3} />}
+          {isPending && <ThreadSkeletons count={3} />}
       </div>
       <div ref={loadMoreRef} className="h-1" />
       {!nextCursor && casos.length > 0 && (
@@ -615,41 +604,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
   );
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleString();
-}
-
-function ThreadCard({ caso, viewMode }: { caso: CasoLfListItem; viewMode: "grid" | "list" }) {
-  if (viewMode === "list") {
-    return (
-      <Link href={`/lost-found-hilos/${caso.id}`} className="block">
-        <Card className="transition hover:border-[#001C55]/30 hover:shadow-sm">
-          <CardContent className="grid min-h-24 grid-cols-[72px_1fr_auto] items-center gap-4 p-4 last:pb-4">
-            <CaseThumbnail caso={caso} compact />
-            <div className="min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="truncate font-semibold text-slate-950">{caso.titulo}</p>
-                <EstadoLfBadge estado={caso.estado} />
-                <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
-                {caso.categoria_nombre && <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">{caso.categoria_nombre}</Badge>}
-              </div>
-              <p className="truncate text-sm text-slate-600">{truncateText(caso.ultimo_comentario ?? caso.descripcion, 120)}</p>
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span>{caso.reportante?.nombre_completo ?? "Usuario"}</span>
-                <span>{formatDate(caso.ultimo_comentario_at ?? caso.created_at)}</span>
-              </div>
-            </div>
-            <div className="hidden min-w-36 text-right text-sm text-slate-500 sm:block">
-              <p className="font-medium text-slate-700">{caso.lugar_referencia ?? "Sin lugar"}</p>
-              <p>{caso.codigo}</p>
-              <p className="mt-2 inline-flex items-center gap-1"><MessageSquare className="h-4 w-4" />{caso.conteo_comentarios}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
-    );
-  }
-
+function ThreadCard({ caso }: { caso: CasoLfListItem }) {
   const hasPhoto = Boolean(caso.foto_url);
 
   return (
@@ -668,6 +623,7 @@ function ThreadCard({ caso, viewMode }: { caso: CasoLfListItem; viewMode: "grid"
               <div className="mt-1 flex flex-wrap gap-2">
                 {!hasPhoto && <EstadoLfBadge estado={caso.estado} />}
                 <Badge variant="secondary">{tipoLabel(caso.tipo)}</Badge>
+                <OriginBadge origen={caso.origen} />
                 {caso.categoria_nombre && <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">{caso.categoria_nombre}</Badge>}
               </div>
             </div>
@@ -709,12 +665,11 @@ function shortDisplayName(name?: string | null) {
   return second ? `${first} ${second[0]}.` : first;
 }
 
-function gridClass(columns: string) {
-  const map: Record<string, string> = {
-    "3": "grid gap-3 md:grid-cols-2 xl:grid-cols-3",
-    "4": "grid gap-3 md:grid-cols-2 xl:grid-cols-4",
-  };
-  return map[columns] ?? map["4"];
+function OriginBadge({ origen }: { origen?: string }) {
+  if (origen === "OPERADOR_MOVIL") {
+    return <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">Mobile</Badge>;
+  }
+  return <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">Comunidad</Badge>;
 }
 
 function validateCase(form: CasoLfCreatePayload, fotoCount: number): FormErrors {
@@ -772,10 +727,10 @@ function CaseThumbnail({ caso, compact }: { caso: CasoLfListItem; compact: boole
   );
 }
 
-function ThreadSkeletons({ viewMode, count }: { viewMode: "grid" | "list"; count: number }) {
+function ThreadSkeletons({ count }: { count: number }) {
   return Array.from({ length: count }).map((_, index) => (
     <Card key={`thread-skeleton-${index}`}>
-      <CardContent className={viewMode === "grid" ? "space-y-3 p-4" : "grid gap-3 p-3 sm:grid-cols-[1fr_120px]"}>
+      <CardContent className="space-y-3 p-4">
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Skeleton className="h-8 w-8 rounded-full" />
@@ -791,7 +746,6 @@ function ThreadSkeletons({ viewMode, count }: { viewMode: "grid" | "list"; count
             <Skeleton className="h-6 w-20 rounded-full" />
           </div>
         </div>
-        {viewMode === "list" && <Skeleton className="h-24 w-28 justify-self-end" />}
       </CardContent>
     </Card>
   ));

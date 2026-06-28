@@ -1,5 +1,5 @@
 import { api } from "@/lib/api/client";
-import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CategoriaLfWritePayload, ComentarioLf, CustodiaLf, CustodiaPoliticaLf, DashboardLf, ListResponse, MatchingConfigLf, MatchLf, MotivoCierreLf, MotivoCierreLfWritePayload, SupervisorLf } from "./types";
+import type { CasoLfDetail, CasoLfListItem, CategoriaLf, CategoriaLfWritePayload, ComentarioLf, CustodiaLf, CustodiaPoliticaLf, DashboardLf, ListResponse, MatchingConfigLf, MatchLf, MotivoCierreLf, MotivoCierreLfWritePayload, SupervisorLf, UbicacionMaestra } from "./types";
 
 export type ReaccionResult = { destacados: number; reaccionado: boolean };
 
@@ -113,6 +113,7 @@ export const lostFoundClient = {
     api.put<CustodiaPoliticaLf>("/lost-found/custodia/politica", body),
   actualizarConfig: (key: string, body: { value: Record<string, unknown>; descripcion?: string }) =>
     api.patch(`/lost-found/configuracion/${key}`, body),
+  ubicacionesMaestras: () => api.get<UbicacionMaestra[]>("/maestros/ubicaciones"),
 };
 
 function normalizeCasePayload(body: CasoLfCreatePayload): CasoLfCreatePayload {

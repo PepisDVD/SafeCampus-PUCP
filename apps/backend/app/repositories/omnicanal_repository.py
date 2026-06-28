@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Date, Integer, and_, cast, func, or_, select, update
+from sqlalchemy import Date, Integer, and_, cast, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -16,6 +16,8 @@ from app.models.sc_omnicanal import (
     ChatbotEstadoConversacion,
     ChatbotLlmUsage,
     Conversacion,
+    ConversacionIncidenteHistorial,
+    ConversacionOperadorAsignado,
     EventoConversacion,
     MensajeConversacion,
     ReporteEntrante,
@@ -30,6 +32,34 @@ class OmnicanalRepository:
     def _conversation_projection(self):
         operador = aliased(Usuario, name="operador")
         tomado_por = aliased(Usuario, name="tomado_por")
+        historico_count = (
+            select(func.count(ConversacionIncidenteHistorial.id))
+            .where(ConversacionIncidenteHistorial.conversacion_id == Conversacion.id)
+            .correlate(Conversacion)
+            .scalar_subquery()
+        )
+        latest_history_id = (
+            select(ConversacionIncidenteHistorial.incidente_id)
+            .where(
+                and_(
+                    ConversacionIncidenteHistorial.conversacion_id == Conversacion.id,
+                    ConversacionIncidenteHistorial.incidente_id.is_not(None),
+                )
+            )
+            .order_by(ConversacionIncidenteHistorial.asociado_at.desc())
+            .limit(1)
+            .correlate(Conversacion)
+            .scalar_subquery()
+        )
+        latest_message_author = (
+            select(MensajeConversacion.autor_tipo)
+            .where(MensajeConversacion.conversacion_id == Conversacion.id)
+            .order_by(MensajeConversacion.created_at.desc())
+            .limit(1)
+            .correlate(Conversacion)
+            .scalar_subquery()
+        )
+        ultimo_incidente = aliased(Incidente, name="ultimo_incidente")
         return (
             select(
                 Conversacion,
@@ -49,10 +79,18 @@ class OmnicanalRepository:
                 Incidente.titulo.label("incidente_titulo"),
                 Incidente.estado.label("incidente_estado"),
                 Incidente.severidad.label("incidente_severidad"),
+                latest_message_author.label("ultimo_mensaje_autor_tipo"),
+                historico_count.label("historico_incidentes_count"),
+                ultimo_incidente.id.label("ultimo_incidente_id"),
+                ultimo_incidente.codigo.label("ultimo_incidente_codigo"),
+                ultimo_incidente.titulo.label("ultimo_incidente_titulo"),
+                ultimo_incidente.estado.label("ultimo_incidente_estado"),
+                ultimo_incidente.severidad.label("ultimo_incidente_severidad"),
             )
             .outerjoin(operador, operador.id == Conversacion.operador_asignado_id)
             .outerjoin(tomado_por, tomado_por.id == Conversacion.tomado_por_id)
             .outerjoin(Incidente, Incidente.id == Conversacion.incidente_id)
+            .outerjoin(ultimo_incidente, ultimo_incidente.id == latest_history_id)
             .outerjoin(
                 ChatbotEstadoConversacion,
                 ChatbotEstadoConversacion.conversacion_id == Conversacion.id,
@@ -257,6 +295,79 @@ class OmnicanalRepository:
         await self.db.refresh(evento)
         return evento
 
+    async def ensure_incident_association(
+        self,
+        *,
+        conversacion_id: str,
+        incidente_id: str,
+        actor_usuario_id: str | None = None,
+        actor_tipo: str = "SISTEMA",
+        tipo_asociacion: str = "LEGACY",
+    ) -> None:
+        existing = await self.db.scalar(
+            select(ConversacionIncidenteHistorial.id)
+            .where(
+                and_(
+                    ConversacionIncidenteHistorial.conversacion_id == UUID(conversacion_id),
+                    ConversacionIncidenteHistorial.incidente_id == UUID(incidente_id),
+                    ConversacionIncidenteHistorial.finalizado_at.is_(None),
+                )
+            )
+            .limit(1)
+        )
+        if existing:
+            return
+        self.db.add(
+            ConversacionIncidenteHistorial(
+                conversacion_id=UUID(conversacion_id),
+                incidente_id=UUID(incidente_id),
+                actor_usuario_id=UUID(actor_usuario_id) if actor_usuario_id else None,
+                actor_tipo=actor_tipo,
+                tipo_asociacion=tipo_asociacion,
+            )
+        )
+        await self.db.flush()
+
+    async def replace_active_incident_association(
+        self,
+        *,
+        conversacion_id: str,
+        incidente_id: str,
+        actor_usuario_id: str | None = None,
+        actor_tipo: str,
+        tipo_asociacion: str,
+    ) -> None:
+        await self.close_active_incident_association(
+            conversacion_id=conversacion_id,
+            motivo="REEMPLAZADO",
+        )
+        await self.ensure_incident_association(
+            conversacion_id=conversacion_id,
+            incidente_id=incidente_id,
+            actor_usuario_id=actor_usuario_id,
+            actor_tipo=actor_tipo,
+            tipo_asociacion=tipo_asociacion,
+        )
+
+    async def close_active_incident_association(
+        self,
+        *,
+        conversacion_id: str,
+        motivo: str,
+    ) -> None:
+        statement = (
+            update(ConversacionIncidenteHistorial)
+            .where(
+                and_(
+                    ConversacionIncidenteHistorial.conversacion_id == UUID(conversacion_id),
+                    ConversacionIncidenteHistorial.finalizado_at.is_(None),
+                )
+            )
+            .values(finalizado_at=func.now(), motivo_finalizacion=motivo)
+        )
+        await self.db.execute(statement)
+        await self.db.flush()
+
     async def list_conversaciones(
         self,
         *,
@@ -279,6 +390,97 @@ class OmnicanalRepository:
             )
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
+
+    async def list_operadores_asignados(
+        self,
+        conversacion_ids: list[str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        if not conversacion_ids:
+            return {}
+        ids = [UUID(conversacion_id) for conversacion_id in conversacion_ids]
+        statement = (
+            select(
+                ConversacionOperadorAsignado.conversacion_id,
+                Usuario.id.label("operador_id"),
+                Usuario.nombre.label("operador_nombre"),
+                Usuario.apellido.label("operador_apellido"),
+                Usuario.email.label("operador_email"),
+                Usuario.avatar_url.label("operador_avatar_url"),
+            )
+            .join(Usuario, Usuario.id == ConversacionOperadorAsignado.operador_id)
+            .where(ConversacionOperadorAsignado.conversacion_id.in_(ids))
+            .order_by(ConversacionOperadorAsignado.created_at.asc())
+        )
+        result = await self.db.execute(statement)
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in result.mappings():
+            grouped.setdefault(str(row["conversacion_id"]), []).append(dict(row))
+        return grouped
+
+    async def list_conversaciones_historial(
+        self,
+        *,
+        search: str | None,
+        desde: str | None,
+        hasta: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        incident_count = func.count(ConversacionIncidenteHistorial.id)
+        statement = (
+            select(
+                Conversacion,
+                incident_count.label("incidentes_count"),
+                func.max(ConversacionIncidenteHistorial.asociado_at).label("ultimo_incidente_at"),
+            )
+            .outerjoin(
+                ConversacionIncidenteHistorial,
+                ConversacionIncidenteHistorial.conversacion_id == Conversacion.id,
+            )
+            .group_by(Conversacion.id)
+            .having(or_(Conversacion.estado == "CERRADA", incident_count > 0))
+            .order_by(Conversacion.ultimo_mensaje_at.desc())
+            .limit(limit)
+        )
+        if search:
+            pattern = f"%{search}%"
+            statement = statement.where(
+                or_(
+                    Conversacion.nombre_contacto.ilike(pattern),
+                    Conversacion.telefono_contacto.ilike(pattern),
+                    Conversacion.external_chat_id.ilike(pattern),
+                )
+            )
+        if desde:
+            statement = statement.where(cast(Conversacion.ultimo_mensaje_at, Date) >= desde)
+        if hasta:
+            statement = statement.where(cast(Conversacion.ultimo_mensaje_at, Date) <= hasta)
+        result = await self.db.execute(statement)
+        return [dict(row) for row in result.mappings()]
+
+    async def get_conversacion_historial(self, conversacion_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        detail = await self.get_conversacion_detail(conversacion_id)
+        actor = aliased(Usuario, name="hist_actor")
+        statement = (
+            select(
+                ConversacionIncidenteHistorial,
+                Incidente.id.label("incidente_id"),
+                Incidente.codigo.label("incidente_codigo"),
+                Incidente.titulo.label("incidente_titulo"),
+                Incidente.estado.label("incidente_estado"),
+                Incidente.severidad.label("incidente_severidad"),
+                actor.id.label("actor_id"),
+                actor.nombre.label("actor_nombre"),
+                actor.apellido.label("actor_apellido"),
+                actor.email.label("actor_email"),
+                actor.avatar_url.label("actor_avatar_url"),
+            )
+            .outerjoin(Incidente, Incidente.id == ConversacionIncidenteHistorial.incidente_id)
+            .outerjoin(actor, actor.id == ConversacionIncidenteHistorial.actor_usuario_id)
+            .where(ConversacionIncidenteHistorial.conversacion_id == UUID(conversacion_id))
+            .order_by(ConversacionIncidenteHistorial.asociado_at.asc())
+        )
+        result = await self.db.execute(statement)
+        return detail, [dict(row) for row in result.mappings()]
 
     async def count_conversaciones(self, *, search: str | None, estado: str | None) -> int:
         statement = select(func.count()).select_from(Conversacion)
@@ -331,6 +533,13 @@ class OmnicanalRepository:
         await self.db.flush()
         await self.db.refresh(chatbot_state)
         return chatbot_state
+
+    async def delete_chatbot_state(self, conversacion_id: str) -> None:
+        statement = delete(ChatbotEstadoConversacion).where(
+            ChatbotEstadoConversacion.conversacion_id == UUID(conversacion_id)
+        )
+        await self.db.execute(statement)
+        await self.db.flush()
 
     async def create_chatbot_llm_usage(
         self,
@@ -435,13 +644,32 @@ class OmnicanalRepository:
     async def assign_conversacion(
         self,
         conversacion_id: str,
-        operador_id: str,
+        operador_ids: list[str],
+        actor_id: str,
     ) -> Conversacion | None:
+        unique_operator_ids = list(dict.fromkeys(operador_ids))
+        primary_operator_id = unique_operator_ids[0] if unique_operator_ids else None
+        await self.db.execute(
+            delete(ConversacionOperadorAsignado).where(
+                ConversacionOperadorAsignado.conversacion_id == UUID(conversacion_id)
+            )
+        )
+        if unique_operator_ids:
+            self.db.add_all(
+                [
+                    ConversacionOperadorAsignado(
+                        conversacion_id=UUID(conversacion_id),
+                        operador_id=UUID(operator_id),
+                        asignado_por_id=UUID(actor_id),
+                    )
+                    for operator_id in unique_operator_ids
+                ]
+            )
         statement = (
             update(Conversacion)
             .where(Conversacion.id == UUID(conversacion_id))
             .values(
-                operador_asignado_id=UUID(operador_id),
+                operador_asignado_id=UUID(primary_operator_id) if primary_operator_id else None,
                 estado="EN_ATENCION",
                 modo_atencion="HUMANO",
                 updated_at=func.now(),
@@ -456,6 +684,18 @@ class OmnicanalRepository:
         conversacion_id: str,
         usuario_id: str,
     ) -> Conversacion | None:
+        await self.db.execute(
+            delete(ConversacionOperadorAsignado).where(
+                ConversacionOperadorAsignado.conversacion_id == UUID(conversacion_id)
+            )
+        )
+        self.db.add(
+            ConversacionOperadorAsignado(
+                conversacion_id=UUID(conversacion_id),
+                operador_id=UUID(usuario_id),
+                asignado_por_id=UUID(usuario_id),
+            )
+        )
         statement = (
             update(Conversacion)
             .where(Conversacion.id == UUID(conversacion_id))
@@ -478,11 +718,22 @@ class OmnicanalRepository:
         usuario_id: str,
         motivo: str | None,
     ) -> Conversacion | None:
+        await self.db.execute(
+            delete(ConversacionOperadorAsignado).where(
+                ConversacionOperadorAsignado.conversacion_id == UUID(conversacion_id)
+            )
+        )
         statement = (
             update(Conversacion)
             .where(Conversacion.id == UUID(conversacion_id))
             .values(
                 estado="CERRADA",
+                modo_atencion=None,
+                prioridad=None,
+                operador_asignado_id=None,
+                tomado_por_id=None,
+                tomado_at=None,
+                incidente_id=None,
                 cerrado_por_id=UUID(usuario_id),
                 cerrado_at=func.now(),
                 motivo_cierre=motivo,
@@ -500,6 +751,7 @@ class OmnicanalRepository:
             .values(
                 estado="EN_COLA",
                 modo_atencion="HUMANO",
+                prioridad="MEDIO",
                 cerrado_por_id=None,
                 cerrado_at=None,
                 motivo_cierre=None,

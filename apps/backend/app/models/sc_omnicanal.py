@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -95,6 +95,12 @@ class Conversacion(Base):
     __tablename__ = "conversacion"
     __table_args__ = (
         UniqueConstraint("canal_id", "external_chat_id", name="uq_conversacion_canal_chat"),
+        CheckConstraint(
+            "estado <> 'CERRADA' OR (modo_atencion IS NULL AND prioridad IS NULL "
+            "AND operador_asignado_id IS NULL AND tomado_por_id IS NULL "
+            "AND tomado_at IS NULL AND incidente_id IS NULL)",
+            name="ck_conversacion_cerrada_sin_ciclo",
+        ),
         Index("idx_conversacion_estado", "estado"),
         Index("idx_conversacion_operador", "operador_asignado_id"),
         Index("idx_conversacion_incidente", "incidente_id"),
@@ -116,8 +122,8 @@ class Conversacion(Base):
     telefono_contacto: Mapped[str | None] = mapped_column(String(32))
     nombre_contacto: Mapped[str | None] = mapped_column(String(160))
     estado: Mapped[str] = mapped_column(String(32), nullable=False, server_default="EN_BOT")
-    modo_atencion: Mapped[str] = mapped_column(String(16), nullable=False, server_default="BOT")
-    prioridad: Mapped[str] = mapped_column(String(16), nullable=False, server_default="MEDIO")
+    modo_atencion: Mapped[str | None] = mapped_column(String(16), server_default="BOT")
+    prioridad: Mapped[str | None] = mapped_column(String(16), server_default="MEDIO")
     operador_asignado_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("sc_users.usuario.id"),
@@ -155,6 +161,85 @@ class Conversacion(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class ConversacionOperadorAsignado(Base):
+    __tablename__ = "conversacion_operador_asignado"
+    __table_args__ = (
+        UniqueConstraint("conversacion_id", "operador_id", name="uq_conversacion_operador_asignado"),
+        Index("idx_conversacion_operador_asignado_conv", "conversacion_id"),
+        Index("idx_conversacion_operador_asignado_operador", "operador_id"),
+        {"schema": "sc_omnicanal"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    conversacion_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_omnicanal.conversacion.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    operador_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_users.usuario.id"),
+        nullable=False,
+    )
+    asignado_por_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_users.usuario.id"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class ConversacionIncidenteHistorial(Base):
+    __tablename__ = "conversacion_incidente_historial"
+    __table_args__ = (
+        Index("idx_conversacion_incidente_historial_conv", "conversacion_id", "asociado_at"),
+        Index("idx_conversacion_incidente_historial_incidente", "incidente_id"),
+        Index(
+            "uq_conversacion_incidente_historial_activa",
+            "conversacion_id",
+            unique=True,
+            postgresql_where=text("finalizado_at IS NULL"),
+        ),
+        {"schema": "sc_omnicanal"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    conversacion_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_omnicanal.conversacion.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    incidente_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_incidentes.incidente.id", ondelete="SET NULL"),
+    )
+    actor_usuario_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_users.usuario.id"),
+    )
+    actor_tipo: Mapped[str] = mapped_column(String(16), nullable=False, server_default="SISTEMA")
+    tipo_asociacion: Mapped[str] = mapped_column(String(32), nullable=False)
+    asociado_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    finalizado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    motivo_finalizacion: Mapped[str | None] = mapped_column(String(64))
+    metadatos: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
 
 
 class MensajeConversacion(Base):

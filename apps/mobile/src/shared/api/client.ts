@@ -4,6 +4,11 @@ import type {
   IncidentDetail,
   IncidentListResponse,
   IncidentStatus,
+  LostFoundCaseListResponse,
+  LostFoundCategory,
+  LostFoundCustodyListResponse,
+  LostFoundReceptionPayload,
+  LostFoundReceptionResult,
 } from "../types/api";
 import { apiFetch } from "./http-client";
 
@@ -64,5 +69,48 @@ export function addIncidentComment(
     token,
     method: "POST",
     body: { contenido, es_interno: esInterno },
+  });
+}
+
+export function getLostFoundAccess(token: string) {
+  return apiFetch<{ acceso: boolean }>("/lost-found/acceso/mi", { token });
+}
+
+export function listLostFoundCategories(token: string) {
+  return apiFetch<LostFoundCategory[]>("/lost-found/categorias", { token });
+}
+
+export function listLostFoundCustodies(token: string) {
+  return apiFetch<LostFoundCustodyListResponse>(
+    "/lost-found/custodias?estado=ACTIVA,PROXIMA_VENCER&page=1&per_page=80",
+    { token },
+  );
+}
+
+export function listMyLostFoundMobileRecords(token: string) {
+  return apiFetch<LostFoundCaseListResponse>("/lost-found/casos/mis?origen=OPERADOR_MOVIL&limit=80", { token });
+}
+
+export function registerLostFoundMobileReception(token: string, body: LostFoundReceptionPayload) {
+  return apiFetch<LostFoundReceptionResult>("/lost-found/mobile/recepciones", {
+    token,
+    method: "POST",
+    body,
+  });
+}
+
+export function uploadLostFoundCasePhotos(token: string, caseId: string, uris: string[]) {
+  const form = new FormData();
+  uris.forEach((uri, index) => {
+    form.append("archivos", {
+      uri,
+      name: `recepcion-${Date.now()}-${index + 1}.jpg`,
+      type: "image/jpeg",
+    } as unknown as Blob);
+  });
+  return apiFetch(`/lost-found/casos/${caseId}/fotos/upload`, {
+    token,
+    method: "POST",
+    body: form,
   });
 }

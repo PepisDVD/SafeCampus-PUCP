@@ -118,7 +118,7 @@ Extender [`shared/config/env.ts`](../../apps/mobile/src/shared/config/env.ts) (m
 ```ts
 export const CONFIG = {
   API_BASE_URL,                                   // ya existe
-  SESSION_IDLE_TIMEOUT_MS: Number(process.env.EXPO_PUBLIC_IDLE_MS ?? 900_000), // 15 min
+  SESSION_IDLE_TIMEOUT_MS: Number(process.env.EXPO_PUBLIC_IDLE_MS ?? 1_800_000), // 30 min
   HTTP_TIMEOUT_MS: Number(process.env.EXPO_PUBLIC_HTTP_TIMEOUT_MS ?? 15_000),
   HTTP_MAX_RETRIES: Number(process.env.EXPO_PUBLIC_HTTP_MAX_RETRIES ?? 3),
 } as const;

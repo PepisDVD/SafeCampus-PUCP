@@ -83,3 +83,105 @@ export type IncidentDetail = IncidentListItem & {
     created_at: string;
   }>;
 };
+
+export type LostFoundCaseType = "PERDIDO" | "ENCONTRADO";
+export type LostFoundCaseStatus =
+  | "ABIERTO"
+  | "EN_REVISION"
+  | "CONFIRMADO"
+  | "EN_CUSTODIA"
+  | "DEVUELTO"
+  | "DESCARTADO"
+  | "CERRADO";
+export type LostFoundCustodyStatus =
+  | "ACTIVA"
+  | "PROXIMA_VENCER"
+  | "VENCIDA"
+  | "DEVUELTA"
+  | "DESCARTADA";
+
+export type LostFoundCategory = {
+  id: string;
+  codigo: string;
+  nombre: string;
+  descripcion?: string | null;
+  es_perecible: boolean;
+  metadatos_schema?: { campos?: Array<{ codigo: string; etiqueta: string; tipo: string; requerido?: boolean; activo?: boolean }> } | null;
+};
+
+export type LostFoundCase = {
+  id: string;
+  codigo: string;
+  tipo: LostFoundCaseType;
+  estado: LostFoundCaseStatus;
+  titulo: string;
+  descripcion: string;
+  categoria_id?: string | null;
+  categoria_nombre?: string | null;
+  lugar_referencia?: string | null;
+  fecha_evento?: string | null;
+  foto_url?: string | null;
+  foto_adicional_urls?: string[];
+  color_principal?: string | null;
+  marca?: string | null;
+  origen: "COMUNIDAD" | "OPERADOR_MOVIL";
+  comentarios_habilitados: boolean;
+  created_at: string;
+};
+
+export type LostFoundCaseListResponse = {
+  items: LostFoundCase[];
+  total: number;
+  next_cursor?: string | null;
+};
+
+export type LostFoundCustody = {
+  id: string;
+  caso_id: string;
+  codigo?: string | null;
+  titulo?: string | null;
+  categoria_nombre?: string | null;
+  foto_url?: string | null;
+  foto_adicional_urls?: string[];
+  estado: LostFoundCustodyStatus;
+  ubicacion_custodia: string;
+  observaciones?: string | null;
+  es_perecible: boolean;
+  fecha_recepcion: string;
+  fecha_vencimiento: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LostFoundCustodyListResponse = {
+  items: LostFoundCustody[];
+  total: number;
+  page: number;
+  per_page: number;
+};
+
+export type LostFoundReceptionPayload = {
+  tipo: "ENCONTRADO";
+  titulo: string;
+  descripcion: string;
+  categoria_id: string;
+  lugar_referencia: string;
+  fecha_evento: string;
+  etiquetas?: string[];
+  metadatos?: Record<string, string | number>;
+  contacto_info?: string | null;
+  ubicacion_custodia: string;
+  observaciones_custodia?: string | null;
+  es_perecible?: boolean | null;
+};
+
+export type LostFoundReceptionResult = {
+  caso: {
+    id: string;
+    codigo: string;
+    estado: LostFoundCaseStatus;
+    created_at: string;
+    matches_generados: number;
+  };
+  custodia: LostFoundCustody;
+};
