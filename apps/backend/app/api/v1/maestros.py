@@ -23,7 +23,7 @@ async def listar_ubicaciones(
     include_inactive: bool = Query(default=False),
     _user: AuthUserResponse = Depends(get_current_user),
     service: MaestrosService = Depends(get_service),
-):
+) -> list[UbicacionMaestraItem]:
     return await service.listar_ubicaciones(include_inactive=include_inactive)
 
 
@@ -34,7 +34,7 @@ async def crear_ubicacion(
     body: UbicacionMaestraCreateInput,
     _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: MaestrosService = Depends(get_service),
-):
+) -> UbicacionMaestraItem:
     return await service.crear_ubicacion(body)
 
 
@@ -44,7 +44,7 @@ async def actualizar_ubicacion(
     body: UbicacionMaestraUpdateInput,
     _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: MaestrosService = Depends(get_service),
-):
+) -> UbicacionMaestraItem:
     return await service.actualizar_ubicacion(ubicacion_id, body)
 
 
@@ -53,5 +53,5 @@ async def eliminar_ubicacion(
     ubicacion_id: str,
     _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: MaestrosService = Depends(get_service),
-):
+) -> None:
     await service.eliminar_ubicacion(ubicacion_id)

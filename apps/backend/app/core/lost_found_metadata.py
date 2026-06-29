@@ -151,11 +151,12 @@ def validar_metadatos_caso(
 
     activos = _campos_activos(schema)
 
-    desconocidas = [k for k in metadatos.keys() if k not in activos]
+    desconocidas = [k for k in metadatos if k not in activos]
     if desconocidas:
+        desconocidas_txt = ", ".join(sorted(desconocidas))
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Metadatos no configurados para la categoría: {', '.join(sorted(desconocidas))}.",
+            detail=f"Metadatos no configurados para la categoría: {desconocidas_txt}.",
         )
 
     limpio: dict[str, Any] = {}

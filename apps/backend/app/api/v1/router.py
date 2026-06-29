@@ -59,5 +59,5 @@ api_router.include_router(
 
 
 @api_router.get("/", tags=["Root"])
-async def api_root():
+async def api_root() -> dict[str, str]:
     return {"message": "SafeCampus PUCP API v1", "docs": "/api/v1/docs"}

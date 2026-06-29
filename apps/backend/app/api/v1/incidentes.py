@@ -51,7 +51,7 @@ async def listar_incidentes(
     limit: int = Query(default=50, ge=1, le=200),
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteListResponse:
     """Listado operativo de incidentes — filtrable por búsqueda, severidad y estado.
 
     Con `mios=true` se restringe a los incidentes asignados al usuario autenticado
@@ -73,7 +73,7 @@ async def listar_mis_incidentes(
     limit: int = Query(default=50, ge=1, le=100),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteListResponse:
     """Listado de incidentes reportados por el usuario autenticado (PWA Comunidad)."""
     items = await service.listar_mis_incidentes(
         usuario_id=current_user.id,
@@ -87,7 +87,7 @@ async def obtener_mi_detalle_incidente(
     incidente_ref: str,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteDetail:
     """Detalle de un incidente propio de comunidad, por codigo o UUID."""
     return await service.obtener_mi_detalle(
         incidente_ref=incidente_ref,
@@ -100,7 +100,7 @@ async def obtener_kpis(
     period: str = Query(default="mes", pattern="^(semana|mes|trimestre|año)$"),
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
-):
+) -> KpisResponse:
     """KPIs operativos con comparación contra el periodo anterior + breakdowns.
 
     Restringido a roles supervisor / operador / administrador.
@@ -116,7 +116,7 @@ async def listar_incidentes_mapa(
     limit: int = Query(default=300, ge=1, le=500),
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteMapaResponse:
     """Incidentes para mapa tactico operativo con coordenadas cuando existan."""
     return await service.listar_mapa(
         severidad=severidad.value if severidad else None,
@@ -134,7 +134,7 @@ async def obtener_stats(
     ),
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
-):
+) -> DashboardStats:
     """Métricas agregadas + top zonas para el dashboard operativo.
 
     Con `mios=true` los counts se limitan a los incidentes asignados al usuario
@@ -150,7 +150,7 @@ async def obtener_stats(
 async def listar_operadores(
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
-):
+) -> list[OperadorListItem]:
     """Lista de operadores y supervisores activos para asignar a incidentes."""
     return await service.listar_operadores()
 
@@ -160,7 +160,7 @@ async def obtener_detalle_incidente(
     incidente_id: str,
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteDetail:
     """Detalle completo de un incidente — incluye reportante, asignación e historial.
 
     Restringido a roles supervisor / operador / administrador.
@@ -174,7 +174,7 @@ async def cambiar_estado_incidente(
     body: IncidenteEstadoUpdate,
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteDetail:
     """Cambia el estado del incidente, autopobla fechas SLA y registra historial."""
     return await service.cambiar_estado(
         incidente_id=incidente_id,
@@ -191,7 +191,7 @@ async def generar_borrador_cierre_ia(
     incidente_id: str,
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
-):
+) -> ExpedienteCierreAiDraft:
     """Genera con Gemini un borrador editable para el expediente de cierre."""
     return await service.generar_borrador_cierre_ia(
         incidente_id=incidente_id,
@@ -205,7 +205,7 @@ async def asignar_operador_incidente(
     body: IncidenteAsignacionUpdate,
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteDetail:
     """Asigna operador, registra supervisor (quien ejecuta) e inserta historial."""
     return await service.asignar_operador(
         incidente_id=incidente_id,
@@ -220,7 +220,7 @@ async def crear_comentario_incidente(
     body: ComentarioIncidenteCreateInput,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: IncidenteService = Depends(get_service),
-):
+) -> ComentarioIncidenteItem:
     """Agrega un mensaje al incidente y genera notificaciones internas."""
     return await service.crear_comentario(
         incidente_id=incidente_id,
@@ -236,7 +236,7 @@ async def actualizar_ubicacion_en_vivo(
     body: IncidenteLiveLocationUpdate,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteDetail:
     """Actualiza o detiene la ubicacion en vivo compartida por el reportante."""
     return await service.actualizar_ubicacion_en_vivo(
         incidente_id=incidente_id,
@@ -250,7 +250,7 @@ async def detener_ubicacion_en_vivo(
     incidente_id: str,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteDetail:
     """Detiene la ubicacion en vivo de un incidente propio."""
     return await service.actualizar_ubicacion_en_vivo(
         incidente_id=incidente_id,
@@ -272,7 +272,7 @@ async def subir_evidencia_incidente(
     descripcion: str | None = Form(default=None, max_length=500),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: IncidenteService = Depends(get_service),
-):
+) -> EvidenciaIncidenteItem:
     """Adjunta una imagen de evidencia a un incidente.
 
     Accesible por el reportante (comunidad) y por staff operativo.
@@ -296,7 +296,7 @@ async def crear_incidente(
     body: IncidenteCreateInput,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: IncidenteService = Depends(get_service),
-):
+) -> IncidenteCreated:
     """Crea un nuevo incidente reportado por el usuario autenticado."""
     return await service.crear_incidente(
         reportante_id=current_user.id,

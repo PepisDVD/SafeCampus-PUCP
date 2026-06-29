@@ -3,6 +3,7 @@ Pydantic schemas for campus alerts and GIS alert operations.
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -100,7 +101,7 @@ class AlertaEventoItem(BaseModel):
     tipo_evento: str
     actor_usuario_id: str | None = None
     actor_nombre: str | None = None
-    detalle: dict
+    detalle: dict[str, Any]
     created_at: datetime
 
 

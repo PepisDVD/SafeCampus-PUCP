@@ -5,6 +5,7 @@ SQLAlchemy models for the sc_incidentes schema.
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
@@ -137,7 +138,7 @@ class ExpedienteCierre(Base):
     )
     resumen_cierre: Mapped[str] = mapped_column(Text, nullable=False)
     resultado: Mapped[str | None] = mapped_column(Text)
-    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     generado_por_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"), nullable=False
     )

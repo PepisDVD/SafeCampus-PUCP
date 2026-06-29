@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, desc, func, or_, select, update
+from sqlalchemy import Select, and_, desc, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -37,7 +37,7 @@ class IncidenteRepository:
     # Lectura
     # ------------------------------------------------------------------
 
-    def _base_select(self):
+    def _base_select(self) -> Select[Any]:
         operador_nombre = func.nullif(
             func.trim(
                 func.concat(
@@ -108,9 +108,9 @@ class IncidenteRepository:
         incidente_id: str,
     ) -> dict[str, Any] | None:
         """Detalle completo de un incidente con joins a reportante / operador / supervisor."""
-        Reportante = aliased(Usuario, name="reportante")
-        Operador = aliased(Usuario, name="operador")
-        Supervisor = aliased(Usuario, name="supervisor")
+        reportante = aliased(Usuario, name="reportante")
+        operador = aliased(Usuario, name="operador")
+        supervisor = aliased(Usuario, name="supervisor")
 
         statement = (
             select(
@@ -133,24 +133,24 @@ class IncidenteRepository:
                 Incidente.created_at,
                 Incidente.updated_at,
                 Incidente.reportante_id,
-                Reportante.nombre.label("reportante_nombre"),
-                Reportante.apellido.label("reportante_apellido"),
-                Reportante.email.label("reportante_email"),
-                Reportante.avatar_url.label("reportante_avatar_url"),
+                reportante.nombre.label("reportante_nombre"),
+                reportante.apellido.label("reportante_apellido"),
+                reportante.email.label("reportante_email"),
+                reportante.avatar_url.label("reportante_avatar_url"),
                 Incidente.operador_asignado_id,
-                Operador.nombre.label("operador_nombre"),
-                Operador.apellido.label("operador_apellido"),
-                Operador.email.label("operador_email"),
-                Operador.avatar_url.label("operador_avatar_url"),
+                operador.nombre.label("operador_nombre"),
+                operador.apellido.label("operador_apellido"),
+                operador.email.label("operador_email"),
+                operador.avatar_url.label("operador_avatar_url"),
                 Incidente.supervisor_id,
-                Supervisor.nombre.label("supervisor_nombre"),
-                Supervisor.apellido.label("supervisor_apellido"),
-                Supervisor.email.label("supervisor_email"),
-                Supervisor.avatar_url.label("supervisor_avatar_url"),
+                supervisor.nombre.label("supervisor_nombre"),
+                supervisor.apellido.label("supervisor_apellido"),
+                supervisor.email.label("supervisor_email"),
+                supervisor.avatar_url.label("supervisor_avatar_url"),
             )
-            .outerjoin(Reportante, Reportante.id == Incidente.reportante_id)
-            .outerjoin(Operador, Operador.id == Incidente.operador_asignado_id)
-            .outerjoin(Supervisor, Supervisor.id == Incidente.supervisor_id)
+            .outerjoin(reportante, reportante.id == Incidente.reportante_id)
+            .outerjoin(operador, operador.id == Incidente.operador_asignado_id)
+            .outerjoin(supervisor, supervisor.id == Incidente.supervisor_id)
             .where(
                 Incidente.id == UUID(incidente_id),
                 Incidente.deleted_at.is_(None),
@@ -167,9 +167,9 @@ class IncidenteRepository:
         reportante_id: str,
     ) -> dict[str, Any] | None:
         """Detalle de un incidente propio de comunidad, por codigo o UUID."""
-        Reportante = aliased(Usuario, name="reportante")
-        Operador = aliased(Usuario, name="operador")
-        Supervisor = aliased(Usuario, name="supervisor")
+        reportante = aliased(Usuario, name="reportante")
+        operador = aliased(Usuario, name="operador")
+        supervisor = aliased(Usuario, name="supervisor")
 
         filters = [
             Incidente.reportante_id == UUID(reportante_id),
@@ -201,24 +201,24 @@ class IncidenteRepository:
                 Incidente.created_at,
                 Incidente.updated_at,
                 Incidente.reportante_id,
-                Reportante.nombre.label("reportante_nombre"),
-                Reportante.apellido.label("reportante_apellido"),
-                Reportante.email.label("reportante_email"),
-                Reportante.avatar_url.label("reportante_avatar_url"),
+                reportante.nombre.label("reportante_nombre"),
+                reportante.apellido.label("reportante_apellido"),
+                reportante.email.label("reportante_email"),
+                reportante.avatar_url.label("reportante_avatar_url"),
                 Incidente.operador_asignado_id,
-                Operador.nombre.label("operador_nombre"),
-                Operador.apellido.label("operador_apellido"),
-                Operador.email.label("operador_email"),
-                Operador.avatar_url.label("operador_avatar_url"),
+                operador.nombre.label("operador_nombre"),
+                operador.apellido.label("operador_apellido"),
+                operador.email.label("operador_email"),
+                operador.avatar_url.label("operador_avatar_url"),
                 Incidente.supervisor_id,
-                Supervisor.nombre.label("supervisor_nombre"),
-                Supervisor.apellido.label("supervisor_apellido"),
-                Supervisor.email.label("supervisor_email"),
-                Supervisor.avatar_url.label("supervisor_avatar_url"),
+                supervisor.nombre.label("supervisor_nombre"),
+                supervisor.apellido.label("supervisor_apellido"),
+                supervisor.email.label("supervisor_email"),
+                supervisor.avatar_url.label("supervisor_avatar_url"),
             )
-            .outerjoin(Reportante, Reportante.id == Incidente.reportante_id)
-            .outerjoin(Operador, Operador.id == Incidente.operador_asignado_id)
-            .outerjoin(Supervisor, Supervisor.id == Incidente.supervisor_id)
+            .outerjoin(reportante, reportante.id == Incidente.reportante_id)
+            .outerjoin(operador, operador.id == Incidente.operador_asignado_id)
+            .outerjoin(supervisor, supervisor.id == Incidente.supervisor_id)
             .where(*filters)
             .limit(1)
         )
@@ -733,7 +733,7 @@ class IncidenteRepository:
         return f"{INCIDENT_CODE_PREFIX}-{ahora.strftime('%Y%m%d')}-{secuencia:04d}"
 
     async def get_estado_actual(self, incidente_id: str) -> dict[str, Any] | None:
-        """Devuelve el estado, fecha_primera_respuesta y supervisor_id actuales (para el flow de updates)."""
+        """Estado, fecha_primera_respuesta y supervisor_id actuales (para el flow de updates)."""
         statement = (
             select(
                 Incidente.id,
@@ -788,7 +788,7 @@ class IncidenteRepository:
             return None
 
         await self.db.execute(
-            HistorialIncidente.__table__.insert().values(
+            HistorialIncidente.__table__.insert().values(  # type: ignore[attr-defined]
                 incidente_id=UUID(incidente_id),
                 estado_anterior=estado_anterior,
                 estado_nuevo=new_estado,
@@ -902,7 +902,7 @@ class IncidenteRepository:
             return None
 
         await self.db.execute(
-            HistorialIncidente.__table__.insert().values(
+            HistorialIncidente.__table__.insert().values(  # type: ignore[attr-defined]
                 incidente_id=UUID(incidente_id),
                 estado_anterior=estado_actual,
                 estado_nuevo=estado_actual,

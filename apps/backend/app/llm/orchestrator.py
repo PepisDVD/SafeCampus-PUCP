@@ -219,6 +219,9 @@ class LLMOrchestrator:
             latency_ms=latency_ms,
         )
         normalized = self._normalizer.normalize(
-            """{"categoria":"OTRO","severidad":"MEDIO","confidence_score":0.0,"requires_human_review":true,"indicadores_detectados":[],"razonamiento_breve":"Clasificacion por defecto. Requiere revision humana.","version_prompt":null}"""
+            '{"categoria":"OTRO","severidad":"MEDIO","confidence_score":0.0,'
+            '"requires_human_review":true,"indicadores_detectados":[],'
+            '"razonamiento_breve":"Clasificacion por defecto. Requiere revision humana.",'
+            '"version_prompt":null}'
         )
         return ClassificationPipelineResult(normalized=normalized, final=final)

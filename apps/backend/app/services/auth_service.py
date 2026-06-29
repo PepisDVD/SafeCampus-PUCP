@@ -373,7 +373,7 @@ class AuthService:
                 detail="No se pudo completar OAuth con Supabase.",
             )
 
-        data = response.json()
+        data: dict[str, Any] = response.json()
         if not data.get("access_token") or not data.get("user"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -404,7 +404,8 @@ class AuthService:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Sesion institucional invalida.",
             )
-        return response.json()
+        user: dict[str, Any] = response.json()
+        return user
 
     @staticmethod
     def _is_institutional_email(email: str) -> bool:

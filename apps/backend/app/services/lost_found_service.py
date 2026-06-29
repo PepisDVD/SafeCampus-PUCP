@@ -529,7 +529,10 @@ class LostFoundService:
             else "Reapertura administrativa del hilo",
         )
         accion = "LF_CASO_CERRADO" if data.cerrar else "LF_CASO_REABIERTO"
-        resumen = f"Hilo {actual['codigo']} {'cerrado' if data.cerrar else 'reabierto'} por administración"
+        resumen = (
+            f"Hilo {actual['codigo']} "
+            f"{'cerrado' if data.cerrar else 'reabierto'} por administración"
+        )
         await self._audit_lf(
             actor_id,
             accion,
@@ -559,7 +562,10 @@ class LostFoundService:
             )
         await self._repo.set_oculto(caso_id, data.oculto)
         accion = "LF_CASO_OCULTADO" if data.oculto else "LF_CASO_MOSTRADO"
-        resumen = f"Hilo {actual['codigo']} {'ocultado de' if data.oculto else 'visible para'} la comunidad"
+        resumen = (
+            f"Hilo {actual['codigo']} "
+            f"{'ocultado de' if data.oculto else 'visible para'} la comunidad"
+        )
         await self._audit_lf(
             actor_id,
             accion,
@@ -661,7 +667,10 @@ class LostFoundService:
             if mime not in self._MIME_PERMITIDOS:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Tipo de archivo no permitido. Solo se aceptan imagenes (jpg, png, webp, heic, gif).",
+                    detail=(
+                        "Tipo de archivo no permitido. Solo se aceptan imagenes "
+                        "(jpg, png, webp, heic, gif)."
+                    ),
                 )
             contenido = await archivo.read()
             if len(contenido) > self._MAX_BYTES:
@@ -743,7 +752,10 @@ class LostFoundService:
             if mime not in self._MIME_PERMITIDOS:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Tipo de archivo no permitido. Solo se aceptan imagenes (jpg, png, webp, heic, gif).",
+                    detail=(
+                        "Tipo de archivo no permitido. Solo se aceptan imagenes "
+                        "(jpg, png, webp, heic, gif)."
+                    ),
                 )
             contenido = await archivo.read()
             if len(contenido) > self._MAX_BYTES:
@@ -1128,7 +1140,8 @@ class LostFoundService:
         await self._repo.update_config(
             CUSTODIA_POLITICA_KEY,
             value,
-            "Política de custodia: plazos de vencimiento y recordatorios (objetos normales y perecibles).",
+            "Política de custodia: plazos de vencimiento y recordatorios "
+            "(objetos normales y perecibles).",
             actor_id,
         )
         detalle = build_detalle(
@@ -1765,7 +1778,10 @@ class LostFoundService:
                     ),
                     "matching_total": int(item.get("matching_total") or 0),
                     "matching_confirmado": int(item.get("matching_confirmados") or 0) > 0,
-                    "reportante": f"{item.get('reportante_nombre') or ''} {item.get('reportante_apellido') or ''}".strip()
+                    "reportante": (
+                        f"{item.get('reportante_nombre') or ''} "
+                        f"{item.get('reportante_apellido') or ''}"
+                    ).strip()
                     or "Usuario",
                     "created_at": item["created_at"],
                 }
@@ -2289,7 +2305,8 @@ class LostFoundService:
         cls, row: dict[str, Any], *, mostrar_eliminado: bool = False
     ) -> ComentarioLfItem:
         eliminado = row.get("deleted_at") is not None
-        # Si el comentario fue eliminado y el solicitante no es operativo, se oculta el texto/imágenes.
+        # Si el comentario fue eliminado y el solicitante no es operativo,
+        # se oculta el texto/imágenes.
         contenido = (
             COMENTARIO_ELIMINADO_PLACEHOLDER
             if (eliminado and not mostrar_eliminado)

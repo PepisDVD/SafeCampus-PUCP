@@ -37,7 +37,8 @@ class EvolutionApiClient:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="EvolutionAPI no pudo enviar el mensaje.",
             )
-        return response.json()
+        data: dict[str, Any] = response.json()
+        return data
 
     async def send_image(
         self,
@@ -78,4 +79,5 @@ class EvolutionApiClient:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="EvolutionAPI no pudo enviar la imagen.",
             )
-        return response.json()
+        data: dict[str, Any] = response.json()
+        return data

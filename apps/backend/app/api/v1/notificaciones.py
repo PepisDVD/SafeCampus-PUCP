@@ -26,7 +26,7 @@ async def listar_notificaciones(
     limit: int = Query(default=30, ge=1, le=100),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: NotificacionService = Depends(get_service),
-):
+) -> NotificacionListResponse:
     return await service.listar(
         current_user.id,
         unread_only=unread_only,
@@ -38,7 +38,7 @@ async def listar_notificaciones(
 async def contar_no_leidas(
     current_user: AuthUserResponse = Depends(get_current_user),
     service: NotificacionService = Depends(get_service),
-):
+) -> NotificacionUnreadCount:
     return await service.contar_no_leidas(current_user.id)
 
 
@@ -46,7 +46,7 @@ async def contar_no_leidas(
 async def marcar_todas_leidas(
     current_user: AuthUserResponse = Depends(get_current_user),
     service: NotificacionService = Depends(get_service),
-):
+) -> NotificacionUnreadCount:
     return await service.marcar_todas_leidas(current_user.id)
 
 
@@ -55,6 +55,6 @@ async def marcar_leida(
     notificacion_id: str,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: NotificacionService = Depends(get_service),
-):
+) -> Response:
     await service.marcar_leida(current_user.id, notificacion_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -353,7 +353,7 @@ class AdminRepository:
                     RegistroAuditoria.fecha_registro,
                     RegistroAuditoria.id,
                 )
-                < tuple_(cursor[0], cursor[1])
+                < tuple_(cursor[0], cursor[1])  # type: ignore[arg-type]
             )
         if search:
             pattern = f"%{search}%"

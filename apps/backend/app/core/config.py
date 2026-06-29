@@ -168,4 +168,4 @@ class Settings(BaseSettings):
         return init_settings, dotenv_settings, env_settings, file_secret_settings
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]  # pydantic-settings carga los campos desde el entorno

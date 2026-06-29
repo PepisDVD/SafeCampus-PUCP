@@ -89,7 +89,7 @@ class NotificacionRepository:
             )
         )
         result = await self.db.execute(statement)
-        return int(result.rowcount or 0)
+        return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
     async def create_inapp(
         self,

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, time
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, desc, func, or_, select, update
+from sqlalchemy import Select, delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -40,7 +40,7 @@ class AlertaRepository:
         )
         return f"{ALERT_CODE_PREFIX}-{ahora.strftime('%Y%m%d')}-{int(count or 0) + 1:04d}"
 
-    def _base_select(self):
+    def _base_select(self) -> Select[Any]:
         return (
             select(
                 AlertaCampus.id,
@@ -235,7 +235,7 @@ class AlertaRepository:
         return [dict(row) for row in result.mappings()]
 
     async def list_entregas(self, alerta_id: str, limit: int = 500) -> list[dict[str, Any]]:
-        Dest = aliased(Usuario)
+        dest = aliased(Usuario)
         result = await self.db.execute(
             select(
                 AlertaEntrega.id,
@@ -243,19 +243,19 @@ class AlertaRepository:
                 func.nullif(
                     func.trim(
                         func.concat(
-                            func.coalesce(Dest.nombre, ""), " ", func.coalesce(Dest.apellido, "")
+                            func.coalesce(dest.nombre, ""), " ", func.coalesce(dest.apellido, "")
                         )
                     ),
                     "",
                 ).label("destinatario_nombre"),
-                Dest.email.label("destinatario_email"),
+                dest.email.label("destinatario_email"),
                 AlertaEntrega.canal,
                 AlertaEntrega.estado,
                 AlertaEntrega.error_detalle,
                 AlertaEntrega.fecha_envio,
                 AlertaEntrega.created_at,
             )
-            .outerjoin(Dest, Dest.id == AlertaEntrega.destinatario_id)
+            .outerjoin(dest, dest.id == AlertaEntrega.destinatario_id)
             .where(AlertaEntrega.alerta_id == UUID(alerta_id))
             .order_by(desc(AlertaEntrega.created_at))
             .limit(limit)
@@ -263,7 +263,7 @@ class AlertaRepository:
         return [dict(row) for row in result.mappings()]
 
     async def list_eventos(self, alerta_id: str) -> list[dict[str, Any]]:
-        Actor = aliased(Usuario)
+        actor = aliased(Usuario)
         result = await self.db.execute(
             select(
                 AlertaEvento.id,
@@ -272,7 +272,7 @@ class AlertaRepository:
                 func.nullif(
                     func.trim(
                         func.concat(
-                            func.coalesce(Actor.nombre, ""), " ", func.coalesce(Actor.apellido, "")
+                            func.coalesce(actor.nombre, ""), " ", func.coalesce(actor.apellido, "")
                         )
                     ),
                     "",
@@ -280,7 +280,7 @@ class AlertaRepository:
                 AlertaEvento.detalle,
                 AlertaEvento.created_at,
             )
-            .outerjoin(Actor, Actor.id == AlertaEvento.actor_usuario_id)
+            .outerjoin(actor, actor.id == AlertaEvento.actor_usuario_id)
             .where(AlertaEvento.alerta_id == UUID(alerta_id))
             .order_by(AlertaEvento.created_at.asc())
         )

@@ -414,7 +414,7 @@ class LostFoundRepository:
         )
 
     async def get_detail_by_ref(self, ref: str) -> dict[str, Any] | None:
-        Reportante = aliased(Usuario)
+        reportante = aliased(Usuario)
         filters = []
         try:
             filters.append(CasoLostFound.id == UUID(ref))
@@ -431,14 +431,14 @@ class LostFoundRepository:
                 CustodiaObjeto.ubicacion_custodia.label("custodia_ubicacion"),
                 CustodiaObjeto.fecha_recepcion.label("custodia_fecha_recepcion"),
                 CustodiaObjeto.fecha_vencimiento.label("custodia_fecha_vencimiento"),
-                Reportante.nombre.label("reportante_nombre"),
-                Reportante.apellido.label("reportante_apellido"),
-                Reportante.email.label("reportante_email"),
-                Reportante.avatar_url.label("reportante_avatar_url"),
+                reportante.nombre.label("reportante_nombre"),
+                reportante.apellido.label("reportante_apellido"),
+                reportante.email.label("reportante_email"),
+                reportante.avatar_url.label("reportante_avatar_url"),
             )
             .outerjoin(CategoriaObjeto, CategoriaObjeto.id == CasoLostFound.categoria_id)
             .outerjoin(CustodiaObjeto, CustodiaObjeto.caso_id == CasoLostFound.id)
-            .outerjoin(Reportante, Reportante.id == CasoLostFound.reportante_id)
+            .outerjoin(reportante, reportante.id == CasoLostFound.reportante_id)
             .where(*filters)
             .limit(1)
         )

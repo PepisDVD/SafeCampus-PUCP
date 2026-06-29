@@ -507,7 +507,8 @@ class CustodiaPoliticaUpdateInput(BaseModel):
     def _coherencia(self) -> "CustodiaPoliticaUpdateInput":
         if self.dias_alerta_vencimiento >= self.dias_maximos_custodia:
             raise ValueError(
-                "Los días para marcar 'Por vencer' deben ser menores a los días máximos de custodia."
+                "Los días para marcar 'Por vencer' deben ser menores a los días "
+                "máximos de custodia."
             )
         if self.dias_recordatorio_previo >= self.dias_maximos_custodia:
             raise ValueError(
@@ -515,7 +516,8 @@ class CustodiaPoliticaUpdateInput(BaseModel):
             )
         if self.horas_alerta_perecible >= self.horas_maximas_perecibles:
             raise ValueError(
-                "Las horas de alerta de perecibles deben ser menores a las horas máximas de custodia."
+                "Las horas de alerta de perecibles deben ser menores a las horas "
+                "máximas de custodia."
             )
         return self
 

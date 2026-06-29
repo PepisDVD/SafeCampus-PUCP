@@ -67,24 +67,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      # --- Calidad de código (advisory) ---
-      # El backend arrastra deuda preexistente de lint/tipos, por lo que estos
-      # pasos son informativos (continue-on-error) y NO bloquean el merge todavía.
-      # A medida que se limpie la deuda, quitar `continue-on-error` para volverlos
-      # gates obligatorios (empezando por ruff format y luego ruff check / mypy).
-      - name: Ruff format check (advisory)
-        continue-on-error: true
+      # --- Calidad de código (gates obligatorios) ---
+      # El backend está limpio de ruff (check + format) y mypy (strict), por lo
+      # que estos pasos bloquean el merge ante cualquier regresión de estilo/tipos.
+      - name: Ruff format check
         run: ruff format --check .
 
-      - name: Ruff lint (advisory)
-        continue-on-error: true
+      - name: Ruff lint
         run: ruff check --output-format=github .
 
-      - name: Mypy type check (advisory)
-        continue-on-error: true
+      - name: Mypy type check
         run: mypy app
 
-      # --- Gate obligatorio ---
+      # --- Tests ---
       - name: Run pytest
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=require

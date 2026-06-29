@@ -5,6 +5,7 @@
 """
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -20,7 +21,7 @@ class PaginatedResponse(BaseModel):
     page: int
     per_page: int
     total_pages: int
-    items: list
+    items: list[Any]
 
 
 class GeoPoint(BaseModel):

@@ -950,7 +950,10 @@ class IncidenteService:
         if mime not in self._MIME_PERMITIDOS:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Tipo de archivo no permitido. Solo se aceptan imágenes (jpg, png, webp, heic, gif).",
+                detail=(
+                    "Tipo de archivo no permitido. Solo se aceptan imágenes "
+                    "(jpg, png, webp, heic, gif)."
+                ),
             )
 
         contenido = await archivo.read()

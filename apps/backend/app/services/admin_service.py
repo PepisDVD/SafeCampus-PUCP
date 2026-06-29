@@ -34,8 +34,10 @@ from app.schemas.admin import (
     CambiarEstadoInput,
     IntegracionesListResponse,
     ModulosResponse,
+    PermisoOut,
     PermisosListResponse,
     RegistroAuditoriaOut,
+    RolBrief,
     RolesListResponse,
     UsuarioCreateInput,
     UsuarioCreateResponse,
@@ -64,7 +66,7 @@ class AdminService:
         accion: str,
         entidad: str,
         entidad_id: str | None,
-        detalle: dict,
+        detalle: dict[str, Any],
     ) -> None:
         # Solo registramos auditoría cuando conocemos al actor (acciones desde la
         # web admin). Se inyectan origen/resultado estándar para las columnas de
@@ -471,7 +473,7 @@ class AdminService:
     # -----------------------------------------------------------------------
 
     @staticmethod
-    def _map_auditoria_usuario(r: dict) -> AuditoriaUsuarioOut | None:
+    def _map_auditoria_usuario(r: dict[str, Any]) -> AuditoriaUsuarioOut | None:
         usuario_id = r.get("usuario_id")
         if not usuario_id:
             return None
@@ -486,7 +488,7 @@ class AdminService:
         )
 
     @staticmethod
-    def _map_usuario(r: dict) -> UsuarioOut:
+    def _map_usuario(r: dict[str, Any]) -> UsuarioOut:
         import json
 
         roles_raw = r.get("roles") or []
@@ -505,20 +507,14 @@ class AdminService:
             avatar_url=r.get("avatar_url"),
             ultimo_acceso=str(r["ultimo_acceso"]) if r.get("ultimo_acceso") else None,
             created_at=str(r["created_at"]),
-            roles=[
-                {
-                    "id": str(role["id"]),
-                    "nombre": role["nombre"],
-                }
-                for role in roles_raw
-            ],
+            roles=[RolBrief(id=str(role["id"]), nombre=role["nombre"]) for role in roles_raw],
         )
 
     @staticmethod
-    def _map_permiso(r: dict) -> dict[str, str | None]:
-        return {
-            "id": str(r["id"]),
-            "modulo": r["modulo"],
-            "accion": r["accion"],
-            "descripcion": r.get("descripcion"),
-        }
+    def _map_permiso(r: dict[str, Any]) -> PermisoOut:
+        return PermisoOut(
+            id=str(r["id"]),
+            modulo=r["modulo"],
+            accion=r["accion"],
+            descripcion=r.get("descripcion"),
+        )

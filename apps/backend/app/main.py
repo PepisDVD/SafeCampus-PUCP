@@ -4,6 +4,7 @@
 📦 Capa: App / Raíz del backend
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -14,7 +15,7 @@ from app.core.config import settings
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Ciclo de vida de la aplicación: startup y shutdown."""
     # Startup
     print(f"🚀 SafeCampus Backend v{settings.VERSION} iniciando...")
@@ -47,6 +48,6 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health", tags=["Health"])
-async def health_check():
+async def health_check() -> dict[str, str]:
     """Verificación de estado del servicio."""
     return {"status": "ok", "version": settings.VERSION, "service": "safecampus-backend"}

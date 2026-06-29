@@ -10,9 +10,12 @@ class EvolutionWhatsAppProvider(MessagingProvider):
     name = "evolution"
 
     def parse_incoming_webhook(self, payload: dict[str, Any]) -> IncomingMessage:
-        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-        key = data.get("key") if isinstance(data.get("key"), dict) else {}
-        message = data.get("message") if isinstance(data.get("message"), dict) else {}
+        data_raw = payload.get("data")
+        data: dict[str, Any] = data_raw if isinstance(data_raw, dict) else {}
+        key_raw = data.get("key")
+        key: dict[str, Any] = key_raw if isinstance(key_raw, dict) else {}
+        message_raw = data.get("message")
+        message: dict[str, Any] = message_raw if isinstance(message_raw, dict) else {}
 
         text = self._extract_text(message)
         message_type = self._detect_message_type(message)

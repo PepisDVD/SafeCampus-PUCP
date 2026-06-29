@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import AuditEntidad, AuditModulo, AuditOrigen, AuditResultado
 from app.core.config import settings
-from app.core.constants import CanalNotificacion, EstadoAlertaCampus
+from app.core.constants import CanalNotificacion, EstadoAlertaCampus, OrigenAlerta
 from app.integrations.messaging.evolution_client import EvolutionApiClient
 from app.repositories.alerta_repository import AlertaRepository
 from app.repositories.auditoria_repository import AuditoriaRepository
@@ -379,7 +379,7 @@ class AlertaService:
             contenido=str(row["contenido"]),
             severidad=row["severidad"],
             estado=row["estado"],
-            origen=row.get("origen") or "MANUAL",
+            origen=OrigenAlerta(row.get("origen") or "MANUAL"),
             canales=row.get("canales") or ["INAPP"],
             zona_id=str(row["zona_id"]) if row.get("zona_id") else None,
             zona_nombre=row.get("zona_nombre"),
@@ -457,5 +457,5 @@ class AlertaService:
             if isinstance(value, str):
                 return value
             if isinstance(value, dict) and isinstance(value.get("id"), str):
-                return value["id"]
+                return str(value["id"])
         return None

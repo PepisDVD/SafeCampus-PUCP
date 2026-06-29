@@ -717,7 +717,10 @@ class OmnicanalService:
             if archivo.content_type not in self._IMAGE_MIME_TYPES:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Tipo de archivo no permitido. Solo se aceptan imagenes jpg, png, webp o gif.",
+                    detail=(
+                        "Tipo de archivo no permitido. Solo se aceptan imagenes "
+                        "jpg, png, webp o gif."
+                    ),
                 )
             content = await archivo.read()
             if len(content) > self._MAX_IMAGE_BYTES:
