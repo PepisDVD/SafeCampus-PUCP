@@ -2,7 +2,7 @@
 Seed base records in sc_maestros.ubicacion_maestra.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from alembic import op
 

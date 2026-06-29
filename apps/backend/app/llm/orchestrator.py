@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from app.core.config import settings
 from app.integrations.llm import (

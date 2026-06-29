@@ -46,8 +46,7 @@ class AuthService:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(
-                        "El acceso por SSO es exclusivo para cuentas "
-                        "institucionales @pucp.edu.pe."
+                        "El acceso por SSO es exclusivo para cuentas institucionales @pucp.edu.pe."
                     ),
                 )
             if not institutional and is_institutional:
@@ -244,8 +243,7 @@ class AuthService:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=(
-                        "El acceso por SSO es exclusivo para cuentas "
-                        "institucionales @pucp.edu.pe."
+                        "El acceso por SSO es exclusivo para cuentas institucionales @pucp.edu.pe."
                     ),
                 )
         else:
@@ -410,9 +408,7 @@ class AuthService:
 
     @staticmethod
     def _is_institutional_email(email: str) -> bool:
-        return email.strip().lower().endswith(
-            f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}"
-        )
+        return email.strip().lower().endswith(f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}")
 
     @staticmethod
     def _resolve_names(email: str, metadata: dict[str, Any]) -> tuple[str, str]:
@@ -475,9 +471,7 @@ class AuthService:
         return f"{parts.scheme}://{parts.netloc}"
 
     @staticmethod
-    def _create_user_session_token(
-        user: AuthUserResponse, channel: AuthChannel
-    ) -> str:
+    def _create_user_session_token(user: AuthUserResponse, channel: AuthChannel) -> str:
         return create_access_token(
             {
                 "kind": "user_session",

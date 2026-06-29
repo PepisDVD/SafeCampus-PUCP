@@ -1,26 +1,32 @@
-"""Operational chatbot orchestration for WhatsApp conversations."""
+"""Operational chatbot orchestration for WhatsApp conversations.
+
+El bot de WhatsApp usa una unica capa conversacional
+(`WhatsAppBotDecisionService` + `PROMPT-WHATSAPP-BOT-v1.0`) para decidir la
+siguiente accion de cada turno: responder, recolectar datos, registrar un
+incidente o derivar a un operador humano. Esta capa es independiente del
+clasificador formal de incidentes (`PROMPT-IA-CLAS-v1.0`), que se mantiene sin
+cambios para los demas modulos.
+"""
 
 from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import settings
 from app.core.constants import NivelSeveridad, TipoCanal
 from app.integrations.messaging.evolution_client import EvolutionApiClient
+from app.llm.schemas import WhatsAppBotDecision, WhatsAppBotDecisionResult, WhatsAppBotIntent
 from app.repositories.omnicanal_repository import OmnicanalRepository
 from app.schemas.incidente import IncidenteCreateInput, IncidentePriorizacionAi
-from app.schemas.omnicanal import ConversacionDetail, MensajeConversacionOut
+from app.schemas.omnicanal import MensajeConversacionOut
 from app.services.incidente_service import IncidenteService
-from app.services.llm_service import LLMService
+from app.services.whatsapp_bot_decision_service import WhatsAppBotDecisionService
 
 logger = logging.getLogger(__name__)
 
-GREETING_KEYWORDS = {"hola", "buenas", "buenos dias", "buenas tardes", "buenas noches"}
-FOLLOW_UP_KEYWORDS = {"estado", "seguimiento", "avance", "caso", "incidente"}
 SYSTEM_LOCATION_HINTS = (
     "biblioteca",
     "cafeteria",
@@ -34,26 +40,19 @@ SYSTEM_LOCATION_HINTS = (
     "facultad",
 )
 
-
-@dataclass
-class ChatbotDecision:
-    status: str
-    action: str
-    reply: str | None
-    handoff_reason: str | None
-    requires_human_review: bool
-    missing_fields: list[str]
-    intent: str
-    ai_summary: str
-    should_create_incident: bool
-    should_handoff: bool
+# Intenciones que justifican (re)construir el borrador de incidente.
+_INCIDENT_RELATED_INTENTS = {
+    WhatsAppBotIntent.INCIDENT_REPORT,
+    WhatsAppBotIntent.EMERGENCY,
+    WhatsAppBotIntent.PROVIDE_DETAILS,
+}
 
 
 class ChatbotService:
     def __init__(self, db: Any) -> None:
         self._repo = OmnicanalRepository(db)
         self._evolution = EvolutionApiClient()
-        self._llm = LLMService(db=db)
+        self._bot_decider = WhatsAppBotDecisionService()
         self._incidentes = IncidenteService(db)
 
     async def process_incoming_contact_message(
@@ -84,77 +83,35 @@ class ChatbotService:
         recent_rows = await self._repo.list_mensajes(str(conversacion.id), limit=12)
         recent_rows = self._filter_messages_for_active_cycle(chatbot_state, recent_rows)
         normalized_text = incoming_message.strip()
-        location = self._extract_location(normalized_text, chatbot_state.incident_draft or {})
-        classification = await self._llm.classify_whatsapp_message(
-            descripcion=self._compose_classification_input(recent_rows, normalized_text),
-            ubicacion=location or "No especificada",
-            contexto_adicional=f"Conversacion WhatsApp {conversacion.external_chat_id}",
-        )
-        final = classification.final
-        provider_response = getattr(classification, "provider_response", None)
-        try:
-            correlation_id = getattr(final, "correlation_id", str(conversacion.id))
-            provider_used = getattr(final, "provider_used", None)
-            provider_value = (
-                provider_used.value
-                if hasattr(provider_used, "value")
-                else str(provider_used) if provider_used else settings.LLM_PROVIDER
-            )
-            model_used = getattr(final, "model_used", "unknown")
-            prompt_version = getattr(final, "version_prompt", None)
-            latency_ms = getattr(final, "latency_ms", None)
-            fallback_applied = bool(getattr(final, "fallback_applied", False))
-            fallback_reason = getattr(final, "fallback_reason", None)
-            normalized_payload = (
-                classification.normalized.model_dump(mode="json")
-                if hasattr(classification, "normalized")
-                else None
-            )
-            final_payload = final.model_dump(mode="json") if hasattr(final, "model_dump") else {}
-            provider_payload = (
-                provider_response.model_dump(mode="json") if provider_response and hasattr(provider_response, "model_dump") else None
-            )
-            await self._repo.create_chatbot_llm_usage(
-                conversacion_id=str(conversacion.id),
-                incidente_id=(str(conversacion.incidente_id) if conversacion.incidente_id else None),
-                correlation_id=correlation_id,
-                provider=provider_value,
-                model=model_used,
-                prompt_version=prompt_version,
-                prompt_tokens=provider_response.prompt_tokens if provider_response else 0,
-                completion_tokens=provider_response.completion_tokens if provider_response else 0,
-                total_tokens=provider_response.total_tokens if provider_response else 0,
-                latency_ms=latency_ms,
-                fallback_applied=fallback_applied,
-                fallback_reason=fallback_reason,
-                raw_response={
-                    "normalized": normalized_payload,
-                    "final": final_payload,
-                    "provider_response": provider_payload,
-                },
-            )
-        except Exception:
-            logger.exception("chatbot_llm_usage_persist_failed", extra={"conversation_id": str(conversacion.id)})
+        incident_exists = bool(conversacion.incidente_id)
 
-        draft = self._build_incident_draft(conversacion, normalized_text, location, final)
-        intent = self._detect_intent(normalized_text, bool(conversacion.incidente_id), chatbot_state.bot_status)
-        missing_fields = self._missing_fields(draft, final.severidad)
-        decision = self._decide(
-            conversacion=conversacion,
-            intent=intent,
-            severity=final.severidad.value,
-            requires_human_review=final.requires_human_review,
-            missing_fields=missing_fields,
-            incident_exists=bool(conversacion.incidente_id),
-            normalized_text=normalized_text,
-            incident_code=None,
+        decision_result = await self._bot_decider.decide(
+            conversation_state=chatbot_state.bot_status or "BOT_NEW",
+            last_user_message=normalized_text,
+            recent_messages=self._recent_messages_for_llm(recent_rows, normalized_text),
+            incident_exists=incident_exists,
+            incident_draft=chatbot_state.incident_draft or {},
+            correlation_id=str(conversacion.id),
         )
+        decision = decision_result.decision
+
+        await self._persist_llm_usage(conversacion, decision_result)
+
+        location = decision.incident_location or self._extract_location(
+            normalized_text, chatbot_state.incident_draft or {}
+        )
+        if self._is_incident_related(decision):
+            draft = self._build_incident_draft(conversacion, normalized_text, location, decision)
+        else:
+            draft = dict(chatbot_state.incident_draft or {})
 
         incident_id = str(conversacion.incidente_id) if conversacion.incidente_id else None
         incident_code: str | None = None
+        incident_created = False
         if decision.should_create_incident and not incident_id:
-            incident_id, incident_code = await self._create_incident_from_chatbot(draft, final)
+            incident_id, incident_code = await self._create_incident_from_decision(draft, decision)
             if incident_id:
+                incident_created = True
                 await self._repo.vincular_incidente(str(conversacion.id), incident_id)
                 await self._repo.replace_active_incident_association(
                     conversacion_id=str(conversacion.id),
@@ -163,10 +120,11 @@ class ChatbotService:
                     tipo_asociacion="AUTOMATICA_BOT",
                 )
 
+        priority = self._resolve_priority(decision)
         if decision.should_handoff:
             await self._repo.update_conversacion_chatbot_routing(
                 str(conversacion.id),
-                prioridad=final.severidad.value,
+                prioridad=priority,
                 estado="EN_COLA",
                 modo_atencion="HUMANO",
                 incidente_id=incident_id,
@@ -174,43 +132,46 @@ class ChatbotService:
         else:
             await self._repo.update_conversacion_chatbot_routing(
                 str(conversacion.id),
-                prioridad=final.severidad.value,
+                prioridad=priority,
                 estado="EN_BOT",
                 modo_atencion="BOT",
                 incidente_id=incident_id,
             )
 
-        reply = self._compose_reply(
-            decision=decision,
-            severity=final.severidad.value,
-            category=final.categoria.value,
-            incident_code=incident_code,
-            location=location,
-        )
-
+        reply = self._compose_reply(decision, incident_code=incident_code, location=location)
         if reply:
             await self._send_bot_reply(conversacion, reply)
+
+        bot_status = self._resolve_bot_status(decision, incident_active=bool(incident_id))
+        last_action = self._resolve_last_action(decision, incident_created=incident_created)
+        ai_summary = decision.conversation_summary or self._summary_from_decision(decision)
+        handoff_reason = self._resolve_handoff_reason(decision)
+        category_value = decision.incident_category.value if decision.incident_category else None
+        severity_value = decision.incident_severity.value if decision.incident_severity else None
+        now = datetime.now(UTC)
 
         await self._repo.update_chatbot_state(
             str(conversacion.id),
             {
-                "bot_status": decision.status,
-                "last_intent": decision.intent,
-                "last_action": decision.action,
+                "bot_status": bot_status,
+                "last_intent": decision.intent.value,
+                "last_action": last_action,
                 "requires_human_review": decision.requires_human_review,
-                "handoff_reason": decision.handoff_reason,
-                "ai_summary": decision.ai_summary,
-                "classification_category": final.categoria.value,
-                "classification_severity": final.severidad.value,
-                "classification_confidence": final.confidence_score,
+                "handoff_reason": handoff_reason,
+                "ai_summary": ai_summary,
+                "classification_category": category_value,
+                "classification_severity": severity_value,
+                "classification_confidence": None,
                 "incident_draft": draft,
                 "missing_fields": decision.missing_fields,
                 "suggested_reply": reply,
                 "last_bot_reply": reply,
-                "last_user_message_at": datetime.now(UTC),
-                "last_bot_message_at": datetime.now(UTC) if reply else chatbot_state.last_bot_message_at,
-                "last_processed_at": datetime.now(UTC),
-                "memory_snapshot": self._build_memory_snapshot(recent_rows, normalized_text, reply),
+                "last_user_message_at": now,
+                "last_bot_message_at": now if reply else chatbot_state.last_bot_message_at,
+                "last_processed_at": now,
+                "memory_snapshot": self._build_memory_snapshot(
+                    recent_rows, normalized_text, reply, ai_summary
+                ),
             },
         )
 
@@ -218,11 +179,14 @@ class ChatbotService:
             conversacion_id=conversacion.id,
             tipo_evento="CHATBOT_PROCESADO",
             payload={
-                "action": decision.action,
-                "status": decision.status,
-                "severity": final.severidad.value,
-                "category": final.categoria.value,
+                "action": last_action,
+                "status": bot_status,
+                "intent": decision.intent.value,
+                "urgency_signal": decision.urgency_signal.value,
+                "severity": severity_value,
+                "category": category_value,
                 "incident_id": incident_id,
+                "fallback_applied": decision_result.fallback_applied,
             },
         )
 
@@ -276,16 +240,27 @@ class ChatbotService:
             },
         )
 
-    def _compose_classification_input(self, recent_rows: list[dict[str, Any]], current_text: str) -> str:
-        contact_messages = [
-            row["MensajeConversacion"].contenido or ""
-            for row in recent_rows
-            if row["MensajeConversacion"].autor_tipo == "CONTACTO"
-        ]
-        last_messages = [message.strip() for message in contact_messages[-4:] if message.strip()]
-        if current_text.strip() not in last_messages:
-            last_messages.append(current_text.strip())
-        return "\n".join(last_messages[-4:])
+    # --- contexto conversacional ---
+
+    def _recent_messages_for_llm(
+        self,
+        recent_rows: list[dict[str, Any]],
+        current_text: str,
+    ) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
+        for row in recent_rows:
+            mensaje = row["MensajeConversacion"]
+            content = (mensaje.contenido or "").strip()
+            if content:
+                messages.append({"author": mensaje.autor_tipo, "content": content})
+        # El mensaje actual se envia aparte como "MENSAJE ACTUAL"; evita duplicarlo.
+        if (
+            messages
+            and messages[-1]["author"] == "CONTACTO"
+            and messages[-1]["content"] == current_text.strip()
+        ):
+            messages.pop()
+        return messages
 
     def _filter_messages_for_active_cycle(
         self,
@@ -312,21 +287,12 @@ class ChatbotService:
                 filtered.append(row)
         return filtered
 
-    def _detect_intent(self, text: str, incident_exists: bool, bot_status: str) -> str:
-        lowered = text.lower().strip()
-        if any(keyword in lowered for keyword in GREETING_KEYWORDS) and len(lowered) <= 24:
-            return "GREETING"
-        if incident_exists and any(keyword in lowered for keyword in FOLLOW_UP_KEYWORDS):
-            return "FOLLOW_UP"
-        if bot_status == "BOT_COLLECTING":
-            return "PROVIDE_DETAILS"
-        return "REPORT_INCIDENT"
-
     def _extract_location(self, text: str, draft: dict[str, Any]) -> str | None:
         if draft.get("lugar_referencia"):
             return str(draft["lugar_referencia"])
         pattern = re.search(
-            r"(?:en|cerca de|frente a|ubicacion|ubicación)\s+(?:la|el)?\s*([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\-\s]{4,80})",
+            r"(?:en|cerca de|frente a|ubicacion|ubicación)\s+(?:la|el)?\s*"
+            r"([A-Za-zÁÉÍÓÚáéíóúñÑ0-9\-\s]{4,80})",
             text,
             re.IGNORECASE,
         )
@@ -338,182 +304,188 @@ class ChatbotService:
                 return hint.title()
         return None
 
+    # --- borrador e incidentes ---
+
+    def _is_incident_related(self, decision: WhatsAppBotDecision) -> bool:
+        return (
+            decision.should_create_incident
+            or bool(decision.missing_fields)
+            or decision.intent in _INCIDENT_RELATED_INTENTS
+        )
+
     def _build_incident_draft(
         self,
         conversacion: Any,
         text: str,
         location: str | None,
-        final: Any,
+        decision: WhatsAppBotDecision,
     ) -> dict[str, Any]:
-        category = final.categoria.value
-        severity = final.severidad.value
-        title_prefix = category.replace("_", " ").title() if category != "OTRO" else "Reporte WhatsApp"
-        title = f"{title_prefix}: {conversacion.nombre_contacto or conversacion.telefono_contacto or 'Contacto'}"
+        category = decision.incident_category.value if decision.incident_category else "OTRO"
+        severity = decision.incident_severity.value if decision.incident_severity else "MEDIO"
+        title_prefix = (
+            category.replace("_", " ").title() if category != "OTRO" else "Reporte WhatsApp"
+        )
+        contact = conversacion.nombre_contacto or conversacion.telefono_contacto or "Contacto"
+        title = f"{title_prefix}: {contact}"
         return {
             "titulo": title[:200],
             "descripcion": text[:4000],
             "lugar_referencia": location,
             "categoria": category,
             "severidad": severity,
-            "confidence_score": final.confidence_score,
         }
 
-    def _missing_fields(self, draft: dict[str, Any], severity: str) -> list[str]:
-        missing: list[str] = []
-        if not draft.get("descripcion") or len(str(draft["descripcion"]).strip()) < 12:
-            missing.append("descripcion")
-        if severity not in {"CRITICO", "ALTO"} and not draft.get("lugar_referencia"):
-            missing.append("lugar_referencia")
-        return missing
-
-    def _decide(
+    async def _create_incident_from_decision(
         self,
-        *,
-        conversacion: Any,
-        intent: str,
-        severity: str,
-        requires_human_review: bool,
-        missing_fields: list[str],
-        incident_exists: bool,
-        normalized_text: str,
-        incident_code: str | None,
-    ) -> ChatbotDecision:
-        ai_summary = (
-            f"Clasificacion IA: severidad {severity}. "
-            f"Campos faltantes: {', '.join(missing_fields) if missing_fields else 'ninguno'}."
-        )
-        if incident_exists and intent == "FOLLOW_UP":
-            return ChatbotDecision(
-                status="BOT_INCIDENT_DRAFTED",
-                action="INFORM_STATUS",
-                reply=None,
-                handoff_reason=None,
-                requires_human_review=requires_human_review,
-                missing_fields=[],
-                intent=intent,
-                ai_summary=ai_summary,
-                should_create_incident=False,
-                should_handoff=False,
-            )
-
-        if severity in {"CRITICO", "ALTO"} or requires_human_review:
-            return ChatbotDecision(
-                status="BOT_ESCALATED",
-                action="HANDOFF_TO_HUMAN",
-                reply=None,
-                handoff_reason="Caso critico, urgente o ambiguo derivado a operador.",
-                requires_human_review=True,
-                missing_fields=[],
-                intent=intent,
-                ai_summary=ai_summary,
-                should_create_incident=True,
-                should_handoff=True,
-            )
-
-        if intent == "GREETING" and not normalized_text.strip().endswith("?"):
-            return ChatbotDecision(
-                status="BOT_COLLECTING",
-                action="ASK_INCIDENT_DETAILS",
-                reply=None,
-                handoff_reason=None,
-                requires_human_review=False,
-                missing_fields=["descripcion", "lugar_referencia"],
-                intent=intent,
-                ai_summary=ai_summary,
-                should_create_incident=False,
-                should_handoff=False,
-            )
-
-        if missing_fields:
-            return ChatbotDecision(
-                status="BOT_COLLECTING",
-                action="ASK_CLARIFICATION",
-                reply=None,
-                handoff_reason=None,
-                requires_human_review=False,
-                missing_fields=missing_fields,
-                intent=intent,
-                ai_summary=ai_summary,
-                should_create_incident=False,
-                should_handoff=False,
-            )
-
-        return ChatbotDecision(
-            status="BOT_INCIDENT_DRAFTED",
-            action="CREATE_INCIDENT",
-            reply=None,
-            handoff_reason=None,
-            requires_human_review=False,
-            missing_fields=[],
-            intent=intent,
-            ai_summary=ai_summary,
-            should_create_incident=not incident_exists,
-            should_handoff=False,
-        )
-
-    def _compose_reply(
-        self,
-        *,
-        decision: ChatbotDecision,
-        severity: str,
-        category: str,
-        incident_code: str | None,
-        location: str | None,
-    ) -> str | None:
-        if decision.action == "HANDOFF_TO_HUMAN":
-            return (
-                "Recibimos tu reporte y ya fue derivado al equipo de seguridad para atención inmediata. "
-                "Si puedes hacerlo sin exponerte, comparte referencias adicionales del lugar."
-            )
-        if decision.action == "ASK_INCIDENT_DETAILS":
-            return (
-                "Hola. Soy el asistente inicial de SafeCampus. Por favor indica que ocurrió y en qué lugar del campus sucede o sucedió."
-            )
-        if decision.action == "ASK_CLARIFICATION":
-            if "lugar_referencia" in decision.missing_fields:
-                return "Gracias. Para registrar bien el caso, indícame el lugar exacto o una referencia dentro del campus."
-            return "Gracias. ¿Podrías darme un poco más de detalle de lo ocurrido para continuar con el registro?"
-        if decision.action == "INFORM_STATUS" and incident_code:
-            return f"Tu caso sigue registrado con el código {incident_code}. Un operador lo revisará desde la bandeja operativa."
-        if decision.action == "CREATE_INCIDENT" and incident_code:
-            location_text = f" en {location}" if location else ""
-            return (
-                f"Gracias. Registré tu reporte como incidente {incident_code}{location_text}. "
-                f"Clasificación preliminar: {category.replace('_', ' ').lower()} con severidad {severity.lower()}."
-            )
-        if decision.action == "CREATE_INCIDENT":
-            return "Gracias. Registré tu reporte y lo dejé listo para seguimiento operativo desde SafeCampus."
-        return None
-
-    async def _create_incident_from_chatbot(self, draft: dict[str, Any], final: Any) -> tuple[str | None, str | None]:
-        if not settings.CHATBOT_AUTO_CREATE_INCIDENTS or not settings.CHATBOT_SYSTEM_USER_ID.strip():
+        draft: dict[str, Any],
+        decision: WhatsAppBotDecision,
+    ) -> tuple[str | None, str | None]:
+        if (
+            not settings.CHATBOT_AUTO_CREATE_INCIDENTS
+            or not settings.CHATBOT_SYSTEM_USER_ID.strip()
+        ):
             return None, None
 
+        severity_value = str(draft.get("severidad") or "MEDIO")
+        lugar_referencia = str(draft["lugar_referencia"]) if draft.get("lugar_referencia") else None
         incident = await self._incidentes.crear_incidente(
             settings.CHATBOT_SYSTEM_USER_ID.strip(),
             IncidenteCreateInput(
                 titulo=str(draft["titulo"]),
                 descripcion=str(draft["descripcion"]),
-                severidad=NivelSeveridad(str(draft["severidad"])),
+                severidad=NivelSeveridad(severity_value),
                 categoria=str(draft["categoria"]),
-                lugar_referencia=(str(draft["lugar_referencia"]) if draft.get("lugar_referencia") else None),
+                lugar_referencia=lugar_referencia,
                 canal_origen=TipoCanal.MENSAJERIA,
             ),
             priorizacion_override=IncidentePriorizacionAi(
-                severidad=NivelSeveridad(final.severidad.value),
-                categoria_sugerida=final.categoria.value,
-                confianza=final.confidence_score,
-                justificacion=final.razonamiento_breve,
+                severidad=NivelSeveridad(severity_value),
+                categoria_sugerida=str(draft["categoria"]),
+                confianza=None,
+                justificacion=(
+                    decision.conversation_summary
+                    or "Registro automatico desde el bot conversacional de WhatsApp."
+                )[:1200],
             ),
         )
         return incident.id, incident.codigo
+
+    # --- mapeo de estado/respuesta ---
+
+    def _resolve_priority(self, decision: WhatsAppBotDecision) -> str:
+        if decision.incident_severity:
+            return decision.incident_severity.value
+        return {
+            "CRITICAL": "CRITICO",
+            "HIGH": "ALTO",
+            "MEDIUM": "MEDIO",
+            "LOW": "BAJO",
+            "NONE": "BAJO",
+        }.get(decision.urgency_signal.value, "BAJO")
+
+    def _resolve_bot_status(self, decision: WhatsAppBotDecision, *, incident_active: bool) -> str:
+        if decision.should_handoff:
+            return "BOT_ESCALATED"
+        if incident_active:
+            return "BOT_INCIDENT_DRAFTED"
+        if decision.missing_fields or decision.intent in {
+            WhatsAppBotIntent.INCIDENT_REPORT,
+            WhatsAppBotIntent.PROVIDE_DETAILS,
+        }:
+            return "BOT_COLLECTING"
+        return "BOT_NEW"
+
+    def _resolve_last_action(self, decision: WhatsAppBotDecision, *, incident_created: bool) -> str:
+        if decision.should_handoff:
+            return "HANDOFF_TO_HUMAN"
+        if incident_created:
+            return "CREATE_INCIDENT"
+        if decision.intent == WhatsAppBotIntent.FOLLOW_UP:
+            return "INFORM_STATUS"
+        if decision.missing_fields:
+            return "ASK_CLARIFICATION"
+        if decision.intent in {
+            WhatsAppBotIntent.GREETING,
+            WhatsAppBotIntent.GENERAL_HELP,
+            WhatsAppBotIntent.SMALL_TALK,
+            WhatsAppBotIntent.NON_ACTIONABLE,
+        }:
+            return "GREET"
+        return "REPLY"
+
+    def _resolve_handoff_reason(self, decision: WhatsAppBotDecision) -> str | None:
+        if not decision.should_handoff:
+            return None
+        if decision.urgency_signal.value in {"HIGH", "CRITICAL"}:
+            return "Caso urgente o critico derivado a un operador."
+        if decision.intent == WhatsAppBotIntent.HUMAN_REQUEST:
+            return "El usuario solicito atencion humana."
+        return "Derivado a un operador por incertidumbre relevante."
+
+    def _compose_reply(
+        self,
+        decision: WhatsAppBotDecision,
+        *,
+        incident_code: str | None,
+        location: str | None,
+    ) -> str | None:
+        if not decision.should_reply:
+            return None
+        return decision.reply
+
+    @staticmethod
+    def _summary_from_decision(decision: WhatsAppBotDecision) -> str:
+        missing = ", ".join(decision.missing_fields) if decision.missing_fields else "ninguno"
+        return (
+            f"Intencion {decision.intent.value}, urgencia {decision.urgency_signal.value}. "
+            f"Campos faltantes: {missing}."
+        )
+
+    async def _persist_llm_usage(
+        self, conversacion: Any, result: WhatsAppBotDecisionResult
+    ) -> None:
+        try:
+            provider_response = result.provider_response
+            provider_value = (
+                result.provider_used.value
+                if hasattr(result.provider_used, "value")
+                else str(result.provider_used)
+            )
+            incidente_id = str(conversacion.incidente_id) if conversacion.incidente_id else None
+            await self._repo.create_chatbot_llm_usage(
+                conversacion_id=str(conversacion.id),
+                incidente_id=incidente_id,
+                correlation_id=result.correlation_id,
+                provider=provider_value,
+                model=result.model_used,
+                prompt_version=result.prompt_version,
+                prompt_tokens=provider_response.prompt_tokens if provider_response else 0,
+                completion_tokens=provider_response.completion_tokens if provider_response else 0,
+                total_tokens=provider_response.total_tokens if provider_response else 0,
+                latency_ms=result.latency_ms,
+                fallback_applied=result.fallback_applied,
+                fallback_reason=result.fallback_reason,
+                raw_response={
+                    "decision": result.decision.model_dump(mode="json"),
+                    "provider_response": (
+                        provider_response.model_dump(mode="json") if provider_response else None
+                    ),
+                    "normalization_events": result.normalization_events,
+                },
+            )
+        except Exception:
+            logger.exception(
+                "chatbot_llm_usage_persist_failed",
+                extra={"conversation_id": str(conversacion.id)},
+            )
 
     async def _send_bot_reply(self, conversacion: Any, reply: str) -> MensajeConversacionOut | None:
         response = await self._evolution.send_text(
             chat_id=self._evolution_recipient(conversacion),
             text=reply,
         )
-        external_id = response.get("key", {}).get("id") if isinstance(response.get("key"), dict) else response.get("id")
+        key = response.get("key")
+        external_id = key.get("id") if isinstance(key, dict) else response.get("id")
         mensaje = await self._repo.create_mensaje_if_missing(
             conversacion_id=conversacion.id,
             external_message_id=external_id,
@@ -540,6 +512,7 @@ class ChatbotService:
         recent_rows: list[dict[str, Any]],
         current_text: str,
         reply: str | None,
+        ai_summary: str | None = None,
     ) -> dict[str, Any]:
         messages = []
         for row in recent_rows[-6:]:
@@ -555,10 +528,11 @@ class ChatbotService:
             "recent_messages": messages,
             "last_user_message": current_text,
             "last_bot_reply": reply,
+            "summary": ai_summary,
         }
 
     @staticmethod
     def _evolution_recipient(conversacion: Any) -> str:
         if conversacion.telefono_contacto:
-            return conversacion.telefono_contacto
+            return str(conversacion.telefono_contacto)
         return str(conversacion.external_chat_id).split("@", maxsplit=1)[0]

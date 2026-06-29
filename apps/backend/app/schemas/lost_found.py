@@ -4,7 +4,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.core.constants import EstadoCasoLF, EstadoCustodia, EstadoMatchLF, MotivoCierreLF, TipoCasoLF
+from app.core.constants import (
+    EstadoCasoLF,
+    EstadoCustodia,
+    EstadoMatchLF,
+    MotivoCierreLF,
+    TipoCasoLF,
+)
 from app.schemas.incidente import UsuarioMini, ZonaCount
 
 
@@ -117,6 +123,7 @@ class RecepcionLfMobileInput(CasoLfCreateInput):
 
 class CasoLfUpdateInput(BaseModel):
     """Edición de datos descriptivos de un caso (no cambia tipo ni estado)."""
+
     titulo: str = Field(min_length=3, max_length=200)
     descripcion: str = Field(min_length=10, max_length=4000)
     categoria_id: str
@@ -135,11 +142,13 @@ class CasoLfUpdateInput(BaseModel):
 
 class CasoCierreInput(BaseModel):
     """Cierre/reapertura administrativa de un hilo."""
+
     cerrar: bool
 
 
 class CasoVisibilidadInput(BaseModel):
     """Ocultar/mostrar un hilo para la comunidad."""
+
     oculto: bool
 
 
@@ -301,7 +310,6 @@ class CasoLfEstadoUpdate(BaseModel):
     estado: EstadoCasoLF
     comentario: str | None = Field(default=None, max_length=2000)
     motivo_cierre: MotivoCierreLF | None = None
-    motivo_cierre_id: str | None = None
     motivo_cierre_id: str | None = None
     observaciones_cierre: str | None = Field(default=None, max_length=2000)
 
@@ -498,11 +506,17 @@ class CustodiaPoliticaUpdateInput(BaseModel):
     @model_validator(mode="after")
     def _coherencia(self) -> "CustodiaPoliticaUpdateInput":
         if self.dias_alerta_vencimiento >= self.dias_maximos_custodia:
-            raise ValueError("Los días para marcar 'Por vencer' deben ser menores a los días máximos de custodia.")
+            raise ValueError(
+                "Los días para marcar 'Por vencer' deben ser menores a los días máximos de custodia."
+            )
         if self.dias_recordatorio_previo >= self.dias_maximos_custodia:
-            raise ValueError("Los días previos de recordatorio deben ser menores a los días máximos de custodia.")
+            raise ValueError(
+                "Los días previos de recordatorio deben ser menores a los días máximos de custodia."
+            )
         if self.horas_alerta_perecible >= self.horas_maximas_perecibles:
-            raise ValueError("Las horas de alerta de perecibles deben ser menores a las horas máximas de custodia.")
+            raise ValueError(
+                "Las horas de alerta de perecibles deben ser menores a las horas máximas de custodia."
+            )
         return self
 
 

@@ -1,7 +1,16 @@
 from fastapi import APIRouter
 
-from app.api.v1 import alertas, gis, incidentes, lost_found, maestros, notificaciones, omnicanal
-from app.api.v1 import admin, auth
+from app.api.v1 import (
+    admin,
+    alertas,
+    auth,
+    gis,
+    incidentes,
+    lost_found,
+    maestros,
+    notificaciones,
+    omnicanal,
+)
 
 api_router = APIRouter()
 api_router.include_router(

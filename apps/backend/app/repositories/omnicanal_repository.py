@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Date, Integer, and_, cast, delete, func, or_, select, update
+from sqlalchemy import Date, Integer, Select, and_, cast, delete, func, or_, select, true, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -30,7 +30,7 @@ class OmnicanalRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    def _conversation_projection(self):
+    def _conversation_projection(self) -> Select[Any]:
         operador = aliased(Usuario, name="operador")
         tomado_por = aliased(Usuario, name="tomado_por")
         active_cycle_id = (
@@ -116,7 +116,9 @@ class OmnicanalRepository:
         )
 
     async def get_active_cycle(self, conversacion_id: str | Any) -> ConversacionCiclo | None:
-        conversation_uuid = conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id))
+        conversation_uuid = (
+            conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id))
+        )
         statement = (
             select(ConversacionCiclo)
             .where(
@@ -125,7 +127,8 @@ class OmnicanalRepository:
             )
             .limit(1)
         )
-        return await self.db.scalar(statement)
+        result: ConversacionCiclo | None = await self.db.scalar(statement)
+        return result
 
     async def get_or_create_active_cycle(
         self,
@@ -142,7 +145,9 @@ class OmnicanalRepository:
                 await self.db.refresh(existing)
             return existing
 
-        conversation_uuid = conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id))
+        conversation_uuid = (
+            conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id))
+        )
         cycle = ConversacionCiclo(
             conversacion_id=conversation_uuid,
             incidente_id=UUID(incidente_id) if incidente_id else None,
@@ -253,7 +258,9 @@ class OmnicanalRepository:
         self.db.add(conversacion)
         await self.db.flush()
         await self.db.refresh(conversacion)
-        await self.get_or_create_active_cycle(conversacion.id, metadata={"created_from": "whatsapp_webhook"})
+        await self.get_or_create_active_cycle(
+            conversacion.id, metadata={"created_from": "whatsapp_webhook"}
+        )
         return conversacion
 
     async def create_mensaje_if_missing(
@@ -278,7 +285,9 @@ class OmnicanalRepository:
             if not ciclo:
                 conversation = await self.db.get(
                     Conversacion,
-                    conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id)),
+                    conversacion_id
+                    if isinstance(conversacion_id, UUID)
+                    else UUID(str(conversacion_id)),
                 )
                 if conversation and conversation.estado != "CERRADA":
                     ciclo = await self.get_or_create_active_cycle(conversacion_id)
@@ -357,11 +366,17 @@ class OmnicanalRepository:
         payload: dict[str, Any] | None = None,
         ciclo_id: str | None = None,
     ) -> EventoConversacion:
-        ciclo = await self.db.get(ConversacionCiclo, UUID(ciclo_id)) if ciclo_id else await self.get_active_cycle(conversacion_id)
+        ciclo = (
+            await self.db.get(ConversacionCiclo, UUID(ciclo_id))
+            if ciclo_id
+            else await self.get_active_cycle(conversacion_id)
+        )
         if not ciclo:
             conversation = await self.db.get(
                 Conversacion,
-                conversacion_id if isinstance(conversacion_id, UUID) else UUID(str(conversacion_id)),
+                conversacion_id
+                if isinstance(conversacion_id, UUID)
+                else UUID(str(conversacion_id)),
             )
             if conversation and conversation.estado != "CERRADA":
                 ciclo = await self.get_or_create_active_cycle(conversacion_id)
@@ -457,7 +472,11 @@ class OmnicanalRepository:
         estado: str | None,
         limit: int,
     ) -> list[dict[str, Any]]:
-        statement = self._conversation_projection().order_by(Conversacion.ultimo_mensaje_at.desc()).limit(limit)
+        statement = (
+            self._conversation_projection()
+            .order_by(Conversacion.ultimo_mensaje_at.desc())
+            .limit(limit)
+        )
         if estado:
             statement = statement.where(Conversacion.estado == estado)
         if search:
@@ -539,7 +558,9 @@ class OmnicanalRepository:
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
-    async def get_conversacion_historial(self, conversacion_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    async def get_conversacion_historial(
+        self, conversacion_id: str
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
         detail = await self.get_conversacion_detail(conversacion_id)
         actor = aliased(Usuario, name="hist_actor")
         statement = (
@@ -581,7 +602,9 @@ class OmnicanalRepository:
         return int(await self.db.scalar(statement) or 0)
 
     async def get_conversacion_detail(self, conversacion_id: str) -> dict[str, Any] | None:
-        statement = self._conversation_projection().where(Conversacion.id == UUID(conversacion_id)).limit(1)
+        statement = (
+            self._conversation_projection().where(Conversacion.id == UUID(conversacion_id)).limit(1)
+        )
         result = await self.db.execute(statement)
         row = result.mappings().one_or_none()
         if not row:
@@ -641,7 +664,11 @@ class OmnicanalRepository:
         raw_response: dict[str, Any] | None,
         ciclo_id: str | None = None,
     ) -> ChatbotLlmUsage:
-        ciclo = await self.db.get(ConversacionCiclo, UUID(ciclo_id)) if ciclo_id else await self.get_active_cycle(conversacion_id)
+        ciclo = (
+            await self.db.get(ConversacionCiclo, UUID(ciclo_id))
+            if ciclo_id
+            else await self.get_active_cycle(conversacion_id)
+        )
         if not ciclo:
             conversation = await self.db.get(Conversacion, UUID(conversacion_id))
             if conversation and conversation.estado != "CERRADA":
@@ -869,7 +896,11 @@ class OmnicanalRepository:
 
         conversation = await self.db.get(Conversacion, UUID(conversacion_id))
         cycle.estado = "CERRADO"
-        cycle.incidente_id = conversation.incidente_id if conversation and conversation.incidente_id else cycle.incidente_id
+        cycle.incidente_id = (
+            conversation.incidente_id
+            if conversation and conversation.incidente_id
+            else cycle.incidente_id
+        )
         cycle.closed_at = datetime.now(UTC)
         cycle.cerrado_por_id = UUID(usuario_id) if usuario_id else None
         cycle.cierre_motivo = motivo
@@ -1017,7 +1048,10 @@ class OmnicanalRepository:
         await self.db.refresh(conversacion)
         await self.get_or_create_active_cycle(
             str(conversacion.id),
-            metadata={"created_from": "new_inbound_cycle", "started_at": metadata["chatbot_cycle_started_at"]},
+            metadata={
+                "created_from": "new_inbound_cycle",
+                "started_at": metadata["chatbot_cycle_started_at"],
+            },
         )
         return conversacion
 
@@ -1034,11 +1068,17 @@ class OmnicanalRepository:
             select(
                 Conversacion,
                 cycles_count.label("ciclos_count"),
-                func.max(func.coalesce(ConversacionCiclo.closed_at, ConversacionCiclo.started_at)).label("ultimo_ciclo_at"),
+                func.max(
+                    func.coalesce(ConversacionCiclo.closed_at, ConversacionCiclo.started_at)
+                ).label("ultimo_ciclo_at"),
             )
             .join(ConversacionCiclo, ConversacionCiclo.conversacion_id == Conversacion.id)
             .group_by(Conversacion.id)
-            .order_by(func.max(func.coalesce(ConversacionCiclo.closed_at, ConversacionCiclo.started_at)).desc())
+            .order_by(
+                func.max(
+                    func.coalesce(ConversacionCiclo.closed_at, ConversacionCiclo.started_at)
+                ).desc()
+            )
             .limit(limit)
         )
         if search:
@@ -1057,9 +1097,15 @@ class OmnicanalRepository:
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
-    async def get_conversacion_ciclos(self, conversacion_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-        summary_rows = await self.list_conversaciones_ciclos(search=None, desde=None, hasta=None, limit=1000)
-        summary = next((row for row in summary_rows if str(row["Conversacion"].id) == conversacion_id), None)
+    async def get_conversacion_ciclos(
+        self, conversacion_id: str
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        summary_rows = await self.list_conversaciones_ciclos(
+            search=None, desde=None, hasta=None, limit=1000
+        )
+        summary = next(
+            (row for row in summary_rows if str(row["Conversacion"].id) == conversacion_id), None
+        )
         if not summary:
             conversation = await self.db.get(Conversacion, UUID(conversacion_id))
             if not conversation:
@@ -1104,7 +1150,9 @@ class OmnicanalRepository:
             .outerjoin(Incidente, Incidente.id == ConversacionCiclo.incidente_id)
             .outerjoin(closed_by, closed_by.id == ConversacionCiclo.cerrado_por_id)
             .where(ConversacionCiclo.conversacion_id == UUID(conversacion_id))
-            .order_by(func.coalesce(ConversacionCiclo.closed_at, ConversacionCiclo.started_at).desc())
+            .order_by(
+                func.coalesce(ConversacionCiclo.closed_at, ConversacionCiclo.started_at).desc()
+            )
         )
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
@@ -1114,7 +1162,9 @@ class OmnicanalRepository:
         if not cycle:
             return None
         rows = await self.list_ciclos_for_conversacion(str(cycle.conversacion_id))
-        cycle_row = next((row for row in rows if str(row["ConversacionCiclo"].id) == ciclo_id), None)
+        cycle_row = next(
+            (row for row in rows if str(row["ConversacionCiclo"].id) == ciclo_id), None
+        )
         if not cycle_row:
             return None
         return {
@@ -1147,7 +1197,7 @@ class OmnicanalRepository:
         if hasta:
             filters.append(ChatbotLlmUsage.created_at <= hasta)
 
-        where_clause = and_(*filters) if filters else True
+        where_clause = and_(*filters) if filters else true()
 
         count_stmt = select(func.count()).select_from(ChatbotLlmUsage).where(where_clause)
         count_result = await self.db.execute(count_stmt)
@@ -1177,7 +1227,7 @@ class OmnicanalRepository:
         if hasta:
             filters.append(ChatbotLlmUsage.created_at <= hasta)
 
-        where_clause = and_(*filters) if filters else True
+        where_clause = and_(*filters) if filters else true()
 
         agg_stmt = select(
             func.count().label("total_calls"),
@@ -1185,10 +1235,10 @@ class OmnicanalRepository:
             func.sum(ChatbotLlmUsage.prompt_tokens).label("prompt_tokens"),
             func.sum(ChatbotLlmUsage.completion_tokens).label("completion_tokens"),
             func.avg(ChatbotLlmUsage.latency_ms).label("avg_latency_ms"),
-            func.sum(
-                func.cast(ChatbotLlmUsage.fallback_applied, Integer)
-            ).label("fallback_count"),
-            func.count(func.distinct(ChatbotLlmUsage.conversacion_id)).label("unique_conversations"),
+            func.sum(func.cast(ChatbotLlmUsage.fallback_applied, Integer)).label("fallback_count"),
+            func.count(func.distinct(ChatbotLlmUsage.conversacion_id)).label(
+                "unique_conversations"
+            ),
         ).where(where_clause)
 
         agg_result = await self.db.execute(agg_stmt)
@@ -1202,9 +1252,9 @@ class OmnicanalRepository:
                 func.sum(ChatbotLlmUsage.prompt_tokens).label("prompt_tokens"),
                 func.sum(ChatbotLlmUsage.completion_tokens).label("completion_tokens"),
                 func.avg(ChatbotLlmUsage.latency_ms).label("avg_latency_ms"),
-                func.sum(
-                    func.cast(ChatbotLlmUsage.fallback_applied, Integer)
-                ).label("fallback_count"),
+                func.sum(func.cast(ChatbotLlmUsage.fallback_applied, Integer)).label(
+                    "fallback_count"
+                ),
             )
             .where(where_clause)
             .group_by(ChatbotLlmUsage.provider)
@@ -1225,7 +1275,11 @@ class OmnicanalRepository:
         )
         day_result = await self.db.execute(day_stmt)
         tokens_per_day = [
-            {"day": str(row.day), "total_tokens": int(row.total_tokens or 0), "calls": int(row.calls)}
+            {
+                "day": str(row.day),
+                "total_tokens": int(row.total_tokens or 0),
+                "calls": int(row.calls),
+            }
             for row in day_result
         ]
 

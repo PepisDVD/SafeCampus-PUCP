@@ -55,9 +55,7 @@ def upgrade() -> None:
 
     # Eliminar integraciones que ya no se monitorean.
     obsoletos = ", ".join(f"'{s}'" for s in SERVICIOS_OBSOLETOS) + ", 'openai_api'"
-    op.execute(
-        f"DELETE FROM sc_dashboard.estado_integracion WHERE servicio IN ({obsoletos})"
-    )
+    op.execute(f"DELETE FROM sc_dashboard.estado_integracion WHERE servicio IN ({obsoletos})")
 
     # Insertar el set vigente (idempotente por UNIQUE en servicio).
     valores = ", ".join(f"('{s}', 'DESCONOCIDO')" for s in NUEVOS_SERVICIOS)
@@ -70,9 +68,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     nuevos = ", ".join(f"'{s}'" for s in NUEVOS_SERVICIOS)
-    op.execute(
-        f"DELETE FROM sc_dashboard.estado_integracion WHERE servicio IN ({nuevos})"
-    )
+    op.execute(f"DELETE FROM sc_dashboard.estado_integracion WHERE servicio IN ({nuevos})")
     op.execute(
         "INSERT INTO sc_dashboard.estado_integracion (servicio, estado) VALUES "
         "('openai_api', 'DESCONOCIDO'), "

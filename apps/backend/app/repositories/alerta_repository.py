@@ -2,11 +2,11 @@
 Repository for campus alerts, segmentation and delivery tracking.
 """
 
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime, time
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, delete, desc, func, or_, select, update
+from sqlalchemy import delete, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -19,7 +19,6 @@ from app.models.sc_alertas import (
 from app.models.sc_maestros import UbicacionMaestra
 from app.models.sc_users import Rol, Usuario, UsuarioRol
 
-
 ALERT_CODE_PREFIX = "ALR"
 
 # Roles cuyos usuarios son audiencia de comunidad (candidatos a segmentacion por usuario).
@@ -31,8 +30,8 @@ class AlertaRepository:
         self.db = db
 
     async def _next_codigo(self, ahora: datetime) -> str:
-        inicio = datetime.combine(ahora.date(), time.min, tzinfo=timezone.utc)
-        fin = datetime.combine(ahora.date(), time.max, tzinfo=timezone.utc)
+        inicio = datetime.combine(ahora.date(), time.min, tzinfo=UTC)
+        fin = datetime.combine(ahora.date(), time.max, tzinfo=UTC)
         count = await self.db.scalar(
             select(func.count(AlertaCampus.id)).where(
                 AlertaCampus.created_at >= inicio,
@@ -114,7 +113,7 @@ class AlertaRepository:
         data: dict[str, Any],
         segmentos: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        ahora = datetime.now(timezone.utc)
+        ahora = datetime.now(UTC)
         alerta = AlertaCampus(
             codigo=await self._next_codigo(ahora),
             tipo=data.get("tipo", "ALR-MAS-SEG"),
@@ -158,14 +157,17 @@ class AlertaRepository:
         segmentos: list[dict[str, Any]] | None,
     ) -> dict[str, Any] | None:
         values = {k: v for k, v in data.items() if k not in {"latitud", "longitud"}}
-        values["updated_at"] = datetime.now(timezone.utc)
+        values["updated_at"] = datetime.now(UTC)
         latitud = data.get("latitud")
         longitud = data.get("longitud")
         if latitud is not None and longitud is not None:
             values["geom"] = func.ST_SetSRID(func.ST_MakePoint(longitud, latitud), 4326)
         statement = (
             update(AlertaCampus)
-            .where(AlertaCampus.id == UUID(alerta_id), AlertaCampus.estado.in_(("BORRADOR", "PROGRAMADA")))
+            .where(
+                AlertaCampus.id == UUID(alerta_id),
+                AlertaCampus.estado.in_(("BORRADOR", "PROGRAMADA")),
+            )
             .values(**values)
             .returning(AlertaCampus.id)
         )
@@ -183,9 +185,9 @@ class AlertaRepository:
         estado: str,
         actor_id: str,
     ) -> bool:
-        values: dict[str, Any] = {"estado": estado, "updated_at": datetime.now(timezone.utc)}
+        values: dict[str, Any] = {"estado": estado, "updated_at": datetime.now(UTC)}
         if estado in {"ACTIVA", "ENVIADA"}:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             values["fecha_inicio"] = now
             values["vigencia_inicio"] = now
             values["published_by_id"] = UUID(actor_id)
@@ -202,7 +204,9 @@ class AlertaRepository:
         return result.scalar_one_or_none() is not None
 
     async def _replace_segmentos(self, alerta_id: str, segmentos: list[dict[str, Any]]) -> None:
-        await self.db.execute(delete(AlertaSegmento).where(AlertaSegmento.alerta_id == UUID(alerta_id)))
+        await self.db.execute(
+            delete(AlertaSegmento).where(AlertaSegmento.alerta_id == UUID(alerta_id))
+        )
         for item in segmentos:
             self.db.add(
                 AlertaSegmento(
@@ -236,7 +240,14 @@ class AlertaRepository:
             select(
                 AlertaEntrega.id,
                 AlertaEntrega.destinatario_id,
-                func.nullif(func.trim(func.concat(func.coalesce(Dest.nombre, ""), " ", func.coalesce(Dest.apellido, ""))), "").label("destinatario_nombre"),
+                func.nullif(
+                    func.trim(
+                        func.concat(
+                            func.coalesce(Dest.nombre, ""), " ", func.coalesce(Dest.apellido, "")
+                        )
+                    ),
+                    "",
+                ).label("destinatario_nombre"),
                 Dest.email.label("destinatario_email"),
                 AlertaEntrega.canal,
                 AlertaEntrega.estado,
@@ -258,7 +269,14 @@ class AlertaRepository:
                 AlertaEvento.id,
                 AlertaEvento.tipo_evento,
                 AlertaEvento.actor_usuario_id,
-                func.nullif(func.trim(func.concat(func.coalesce(Actor.nombre, ""), " ", func.coalesce(Actor.apellido, ""))), "").label("actor_nombre"),
+                func.nullif(
+                    func.trim(
+                        func.concat(
+                            func.coalesce(Actor.nombre, ""), " ", func.coalesce(Actor.apellido, "")
+                        )
+                    ),
+                    "",
+                ).label("actor_nombre"),
                 AlertaEvento.detalle,
                 AlertaEvento.created_at,
             )
@@ -367,7 +385,9 @@ class AlertaRepository:
                 notificacion_id=UUID(notificacion_id) if notificacion_id else None,
                 external_message_id=external_message_id,
                 error_detalle=error_detalle,
-                fecha_envio=datetime.now(timezone.utc) if estado in {"ENVIADA", "FALLIDA", "DESCARTADA"} else None,
+                fecha_envio=datetime.now(UTC)
+                if estado in {"ENVIADA", "FALLIDA", "DESCARTADA"}
+                else None,
             )
         )
 

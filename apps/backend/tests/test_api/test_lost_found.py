@@ -63,11 +63,23 @@ class FakeLostFoundService:
         self.fijar_args = (comentario_id, usuario_id, body.fijar)
 
     async def listar_supervisores_acceso(self) -> list[SupervisorLfItem]:
-        return [SupervisorLfItem(id=USER_ID, nombre_completo="Ana Perez", email=None, rol="supervisor", asignado=False)]
+        return [
+            SupervisorLfItem(
+                id=USER_ID,
+                nombre_completo="Ana Perez",
+                email=None,
+                rol="supervisor",
+                asignado=False,
+            )
+        ]
 
     async def set_acceso_supervisores(self, usuario_ids, actor_id) -> list[SupervisorLfItem]:
         self.acceso_set_args = (usuario_ids, actor_id)
-        return [SupervisorLfItem(id=USER_ID, nombre_completo="Ana Perez", email=None, rol="supervisor", asignado=True)]
+        return [
+            SupervisorLfItem(
+                id=USER_ID, nombre_completo="Ana Perez", email=None, rol="supervisor", asignado=True
+            )
+        ]
 
     async def obtener_acceso_mi(self, usuario_id, roles) -> AccesoLfMiResult:
         return AccesoLfMiResult(acceso=await self.tiene_acceso_lf(usuario_id, roles))
@@ -115,7 +127,9 @@ class FakeLostFoundService:
                 fecha_evento=datetime(2026, 5, 30, 10, 0, tzinfo=UTC),
                 foto_url=None,
                 conteo_comentarios=0,
-                reportante=UsuarioMini(id=USER_ID, nombre_completo="Ana P.", email=None, avatar_url=None, rol=None),
+                reportante=UsuarioMini(
+                    id=USER_ID, nombre_completo="Ana P.", email=None, avatar_url=None, rol=None
+                ),
                 created_at=datetime(2026, 5, 30, 11, 0, tzinfo=UTC),
             )
         ]
@@ -145,7 +159,13 @@ class FakeLostFoundService:
             foto_adicional_urls=[],
             etiquetas=[],
             conteo_comentarios=0,
-            reportante=UsuarioMini(id=USER_ID, nombre_completo="Ana Perez", email="ana@pucp.edu.pe", avatar_url=None, rol=None),
+            reportante=UsuarioMini(
+                id=USER_ID,
+                nombre_completo="Ana Perez",
+                email="ana@pucp.edu.pe",
+                avatar_url=None,
+                rol=None,
+            ),
             created_at=datetime(2026, 5, 30, 11, 0, tzinfo=UTC),
             updated_at=datetime(2026, 5, 30, 11, 5, tzinfo=UTC),
             historial=[],
@@ -235,7 +255,9 @@ def test_lost_found_delete_comentario_propio_usa_usuario_actual(client):
     app.dependency_overrides[get_service] = lambda: fake
     app.dependency_overrides[get_current_user] = _fake_comunidad
     try:
-        response = client.delete("/api/v1/lost-found/comentarios/22222222-2222-2222-2222-222222222222")
+        response = client.delete(
+            "/api/v1/lost-found/comentarios/22222222-2222-2222-2222-222222222222"
+        )
         assert response.status_code == 204
         assert fake.deleted_comment == ("22222222-2222-2222-2222-222222222222", USER_ID)
     finally:

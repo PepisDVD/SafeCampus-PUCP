@@ -15,6 +15,7 @@ class FakeOmnicanalService:
         webhook_secret: str | None,
         ip_origen: str | None,
         user_agent: str | None,
+        background_tasks: Any | None = None,
     ) -> WhatsAppWebhookResponse:
         assert payload["event"] == "messages.upsert"
         assert provider_name == "evolution"

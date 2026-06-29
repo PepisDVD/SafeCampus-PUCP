@@ -113,19 +113,14 @@ class AdminService:
         password_plana: str | None = None
         password_hash: str | None = None
         if quiere_password:
-            if data.email.lower().endswith(
-                f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}"
-            ):
+            if data.email.lower().endswith(f"@{settings.ALLOWED_INSTITUTIONAL_DOMAIN}"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(
-                        "Las cuentas institucionales se autentican por SSO "
-                        "y no admiten contraseña."
+                        "Las cuentas institucionales se autentican por SSO y no admiten contraseña."
                     ),
                 )
-            password_plana = (
-                generate_password() if data.generar_password else data.password
-            )
+            password_plana = generate_password() if data.generar_password else data.password
             password_hash = get_password_hash(str(password_plana))
 
         usuario_id = await self._repo.create_usuario(
@@ -205,9 +200,7 @@ class AdminService:
             # Check if the user being suspended is an admin and the only one
             if usuario:
                 roles = usuario.get("roles") or []
-                is_admin = any(
-                    r.get("nombre", "").lower() == "administrador" for r in roles
-                )
+                is_admin = any(r.get("nombre", "").lower() == "administrador" for r in roles)
                 if is_admin and count <= 1:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
@@ -279,6 +272,7 @@ class AdminService:
             permisos_raw = r.get("permisos") or []
             if isinstance(permisos_raw, str):
                 import json
+
                 permisos_raw = json.loads(permisos_raw)
             items.append(
                 {
@@ -402,8 +396,7 @@ class AdminService:
             AuditoriaUsuarioRef(
                 id=str(r["id"]),
                 nombre_completo=(
-                    f"{(r.get('nombre') or '').strip()} "
-                    f"{(r.get('apellido') or '').strip()}"
+                    f"{(r.get('nombre') or '').strip()} {(r.get('apellido') or '').strip()}"
                 ).strip()
                 or "Usuario",
                 email=r.get("email"),

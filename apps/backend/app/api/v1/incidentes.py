@@ -21,8 +21,8 @@ from app.schemas.incidente import (
     IncidenteCreateInput,
     IncidenteDetail,
     IncidenteEstadoUpdate,
-    IncidenteLiveLocationUpdate,
     IncidenteListResponse,
+    IncidenteLiveLocationUpdate,
     IncidenteMapaResponse,
     KpisResponse,
     OperadorListItem,
@@ -266,7 +266,9 @@ async def detener_ubicacion_en_vivo(
 )
 async def subir_evidencia_incidente(
     incidente_id: str,
-    archivo: UploadFile = File(..., description="Imagen de evidencia (jpg, png, webp, heic, gif). Máx 10 MB."),
+    archivo: UploadFile = File(
+        ..., description="Imagen de evidencia (jpg, png, webp, heic, gif). Máx 10 MB."
+    ),
     descripcion: str | None = Form(default=None, max_length=500),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: IncidenteService = Depends(get_service),

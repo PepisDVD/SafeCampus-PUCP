@@ -1,8 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-
 from fastapi import HTTPException
 
 from app.repositories.admin_repository import _parse_fecha
@@ -50,7 +49,7 @@ class FakeAdminRepository:
                 "entidad": "usuario",
                 "entidad_id": uuid4(),
                 "detalle": {"campo": "estado"},
-                "fecha_registro": datetime(2026, 5, 1, tzinfo=timezone.utc),
+                "fecha_registro": datetime(2026, 5, 1, tzinfo=UTC),
                 "usuario_nombre": "Ana",
                 "usuario_apellido": "Torres",
                 "usuario_email": "ana.torres@pucp.edu.pe",
@@ -71,7 +70,7 @@ class FakeAdminRepository:
                 "estado": "ACTIVO",
                 "avatar_url": None,
                 "ultimo_acceso": None,
-                "created_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 5, 1, tzinfo=UTC),
                 "roles": [{"id": uuid4(), "nombre": "operador"}],
             }
         ]
@@ -216,6 +215,7 @@ async def test_cambiar_estado_sin_actor_no_audita(monkeypatch):
 # Provisión de contraseñas (admin) — solo cuentas NO institucionales
 # ---------------------------------------------------------------------------
 
+
 class FakeCrearUsuarioRepository:
     last_create_data: dict | None = None
 
@@ -245,7 +245,7 @@ class FakeCrearUsuarioRepository:
                 "estado": "ACTIVO",
                 "avatar_url": None,
                 "ultimo_acceso": None,
-                "created_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 6, 1, tzinfo=UTC),
                 "roles": [{"id": uuid4(), "nombre": "comunidad"}],
             }
         ]
@@ -267,9 +267,7 @@ async def test_crear_usuario_institucional_rechaza_password(monkeypatch):
     service = AdminService(db=None)  # type: ignore[arg-type]
 
     with pytest.raises(HTTPException) as exc:
-        await service.crear_usuario(
-            _crear_input("docente@pucp.edu.pe", generar_password=True)
-        )
+        await service.crear_usuario(_crear_input("docente@pucp.edu.pe", generar_password=True))
 
     assert exc.value.status_code == 400
     assert "SSO" in exc.value.detail
@@ -281,9 +279,7 @@ async def test_crear_usuario_no_institucional_password_autogenerada(monkeypatch)
     monkeypatch.setattr(admin_service, "AdminRepository", FakeCrearUsuarioRepository)
     service = AdminService(db=None)  # type: ignore[arg-type]
 
-    result = await service.crear_usuario(
-        _crear_input("nueva@gmail.com", generar_password=True)
-    )
+    result = await service.crear_usuario(_crear_input("nueva@gmail.com", generar_password=True))
 
     assert result.password_generada
     stored = FakeCrearUsuarioRepository.last_create_data

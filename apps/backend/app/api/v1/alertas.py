@@ -14,8 +14,8 @@ from app.schemas.alerta import (
     AlertaEstadoInput,
     AlertaListResponse,
     AlertaPublishResponse,
-    AlertaUpdateInput,
     AlertasStatsResponse,
+    AlertaUpdateInput,
 )
 from app.schemas.auth import AuthUserResponse
 from app.services.alerta_service import AlertaService

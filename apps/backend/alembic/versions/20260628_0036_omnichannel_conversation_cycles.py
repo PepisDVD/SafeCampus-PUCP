@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision: str = "20260628_0036"
 down_revision: str | None = "20260627_0035"
@@ -23,25 +23,79 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "conversacion_ciclo",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("conversacion_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("incidente_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("estado", sa.String(length=16), nullable=False, server_default="ACTIVO"),
-        sa.Column("started_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "started_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.Column("closed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("cerrado_por_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("cierre_motivo", sa.Text(), nullable=True),
         sa.Column("cierre_tipo", sa.String(length=32), nullable=False, server_default="MANUAL"),
-        sa.Column("mensajes_snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("eventos_snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("chatbot_snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("asignaciones_snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("clasificacion_snapshot", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("metadatos", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.ForeignKeyConstraint(["conversacion_id"], ["sc_omnicanal.conversacion.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["incidente_id"], ["sc_incidentes.incidente.id"], ondelete="SET NULL"),
+        sa.Column(
+            "mensajes_snapshot",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+        sa.Column(
+            "eventos_snapshot",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+        sa.Column(
+            "chatbot_snapshot",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "asignaciones_snapshot",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+        sa.Column(
+            "clasificacion_snapshot",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "metadatos",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["conversacion_id"], ["sc_omnicanal.conversacion.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["incidente_id"], ["sc_incidentes.incidente.id"], ondelete="SET NULL"
+        ),
         sa.ForeignKeyConstraint(["cerrado_por_id"], ["sc_users.usuario.id"]),
         schema="sc_omnicanal",
     )
@@ -72,9 +126,21 @@ def upgrade() -> None:
         postgresql_where=sa.text("estado = 'ACTIVO'"),
     )
 
-    op.add_column("mensaje_conversacion", sa.Column("ciclo_id", postgresql.UUID(as_uuid=True), nullable=True), schema="sc_omnicanal")
-    op.add_column("evento_conversacion", sa.Column("ciclo_id", postgresql.UUID(as_uuid=True), nullable=True), schema="sc_omnicanal")
-    op.add_column("chatbot_llm_usage", sa.Column("ciclo_id", postgresql.UUID(as_uuid=True), nullable=True), schema="sc_omnicanal")
+    op.add_column(
+        "mensaje_conversacion",
+        sa.Column("ciclo_id", postgresql.UUID(as_uuid=True), nullable=True),
+        schema="sc_omnicanal",
+    )
+    op.add_column(
+        "evento_conversacion",
+        sa.Column("ciclo_id", postgresql.UUID(as_uuid=True), nullable=True),
+        schema="sc_omnicanal",
+    )
+    op.add_column(
+        "chatbot_llm_usage",
+        sa.Column("ciclo_id", postgresql.UUID(as_uuid=True), nullable=True),
+        schema="sc_omnicanal",
+    )
     op.create_foreign_key(
         "fk_mensaje_conversacion_ciclo",
         "mensaje_conversacion",
@@ -105,9 +171,24 @@ def upgrade() -> None:
         referent_schema="sc_omnicanal",
         ondelete="SET NULL",
     )
-    op.create_index("idx_mensaje_conversacion_ciclo", "mensaje_conversacion", ["ciclo_id", "created_at"], schema="sc_omnicanal")
-    op.create_index("idx_evento_conversacion_ciclo", "evento_conversacion", ["ciclo_id", "created_at"], schema="sc_omnicanal")
-    op.create_index("idx_chatbot_llm_usage_ciclo", "chatbot_llm_usage", ["ciclo_id", "created_at"], schema="sc_omnicanal")
+    op.create_index(
+        "idx_mensaje_conversacion_ciclo",
+        "mensaje_conversacion",
+        ["ciclo_id", "created_at"],
+        schema="sc_omnicanal",
+    )
+    op.create_index(
+        "idx_evento_conversacion_ciclo",
+        "evento_conversacion",
+        ["ciclo_id", "created_at"],
+        schema="sc_omnicanal",
+    )
+    op.create_index(
+        "idx_chatbot_llm_usage_ciclo",
+        "chatbot_llm_usage",
+        ["ciclo_id", "created_at"],
+        schema="sc_omnicanal",
+    )
 
     op.execute(
         """
@@ -162,17 +243,45 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("idx_chatbot_llm_usage_ciclo", table_name="chatbot_llm_usage", schema="sc_omnicanal")
-    op.drop_index("idx_evento_conversacion_ciclo", table_name="evento_conversacion", schema="sc_omnicanal")
-    op.drop_index("idx_mensaje_conversacion_ciclo", table_name="mensaje_conversacion", schema="sc_omnicanal")
-    op.drop_constraint("fk_chatbot_llm_usage_ciclo", "chatbot_llm_usage", schema="sc_omnicanal", type_="foreignkey")
-    op.drop_constraint("fk_evento_conversacion_ciclo", "evento_conversacion", schema="sc_omnicanal", type_="foreignkey")
-    op.drop_constraint("fk_mensaje_conversacion_ciclo", "mensaje_conversacion", schema="sc_omnicanal", type_="foreignkey")
+    op.drop_index(
+        "idx_chatbot_llm_usage_ciclo", table_name="chatbot_llm_usage", schema="sc_omnicanal"
+    )
+    op.drop_index(
+        "idx_evento_conversacion_ciclo", table_name="evento_conversacion", schema="sc_omnicanal"
+    )
+    op.drop_index(
+        "idx_mensaje_conversacion_ciclo", table_name="mensaje_conversacion", schema="sc_omnicanal"
+    )
+    op.drop_constraint(
+        "fk_chatbot_llm_usage_ciclo", "chatbot_llm_usage", schema="sc_omnicanal", type_="foreignkey"
+    )
+    op.drop_constraint(
+        "fk_evento_conversacion_ciclo",
+        "evento_conversacion",
+        schema="sc_omnicanal",
+        type_="foreignkey",
+    )
+    op.drop_constraint(
+        "fk_mensaje_conversacion_ciclo",
+        "mensaje_conversacion",
+        schema="sc_omnicanal",
+        type_="foreignkey",
+    )
     op.drop_column("chatbot_llm_usage", "ciclo_id", schema="sc_omnicanal")
     op.drop_column("evento_conversacion", "ciclo_id", schema="sc_omnicanal")
     op.drop_column("mensaje_conversacion", "ciclo_id", schema="sc_omnicanal")
-    op.drop_index("uq_conversacion_ciclo_activo", table_name="conversacion_ciclo", schema="sc_omnicanal")
-    op.drop_index("idx_conversacion_ciclo_estado", table_name="conversacion_ciclo", schema="sc_omnicanal")
-    op.drop_index("idx_conversacion_ciclo_incidente", table_name="conversacion_ciclo", schema="sc_omnicanal")
-    op.drop_index("idx_conversacion_ciclo_conversacion", table_name="conversacion_ciclo", schema="sc_omnicanal")
+    op.drop_index(
+        "uq_conversacion_ciclo_activo", table_name="conversacion_ciclo", schema="sc_omnicanal"
+    )
+    op.drop_index(
+        "idx_conversacion_ciclo_estado", table_name="conversacion_ciclo", schema="sc_omnicanal"
+    )
+    op.drop_index(
+        "idx_conversacion_ciclo_incidente", table_name="conversacion_ciclo", schema="sc_omnicanal"
+    )
+    op.drop_index(
+        "idx_conversacion_ciclo_conversacion",
+        table_name="conversacion_ciclo",
+        schema="sc_omnicanal",
+    )
     op.drop_table("conversacion_ciclo", schema="sc_omnicanal")

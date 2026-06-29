@@ -2,11 +2,12 @@
 Align sc_alertas with T090/T091/T092 design documents.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "20260514_0017"
 down_revision: str | None = "20260514_0016"
@@ -17,7 +18,9 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     ctx = op.get_context()
     with ctx.autocommit_block():
-        op.execute("ALTER TYPE estado_alerta_campus ADD VALUE IF NOT EXISTS 'PENDIENTE_APROBACION';")
+        op.execute(
+            "ALTER TYPE estado_alerta_campus ADD VALUE IF NOT EXISTS 'PENDIENTE_APROBACION';"
+        )
         op.execute("ALTER TYPE estado_alerta_campus ADD VALUE IF NOT EXISTS 'EN_ATENCION';")
         op.execute("ALTER TYPE estado_alerta_campus ADD VALUE IF NOT EXISTS 'ATENDIDA';")
         op.execute("ALTER TYPE estado_alerta_campus ADD VALUE IF NOT EXISTS 'EXPIRADA';")
@@ -50,8 +53,18 @@ def upgrade() -> None:
         sa.Column("centroide", sa.Text(), nullable=True),
         sa.Column("nivel_riesgo", nivel_severidad, nullable=True),
         sa.Column("activa", sa.Boolean(), server_default="true", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("codigo", name="uq_zona_geografica_codigo"),
         schema="sc_alertas",
@@ -71,8 +84,16 @@ def upgrade() -> None:
         """
     )
     op.alter_column("zona_geografica", "geom", nullable=False, schema="sc_alertas")
-    op.create_index("idx_zona_geografica_geom", "zona_geografica", ["geom"], schema="sc_alertas", postgresql_using="gist")
-    op.create_index("idx_zona_geografica_activa", "zona_geografica", ["activa"], schema="sc_alertas")
+    op.create_index(
+        "idx_zona_geografica_geom",
+        "zona_geografica",
+        ["geom"],
+        schema="sc_alertas",
+        postgresql_using="gist",
+    )
+    op.create_index(
+        "idx_zona_geografica_activa", "zona_geografica", ["activa"], schema="sc_alertas"
+    )
 
     op.create_table(
         "punto_interes",
@@ -84,8 +105,18 @@ def upgrade() -> None:
         sa.Column("tipo", sa.String(length=40), nullable=True),
         sa.Column("geom", sa.Text(), nullable=True),
         sa.Column("activo", sa.Boolean(), server_default="true", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["zona_id"], ["sc_alertas.zona_geografica.id"]),
         sa.ForeignKeyConstraint(["ubicacion_maestra_id"], ["sc_maestros.ubicacion_maestra.id"]),
         sa.PrimaryKeyConstraint("id"),
@@ -100,7 +131,13 @@ def upgrade() -> None:
         """
     )
     op.alter_column("punto_interes", "geom", nullable=False, schema="sc_alertas")
-    op.create_index("idx_punto_interes_geom", "punto_interes", ["geom"], schema="sc_alertas", postgresql_using="gist")
+    op.create_index(
+        "idx_punto_interes_geom",
+        "punto_interes",
+        ["geom"],
+        schema="sc_alertas",
+        postgresql_using="gist",
+    )
 
     op.create_table(
         "regla_alerta",
@@ -108,11 +145,23 @@ def upgrade() -> None:
         sa.Column("codigo", sa.String(length=20), nullable=False),
         sa.Column("tipo_alerta", sa.String(length=20), nullable=False),
         sa.Column("descripcion", sa.Text(), nullable=True),
-        sa.Column("parametros", postgresql.JSONB(), server_default=sa.text("'{}'::jsonb"), nullable=False),
+        sa.Column(
+            "parametros", postgresql.JSONB(), server_default=sa.text("'{}'::jsonb"), nullable=False
+        ),
         sa.Column("severidad_resultante", nivel_severidad, nullable=True),
         sa.Column("activa", sa.Boolean(), server_default="true", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("codigo", name="uq_regla_alerta_codigo"),
         schema="sc_alertas",
@@ -126,12 +175,26 @@ def upgrade() -> None:
         sa.Column("idioma", sa.String(length=5), server_default="es", nullable=False),
         sa.Column("asunto", sa.String(length=255), nullable=True),
         sa.Column("cuerpo_template", sa.Text(), nullable=False),
-        sa.Column("variables", postgresql.JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False),
+        sa.Column(
+            "variables", postgresql.JSONB(), server_default=sa.text("'[]'::jsonb"), nullable=False
+        ),
         sa.Column("activa", sa.Boolean(), server_default="true", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("tipo_evento", "canal", "idioma", name="uq_plantilla_alerta_evento_canal_idioma"),
+        sa.UniqueConstraint(
+            "tipo_evento", "canal", "idioma", name="uq_plantilla_alerta_evento_canal_idioma"
+        ),
         schema="sc_alertas",
     )
 
@@ -140,7 +203,12 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
         sa.Column("alerta_id", sa.UUID(), nullable=False),
         sa.Column("zona_id", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["alerta_id"], ["sc_alertas.alerta.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["zona_id"], ["sc_alertas.zona_geografica.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -148,19 +216,47 @@ def upgrade() -> None:
         schema="sc_alertas",
     )
 
-    op.add_column("alerta", sa.Column("tipo", sa.String(length=20), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("familia", sa.String(length=1), nullable=True), schema="sc_alertas")
+    op.add_column(
+        "alerta", sa.Column("tipo", sa.String(length=20), nullable=True), schema="sc_alertas"
+    )
+    op.add_column(
+        "alerta", sa.Column("familia", sa.String(length=1), nullable=True), schema="sc_alertas"
+    )
     op.add_column("alerta", sa.Column("mensaje", sa.Text(), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("origen", sa.String(length=20), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("incidente_id", sa.UUID(), nullable=True), schema="sc_alertas")
+    op.add_column(
+        "alerta", sa.Column("origen", sa.String(length=20), nullable=True), schema="sc_alertas"
+    )
+    op.add_column(
+        "alerta", sa.Column("incidente_id", sa.UUID(), nullable=True), schema="sc_alertas"
+    )
     op.add_column("alerta", sa.Column("regla_id", sa.UUID(), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("plantilla_id", sa.UUID(), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("vigencia_inicio", sa.DateTime(timezone=True), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("vigencia_fin", sa.DateTime(timezone=True), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("programada_para", sa.DateTime(timezone=True), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("creada_por_id", sa.UUID(), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("aprobada_por_id", sa.UUID(), nullable=True), schema="sc_alertas")
-    op.add_column("alerta", sa.Column("atendida_por_id", sa.UUID(), nullable=True), schema="sc_alertas")
+    op.add_column(
+        "alerta", sa.Column("plantilla_id", sa.UUID(), nullable=True), schema="sc_alertas"
+    )
+    op.add_column(
+        "alerta",
+        sa.Column("vigencia_inicio", sa.DateTime(timezone=True), nullable=True),
+        schema="sc_alertas",
+    )
+    op.add_column(
+        "alerta",
+        sa.Column("vigencia_fin", sa.DateTime(timezone=True), nullable=True),
+        schema="sc_alertas",
+    )
+    op.add_column(
+        "alerta",
+        sa.Column("programada_para", sa.DateTime(timezone=True), nullable=True),
+        schema="sc_alertas",
+    )
+    op.add_column(
+        "alerta", sa.Column("creada_por_id", sa.UUID(), nullable=True), schema="sc_alertas"
+    )
+    op.add_column(
+        "alerta", sa.Column("aprobada_por_id", sa.UUID(), nullable=True), schema="sc_alertas"
+    )
+    op.add_column(
+        "alerta", sa.Column("atendida_por_id", sa.UUID(), nullable=True), schema="sc_alertas"
+    )
     op.execute(
         """
         UPDATE sc_alertas.alerta
@@ -179,20 +275,84 @@ def upgrade() -> None:
     op.alter_column("alerta", "tipo", nullable=False, schema="sc_alertas")
     op.alter_column("alerta", "familia", nullable=False, schema="sc_alertas")
     op.alter_column("alerta", "origen", nullable=False, schema="sc_alertas")
-    op.create_foreign_key("fk_alerta_incidente", "alerta", "incidente", ["incidente_id"], ["id"], source_schema="sc_alertas", referent_schema="sc_incidentes")
-    op.create_foreign_key("fk_alerta_regla", "alerta", "regla_alerta", ["regla_id"], ["id"], source_schema="sc_alertas", referent_schema="sc_alertas")
-    op.create_foreign_key("fk_alerta_plantilla", "alerta", "plantilla_alerta", ["plantilla_id"], ["id"], source_schema="sc_alertas", referent_schema="sc_alertas")
-    op.create_foreign_key("fk_alerta_creada_por", "alerta", "usuario", ["creada_por_id"], ["id"], source_schema="sc_alertas", referent_schema="sc_users")
-    op.create_foreign_key("fk_alerta_aprobada_por", "alerta", "usuario", ["aprobada_por_id"], ["id"], source_schema="sc_alertas", referent_schema="sc_users")
-    op.create_foreign_key("fk_alerta_atendida_por", "alerta", "usuario", ["atendida_por_id"], ["id"], source_schema="sc_alertas", referent_schema="sc_users")
+    op.create_foreign_key(
+        "fk_alerta_incidente",
+        "alerta",
+        "incidente",
+        ["incidente_id"],
+        ["id"],
+        source_schema="sc_alertas",
+        referent_schema="sc_incidentes",
+    )
+    op.create_foreign_key(
+        "fk_alerta_regla",
+        "alerta",
+        "regla_alerta",
+        ["regla_id"],
+        ["id"],
+        source_schema="sc_alertas",
+        referent_schema="sc_alertas",
+    )
+    op.create_foreign_key(
+        "fk_alerta_plantilla",
+        "alerta",
+        "plantilla_alerta",
+        ["plantilla_id"],
+        ["id"],
+        source_schema="sc_alertas",
+        referent_schema="sc_alertas",
+    )
+    op.create_foreign_key(
+        "fk_alerta_creada_por",
+        "alerta",
+        "usuario",
+        ["creada_por_id"],
+        ["id"],
+        source_schema="sc_alertas",
+        referent_schema="sc_users",
+    )
+    op.create_foreign_key(
+        "fk_alerta_aprobada_por",
+        "alerta",
+        "usuario",
+        ["aprobada_por_id"],
+        ["id"],
+        source_schema="sc_alertas",
+        referent_schema="sc_users",
+    )
+    op.create_foreign_key(
+        "fk_alerta_atendida_por",
+        "alerta",
+        "usuario",
+        ["atendida_por_id"],
+        ["id"],
+        source_schema="sc_alertas",
+        referent_schema="sc_users",
+    )
     op.create_index("idx_alerta_tipo", "alerta", ["tipo"], schema="sc_alertas")
     op.create_index("idx_alerta_incidente", "alerta", ["incidente_id"], schema="sc_alertas")
 
-    op.add_column("alerta_evento", sa.Column("estado_anterior", sa.String(length=40), nullable=True), schema="sc_alertas")
-    op.add_column("alerta_evento", sa.Column("estado_nuevo", sa.String(length=40), nullable=True), schema="sc_alertas")
-    op.add_column("alerta_evento", sa.Column("accion", sa.String(length=100), nullable=True), schema="sc_alertas")
-    op.add_column("alerta_evento", sa.Column("comentario", sa.Text(), nullable=True), schema="sc_alertas")
-    op.execute("UPDATE sc_alertas.alerta_evento SET accion = COALESCE(accion, tipo_evento), estado_nuevo = COALESCE(estado_nuevo, detalle->>'estado');")
+    op.add_column(
+        "alerta_evento",
+        sa.Column("estado_anterior", sa.String(length=40), nullable=True),
+        schema="sc_alertas",
+    )
+    op.add_column(
+        "alerta_evento",
+        sa.Column("estado_nuevo", sa.String(length=40), nullable=True),
+        schema="sc_alertas",
+    )
+    op.add_column(
+        "alerta_evento",
+        sa.Column("accion", sa.String(length=100), nullable=True),
+        schema="sc_alertas",
+    )
+    op.add_column(
+        "alerta_evento", sa.Column("comentario", sa.Text(), nullable=True), schema="sc_alertas"
+    )
+    op.execute(
+        "UPDATE sc_alertas.alerta_evento SET accion = COALESCE(accion, tipo_evento), estado_nuevo = COALESCE(estado_nuevo, detalle->>'estado');"
+    )
 
     op.execute(
         """

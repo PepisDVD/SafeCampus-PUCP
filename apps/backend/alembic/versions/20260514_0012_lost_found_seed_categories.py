@@ -2,7 +2,7 @@
 Seed canonical Lost & Found categories from the technical specification.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from alembic import op
 

@@ -2,11 +2,12 @@
 Lost & Found operativo: estados TO-BE, matching, chat, custodia y configuracion.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "20260514_0011"
 down_revision: str | None = "20260513_0010"
@@ -47,18 +48,82 @@ def upgrade() -> None:
         """
     )
 
-    op.add_column("categoria_objeto", sa.Column("es_perecible", sa.Boolean(), server_default="false", nullable=False), schema="sc_lost_found")
-    op.add_column("categoria_objeto", sa.Column("metadatos_schema", postgresql.JSONB(astext_type=sa.Text()), server_default="{}", nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("subcategoria", sa.String(length=100), nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("hora_aproximada", sa.Time(), nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("foto_adicional_urls", postgresql.JSONB(astext_type=sa.Text()), server_default="[]", nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("color_principal", sa.String(length=50), nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("marca", sa.String(length=100), nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("etiquetas", postgresql.JSONB(astext_type=sa.Text()), server_default="[]", nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("motivo_cierre", postgresql.ENUM(name="motivo_cierre_lf", create_type=False), nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("observaciones_cierre", sa.Text(), nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("ts_busqueda", sa.Text(), nullable=True), schema="sc_lost_found")
-    op.add_column("caso_lost_found", sa.Column("conteo_comentarios", sa.Integer(), server_default="0", nullable=False), schema="sc_lost_found")
+    op.add_column(
+        "categoria_objeto",
+        sa.Column("es_perecible", sa.Boolean(), server_default="false", nullable=False),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "categoria_objeto",
+        sa.Column(
+            "metadatos_schema",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default="{}",
+            nullable=True,
+        ),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column("subcategoria", sa.String(length=100), nullable=True),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column("hora_aproximada", sa.Time(), nullable=True),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column(
+            "foto_adicional_urls",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default="[]",
+            nullable=True,
+        ),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column("color_principal", sa.String(length=50), nullable=True),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column("marca", sa.String(length=100), nullable=True),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column(
+            "etiquetas", postgresql.JSONB(astext_type=sa.Text()), server_default="[]", nullable=True
+        ),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column(
+            "motivo_cierre",
+            postgresql.ENUM(name="motivo_cierre_lf", create_type=False),
+            nullable=True,
+        ),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column("observaciones_cierre", sa.Text(), nullable=True),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column("ts_busqueda", sa.Text(), nullable=True),
+        schema="sc_lost_found",
+    )
+    op.add_column(
+        "caso_lost_found",
+        sa.Column("conteo_comentarios", sa.Integer(), server_default="0", nullable=False),
+        schema="sc_lost_found",
+    )
 
     op.create_table(
         "match_sugerido",
@@ -66,14 +131,38 @@ def upgrade() -> None:
         sa.Column("caso_perdido_id", sa.UUID(), nullable=False),
         sa.Column("caso_encontrado_id", sa.UUID(), nullable=False),
         sa.Column("score_total", sa.Numeric(5, 4), nullable=False),
-        sa.Column("score_detalle", postgresql.JSONB(astext_type=sa.Text()), server_default="{}", nullable=False),
-        sa.Column("estado", postgresql.ENUM(name="estado_match_lf", create_type=False), server_default="SUGERIDO", nullable=False),
+        sa.Column(
+            "score_detalle",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default="{}",
+            nullable=False,
+        ),
+        sa.Column(
+            "estado",
+            postgresql.ENUM(name="estado_match_lf", create_type=False),
+            server_default="SUGERIDO",
+            nullable=False,
+        ),
         sa.Column("respondido_por_id", sa.UUID(), nullable=True),
         sa.Column("respuesta_comentario", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["caso_encontrado_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["caso_perdido_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["caso_encontrado_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["caso_perdido_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["respondido_por_id"], ["sc_users.usuario.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("caso_perdido_id", "caso_encontrado_id", name="uq_lf_match_pair"),
@@ -90,15 +179,32 @@ def upgrade() -> None:
         sa.Column("visible", sa.Boolean(), server_default="true", nullable=False),
         sa.Column("ocultado_por_id", sa.UUID(), nullable=True),
         sa.Column("motivo_ocultamiento", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["autor_id"], ["sc_users.usuario.id"]),
-        sa.ForeignKeyConstraint(["caso_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["caso_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["ocultado_por_id"], ["sc_users.usuario.id"]),
         sa.PrimaryKeyConstraint("id"),
         schema="sc_lost_found",
     )
-    op.create_index("ix_lf_comentario_caso_created", "comentario_caso_lf", ["caso_id", "created_at"], schema="sc_lost_found")
+    op.create_index(
+        "ix_lf_comentario_caso_created",
+        "comentario_caso_lf",
+        ["caso_id", "created_at"],
+        schema="sc_lost_found",
+    )
 
     op.create_table(
         "participante_hilo_lf",
@@ -106,9 +212,21 @@ def upgrade() -> None:
         sa.Column("caso_id", sa.UUID(), nullable=False),
         sa.Column("usuario_id", sa.UUID(), nullable=False),
         sa.Column("suscrito", sa.Boolean(), server_default="true", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["caso_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["caso_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["usuario_id"], ["sc_users.usuario.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("caso_id", "usuario_id", name="uq_lf_participante_hilo"),
@@ -119,12 +237,22 @@ def upgrade() -> None:
         "custodia_objeto",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
         sa.Column("caso_id", sa.UUID(), nullable=False),
-        sa.Column("estado", postgresql.ENUM(name="estado_custodia", create_type=False), server_default="ACTIVA", nullable=False),
+        sa.Column(
+            "estado",
+            postgresql.ENUM(name="estado_custodia", create_type=False),
+            server_default="ACTIVA",
+            nullable=False,
+        ),
         sa.Column("ubicacion_custodia", sa.String(length=255), nullable=False),
         sa.Column("observaciones", sa.Text(), nullable=True),
         sa.Column("es_perecible", sa.Boolean(), server_default="false", nullable=False),
         sa.Column("recibido_por_id", sa.UUID(), nullable=False),
-        sa.Column("fecha_recepcion", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "fecha_recepcion",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("fecha_vencimiento", sa.DateTime(timezone=True), nullable=False),
         sa.Column("reclamante_id", sa.UUID(), nullable=True),
         sa.Column("entregado_por_id", sa.UUID(), nullable=True),
@@ -133,9 +261,21 @@ def upgrade() -> None:
         sa.Column("destino_descarte", sa.String(length=150), nullable=True),
         sa.Column("motivo_descarte", sa.Text(), nullable=True),
         sa.Column("fecha_descarte", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["caso_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["caso_id"], ["sc_lost_found.caso_lost_found.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["entregado_por_id"], ["sc_users.usuario.id"]),
         sa.ForeignKeyConstraint(["reclamante_id"], ["sc_users.usuario.id"]),
         sa.ForeignKeyConstraint(["recibido_por_id"], ["sc_users.usuario.id"]),
@@ -143,16 +283,33 @@ def upgrade() -> None:
         sa.UniqueConstraint("caso_id", name="uq_lf_custodia_caso"),
         schema="sc_lost_found",
     )
-    op.create_index("ix_lf_custodia_estado_vencimiento", "custodia_objeto", ["estado", "fecha_vencimiento"], schema="sc_lost_found")
+    op.create_index(
+        "ix_lf_custodia_estado_vencimiento",
+        "custodia_objeto",
+        ["estado", "fecha_vencimiento"],
+        schema="sc_lost_found",
+    )
 
     op.create_table(
         "configuracion_lf",
         sa.Column("key", sa.String(length=100), nullable=False),
-        sa.Column("value", postgresql.JSONB(astext_type=sa.Text()), server_default="{}", nullable=False),
+        sa.Column(
+            "value", postgresql.JSONB(astext_type=sa.Text()), server_default="{}", nullable=False
+        ),
         sa.Column("descripcion", sa.Text(), nullable=True),
         sa.Column("updated_by_id", sa.UUID(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["updated_by_id"], ["sc_users.usuario.id"]),
         sa.PrimaryKeyConstraint("key"),
         schema="sc_lost_found",
@@ -170,10 +327,14 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("configuracion_lf", schema="sc_lost_found")
-    op.drop_index("ix_lf_custodia_estado_vencimiento", table_name="custodia_objeto", schema="sc_lost_found")
+    op.drop_index(
+        "ix_lf_custodia_estado_vencimiento", table_name="custodia_objeto", schema="sc_lost_found"
+    )
     op.drop_table("custodia_objeto", schema="sc_lost_found")
     op.drop_table("participante_hilo_lf", schema="sc_lost_found")
-    op.drop_index("ix_lf_comentario_caso_created", table_name="comentario_caso_lf", schema="sc_lost_found")
+    op.drop_index(
+        "ix_lf_comentario_caso_created", table_name="comentario_caso_lf", schema="sc_lost_found"
+    )
     op.drop_table("comentario_caso_lf", schema="sc_lost_found")
     op.drop_index("ix_lf_match_estado", table_name="match_sugerido", schema="sc_lost_found")
     op.drop_table("match_sugerido", schema="sc_lost_found")

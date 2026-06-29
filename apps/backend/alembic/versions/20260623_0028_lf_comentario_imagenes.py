@@ -54,4 +54,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("ALTER TABLE sc_lost_found.comentario_caso_lf DROP COLUMN IF EXISTS imagenes;")
-    op.execute("DELETE FROM sc_lost_found.configuracion_lf WHERE key IN ('comentarios.lista_negra', 'comentarios.profundidad_maxima');")
+    op.execute(
+        "DELETE FROM sc_lost_found.configuracion_lf WHERE key IN ('comentarios.lista_negra', 'comentarios.profundidad_maxima');"
+    )

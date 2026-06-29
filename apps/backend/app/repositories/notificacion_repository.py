@@ -2,7 +2,7 @@
 Repositorio de notificaciones internas.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -66,8 +66,8 @@ class NotificacionRepository:
             )
             .values(
                 estado="ENVIADA",
-                fecha_lectura=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                fecha_lectura=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             .returning(Notificacion.id)
         )
@@ -84,8 +84,8 @@ class NotificacionRepository:
             )
             .values(
                 estado="ENVIADA",
-                fecha_lectura=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                fecha_lectura=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
         )
         result = await self.db.execute(statement)
@@ -131,7 +131,7 @@ class NotificacionRepository:
             asunto=asunto,
             contenido=contenido,
             error_detalle=error_detalle,
-            fecha_envio=datetime.now(timezone.utc),
+            fecha_envio=datetime.now(UTC),
         )
         self.db.add(row)
         await self.db.flush()

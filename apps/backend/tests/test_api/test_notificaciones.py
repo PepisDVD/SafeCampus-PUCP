@@ -2,7 +2,7 @@
 Tests de endpoints de notificaciones con dependency override.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.api.deps import get_current_user
 from app.api.v1.notificaciones import get_service
@@ -33,9 +33,9 @@ class FakeNotificacionService:
                 estado=EstadoNotificacion.PENDIENTE,
                 asunto="Estado actualizado",
                 contenido="Tu incidente cambio de estado.",
-                fecha_envio=datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+                fecha_envio=datetime(2026, 5, 8, 10, 0, tzinfo=UTC),
                 fecha_lectura=None,
-                created_at=datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+                created_at=datetime(2026, 5, 8, 10, 0, tzinfo=UTC),
             )
         ]
         return NotificacionListResponse(

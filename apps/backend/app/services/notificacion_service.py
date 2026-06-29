@@ -40,9 +40,7 @@ class NotificacionService:
         )
 
     async def contar_no_leidas(self, usuario_id: str) -> NotificacionUnreadCount:
-        return NotificacionUnreadCount(
-            unread_count=await self._repo.count_unread(usuario_id)
-        )
+        return NotificacionUnreadCount(unread_count=await self._repo.count_unread(usuario_id))
 
     async def marcar_leida(self, usuario_id: str, notificacion_id: str) -> None:
         try:

@@ -51,6 +51,7 @@ def get_service(db: AsyncSession = Depends(get_session)) -> AdminService:
 # Usuarios
 # ---------------------------------------------------------------------------
 
+
 @router.get("/usuarios", response_model=UsuariosListResponse, tags=["Admin - Usuarios"])
 async def listar_usuarios(
     search: str | None = Query(default=None),
@@ -95,9 +96,7 @@ async def actualizar_perfil_usuario(
     service: AdminService = Depends(get_service),
     current_user: AuthUserResponse = Depends(require_admin),
 ):
-    return await service.actualizar_perfil_usuario(
-        usuario_id, body, actor_id=current_user.id
-    )
+    return await service.actualizar_perfil_usuario(usuario_id, body, actor_id=current_user.id)
 
 
 @router.patch(
@@ -118,6 +117,7 @@ async def cambiar_estado_usuario(
 # ---------------------------------------------------------------------------
 # Roles & Permisos
 # ---------------------------------------------------------------------------
+
 
 @router.get("/roles", response_model=RolesListResponse, tags=["Admin - Roles"])
 async def listar_roles(service: AdminService = Depends(get_service)):
@@ -140,15 +140,14 @@ async def actualizar_permisos_rol(
     service: AdminService = Depends(get_service),
     current_user: AuthUserResponse = Depends(require_admin),
 ):
-    result = await service.actualizar_permisos_rol(
-        rol_id, body, actor_id=current_user.id
-    )
+    result = await service.actualizar_permisos_rol(rol_id, body, actor_id=current_user.id)
     return MessageResponse(message=result["message"])
 
 
 # ---------------------------------------------------------------------------
 # Auditoría
 # ---------------------------------------------------------------------------
+
 
 @router.get("/auditoria", response_model=AuditoriaListResponse, tags=["Admin - Auditoría"])
 async def listar_auditoria(
@@ -209,6 +208,7 @@ async def obtener_usuarios_auditoria(service: AdminService = Depends(get_service
 # Integraciones
 # ---------------------------------------------------------------------------
 
+
 @router.get(
     "/integraciones",
     response_model=IntegracionesListResponse,
@@ -234,6 +234,7 @@ async def verificar_integracion(
 # ---------------------------------------------------------------------------
 # LLM Audit
 # ---------------------------------------------------------------------------
+
 
 def get_llm_audit_service(db: AsyncSession = Depends(get_session)) -> LlmAuditService:
     return LlmAuditService(db)

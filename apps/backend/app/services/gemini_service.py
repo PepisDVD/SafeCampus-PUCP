@@ -40,11 +40,7 @@ class GeminiService:
                 detail="Gemini devolvio una severidad invalida.",
             )
         try:
-            confianza = (
-                float(parsed["confianza"])
-                if parsed.get("confianza") is not None
-                else None
-            )
+            confianza = float(parsed["confianza"]) if parsed.get("confianza") is not None else None
             return IncidentePriorizacionAi(
                 severidad=NivelSeveridad(severidad_raw),
                 categoria_sugerida=(
@@ -54,9 +50,7 @@ class GeminiService:
                 ),
                 confianza=confianza,
                 justificacion=(
-                    str(parsed["justificacion"]).strip()
-                    if parsed.get("justificacion")
-                    else None
+                    str(parsed["justificacion"]).strip() if parsed.get("justificacion") else None
                 ),
             )
         except (TypeError, ValueError, ValidationError) as exc:

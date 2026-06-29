@@ -1,6 +1,6 @@
-from typing import Any
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -10,9 +10,18 @@ from app.services.omnicanal_service import OmnicanalService
 
 
 class FakeMessagingService:
-    def __init__(self, sender_phone: str, *, is_group: bool = False) -> None:
+    def __init__(
+        self,
+        sender_phone: str,
+        *,
+        is_group: bool = False,
+        event_type: str | None = None,
+        chat_id: str | None = None,
+    ) -> None:
         self.sender_phone = sender_phone
         self.is_group = is_group
+        self.event_type = event_type
+        self.chat_id = chat_id
 
     def parse_incoming_webhook(
         self,
@@ -22,10 +31,15 @@ class FakeMessagingService:
     ) -> IncomingMessage:
         return IncomingMessage(
             provider=provider_name or "evolution",
+            external_message_id="wa-message-1",
+            instance_name="test-campus-pucp",
             sender_phone=self.sender_phone,
+            sender_name="Contacto",
+            chat_id=self.chat_id,
             is_group=self.is_group,
             message_type="text",
             text="Mensaje de prueba",
+            event_type=self.event_type,
             raw_payload=payload,
         )
 
@@ -45,6 +59,68 @@ class FakeCloseEvolution:
     async def send_text(self, *, chat_id: str, text: str) -> dict[str, Any]:
         self.sent.append(text)
         return {"id": "close-message-id"}
+
+
+class FakeBackgroundTasks:
+    def __init__(self) -> None:
+        self.tasks: list[tuple[Any, tuple[Any, ...], dict[str, Any]]] = []
+
+    def add_task(self, func: Any, *args: Any, **kwargs: Any) -> None:
+        self.tasks.append((func, args, kwargs))
+
+
+class SlowChatbot:
+    def __init__(self) -> None:
+        self.processed = False
+
+    async def process_incoming_contact_message(self, *args: Any, **kwargs: Any) -> None:
+        self.processed = True
+
+
+class FakeWebhookRepository:
+    def __init__(self) -> None:
+        now = datetime.now(UTC)
+        self.channel = SimpleNamespace(id="00000000-0000-0000-0000-000000000101")
+        self.report = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000102",
+            canal_id=self.channel.id,
+            estado="NORMALIZADO",
+            created_at=now,
+        )
+        self.conversation = SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000103",
+            estado="ABIERTA",
+            ultimo_mensaje_at=now,
+        )
+        self.message = SimpleNamespace(id="00000000-0000-0000-0000-000000000104")
+        self.committed = False
+
+    async def get_or_create_whatsapp_channel(self, **kwargs: Any) -> Any:
+        return self.channel
+
+    async def create_reporte_entrante(self, **kwargs: Any) -> Any:
+        return self.report
+
+    async def get_or_create_conversacion(self, **kwargs: Any) -> Any:
+        return self.conversation
+
+    async def create_mensaje_if_missing(self, **kwargs: Any) -> Any:
+        return self.message
+
+    async def update_conversacion_after_message(self, **kwargs: Any) -> Any:
+        self.conversation.estado = kwargs.get("estado") or self.conversation.estado
+        return self.conversation
+
+    async def create_evento(self, **kwargs: Any) -> Any:
+        return SimpleNamespace(id="00000000-0000-0000-0000-000000000105")
+
+
+class FakeSession:
+    def __init__(self, repo: FakeWebhookRepository) -> None:
+        self.repo = repo
+
+    async def commit(self) -> None:
+        self.repo.committed = True
 
 
 class FakeCloseRepository:
@@ -144,7 +220,9 @@ class FakeCloseRepository:
             last_processed_at=datetime.now(UTC),
         )
 
-    async def list_operadores_asignados(self, conversation_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    async def list_operadores_asignados(
+        self, conversation_ids: list[str]
+    ) -> dict[str, list[dict[str, Any]]]:
         return {self.conversation.id: []}
 
     async def list_mensajes(self, conversacion_id: str, limit: int) -> list[dict[str, Any]]:
@@ -157,7 +235,9 @@ class FakeCloseRepository:
         self.closed_cycle_payload = kwargs
         return SimpleNamespace(id="00000000-0000-0000-0000-000000000020")
 
-    async def cerrar_conversacion(self, conversacion_id: str, usuario_id: str | None, motivo: str | None) -> Any:
+    async def cerrar_conversacion(
+        self, conversacion_id: str, usuario_id: str | None, motivo: str | None
+    ) -> Any:
         self.conversation.estado = "CERRADA"
         self.conversation.modo_atencion = None
         self.conversation.prioridad = None
@@ -217,6 +297,40 @@ def test_whatsapp_allowed_test_phones_set_normaliza_numeros(monkeypatch):
     monkeypatch.setattr(settings, "WHATSAPP_ALLOWED_TEST_PHONES", "+51 911 111 111,51922222222")
 
     assert settings.whatsapp_allowed_test_phones_set == {"51911111111", "51922222222"}
+
+
+@pytest.mark.anyio
+async def test_registrar_whatsapp_webhook_difiere_chatbot_en_tarea_de_fondo(monkeypatch):
+    monkeypatch.setattr(settings, "WHATSAPP_ALLOWED_TEST_PHONES", "")
+    fake_repo = FakeWebhookRepository()
+    fake_chatbot = SlowChatbot()
+    background_tasks = FakeBackgroundTasks()
+    service = OmnicanalService(db=FakeSession(fake_repo))  # type: ignore[arg-type]
+    service._messaging = FakeMessagingService(  # noqa: SLF001
+        sender_phone="51999999999",
+        event_type="messages.upsert",
+        chat_id="51999999999@s.whatsapp.net",
+    )
+    service._repo = fake_repo  # noqa: SLF001
+    service._chatbot = fake_chatbot  # noqa: SLF001
+
+    response = await service.registrar_whatsapp_webhook(
+        payload={"event": "messages.upsert"},
+        provider_name="evolution",
+        webhook_secret=None,
+        ip_origen="127.0.0.1",
+        user_agent="pytest",
+        background_tasks=background_tasks,  # type: ignore[arg-type]
+    )
+
+    assert response.ok is True
+    assert response.ignored is False
+    assert response.reporte is not None
+    assert fake_repo.committed is True
+    assert fake_chatbot.processed is False
+    assert len(background_tasks.tasks) == 1
+    _, args, _ = background_tasks.tasks[0]
+    assert args == (str(fake_repo.conversation.id), "Mensaje de prueba")
 
 
 @pytest.mark.anyio

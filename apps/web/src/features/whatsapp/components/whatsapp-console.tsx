@@ -543,7 +543,7 @@ export function WhatsAppConsole() {
           );
         });
         if (data.conversacion_id && data.conversacion_id === selectedIdRef.current) {
-          loadMessages(data.conversacion_id).catch((error) => {
+          loadMessages(data.conversacion_id, { showLoader: false }).catch((error) => {
             setErrorMessage(
               error instanceof Error ? error.message : "No se pudo refrescar mensajes.",
             );
@@ -577,7 +577,30 @@ export function WhatsAppConsole() {
       return;
     }
     const content = draft.trim();
+    const optimisticId =
+      content && attachments.length === 0
+        ? `optimistic-${selectedConversation.id}-${Date.now()}`
+        : null;
     setSending(true);
+    if (optimisticId) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: optimisticId,
+          conversacion_id: selectedConversation.id,
+          external_message_id: null,
+          direccion: "OUTBOUND",
+          autor_tipo: "OPERADOR",
+          autor_usuario: null,
+          contenido: content,
+          tipo_contenido: "text",
+          estado_entrega: "sending",
+          media: null,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      setDraft("");
+    }
     try {
       if (attachments.length > 0) {
         const formData = new FormData();
@@ -588,17 +611,30 @@ export function WhatsAppConsole() {
           formData,
         );
       } else {
-        await api.post(
+        const sentMessage = await api.post<ConversationMessage>(
           `/omnicanal/conversaciones/${selectedConversation.id}/mensajes`,
           { contenido: content },
         );
+        if (optimisticId) {
+          setMessages((current) =>
+            current.map((message) => (message.id === optimisticId ? sentMessage : message)),
+          );
+        }
       }
       setDraft("");
       setAttachments([]);
       if (imageInputRef.current) imageInputRef.current.value = "";
       await loadConversations();
-      await loadMessages(selectedConversation.id);
+      await loadMessages(selectedConversation.id, { showLoader: false });
     } catch (error) {
+      if (optimisticId) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === optimisticId ? { ...message, estado_entrega: "error" } : message,
+          ),
+        );
+        setDraft(content);
+      }
       setErrorMessage(error instanceof Error ? error.message : "No se pudo enviar el mensaje.");
     } finally {
       setSending(false);
@@ -1314,6 +1350,8 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
   const isBot = message.autor_tipo === "BOT";
   const isOperator = message.autor_tipo === "OPERADOR";
   const mediaSrc = message.media?.data_url || message.media?.url || message.media?.thumbnail_data_url;
+  const isSending = message.estado_entrega === "sending";
+  const hasFailed = message.estado_entrega === "error";
 
   return (
     <div className={cn("flex", outgoing ? "justify-end" : "justify-start")}>
@@ -1344,7 +1382,14 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
         </p>
         <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-slate-500">
           <span>{formatTime(message.created_at)}</span>
-          {outgoing ? <CheckCircle2 className="h-3 w-3" /> : null}
+          {outgoing && isSending ? (
+            <>
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              <span>Enviando</span>
+            </>
+          ) : null}
+          {outgoing && hasFailed ? <span className="font-medium text-red-600">Error</span> : null}
+          {outgoing && !isSending && !hasFailed ? <CheckCircle2 className="h-3 w-3" /> : null}
         </div>
       </div>
     </div>

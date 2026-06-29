@@ -61,8 +61,7 @@ class MaestrosRepository:
         result = await self.db.execute(statement)
         referenced = await self.referenced_ubicacion_ids()
         return [
-            _serialize(row, tiene_relaciones=str(row.id) in referenced)
-            for row in result.scalars()
+            _serialize(row, tiene_relaciones=str(row.id) in referenced) for row in result.scalars()
         ]
 
     async def create_ubicacion(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -72,7 +71,9 @@ class MaestrosRepository:
         await self.db.refresh(row)
         return _serialize(row, tiene_relaciones=False)
 
-    async def update_ubicacion(self, ubicacion_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    async def update_ubicacion(
+        self, ubicacion_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
         statement = (
             update(UbicacionMaestra)
             .where(UbicacionMaestra.id == UUID(ubicacion_id))

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -7,9 +7,9 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.schemas.lost_found import (
+    CustodiaLfUpdateInput,
     CustodiaPoliticaItem,
     CustodiaPoliticaUpdateInput,
-    CustodiaLfUpdateInput,
     DescarteLfInput,
     DevolucionLfInput,
     MotivoCierreLfCreate,
@@ -45,12 +45,12 @@ class FakeCustodiaRepo:
             ubicacion_custodia="Estante A",
             observaciones="Recibido",
             es_perecible=False,
-            fecha_recepcion=datetime(2026, 6, 1, 10, tzinfo=timezone.utc),
-            fecha_vencimiento=datetime(2026, 7, 20, 10, tzinfo=timezone.utc),
+            fecha_recepcion=datetime(2026, 6, 1, 10, tzinfo=UTC),
+            fecha_vencimiento=datetime(2026, 7, 20, 10, tzinfo=UTC),
             reclamante_id=None,
             metodo_verificacion=None,
-            created_at=datetime(2026, 6, 1, 10, tzinfo=timezone.utc),
-            updated_at=datetime(2026, 6, 1, 10, tzinfo=timezone.utc),
+            created_at=datetime(2026, 6, 1, 10, tzinfo=UTC),
+            updated_at=datetime(2026, 6, 1, 10, tzinfo=UTC),
         )
 
     async def get_custodia(self, _custodia_id):
@@ -66,7 +66,9 @@ class FakeCustodiaRepo:
             "codigo": "LF-202606-00001",
             "titulo": "Mochila",
             "estado": next_estado,
-            "ubicacion_custodia": values.get("ubicacion_custodia", self.custodia.ubicacion_custodia),
+            "ubicacion_custodia": values.get(
+                "ubicacion_custodia", self.custodia.ubicacion_custodia
+            ),
             "observaciones": values.get("observaciones", self.custodia.observaciones),
             "es_perecible": self.custodia.es_perecible,
             "fecha_recepcion": self.custodia.fecha_recepcion,
@@ -74,7 +76,7 @@ class FakeCustodiaRepo:
             "reclamante_id": None,
             "metodo_verificacion": None,
             "created_at": self.custodia.created_at,
-            "updated_at": datetime(2026, 6, 20, 10, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 6, 20, 10, tzinfo=UTC),
         }
 
     async def get_estado(self, _caso_id):
@@ -107,10 +109,15 @@ async def test_no_permite_cerrar_con_motivo_inactivo():
 
 @pytest.mark.anyio
 async def test_exige_observacion_configurada():
-    service = service_with({
-        "id": "id", "activo": True, "requiere_observacion": True,
-        "clase_cierre": "ADMINISTRATIVO", "requiere_validacion_entrega": False,
-    })
+    service = service_with(
+        {
+            "id": "id",
+            "activo": True,
+            "requiere_observacion": True,
+            "clase_cierre": "ADMINISTRATIVO",
+            "requiere_validacion_entrega": False,
+        }
+    )
     with pytest.raises(HTTPException) as error:
         await service._validar_motivo_cierre("id", "  ")
     assert "observaciones" in error.value.detail
@@ -118,10 +125,15 @@ async def test_exige_observacion_configurada():
 
 @pytest.mark.anyio
 async def test_devolucion_exige_validacion_de_entrega():
-    service = service_with({
-        "id": "id", "activo": True, "requiere_observacion": False,
-        "clase_cierre": "DEVOLUCION", "requiere_validacion_entrega": True,
-    })
+    service = service_with(
+        {
+            "id": "id",
+            "activo": True,
+            "requiere_observacion": False,
+            "clase_cierre": "DEVOLUCION",
+            "requiere_validacion_entrega": True,
+        }
+    )
     with pytest.raises(HTTPException) as error:
         await service._validar_motivo_cierre("id", None)
     assert "verificacion de entrega" in error.value.detail
@@ -130,8 +142,11 @@ async def test_devolucion_exige_validacion_de_entrega():
 @pytest.mark.anyio
 async def test_acepta_devolucion_activa_con_verificacion():
     motivo = {
-        "id": "id", "activo": True, "requiere_observacion": False,
-        "clase_cierre": "DEVOLUCION", "requiere_validacion_entrega": True,
+        "id": "id",
+        "activo": True,
+        "requiere_observacion": False,
+        "clase_cierre": "DEVOLUCION",
+        "requiere_validacion_entrega": True,
     }
     service = service_with(motivo)
     assert await service._validar_motivo_cierre("id", None, validacion_entrega=True) == motivo
@@ -139,10 +154,15 @@ async def test_acepta_devolucion_activa_con_verificacion():
 
 @pytest.mark.anyio
 async def test_rechaza_motivo_de_clase_distinta_al_descarte():
-    service = service_with({
-        "id": "id", "activo": True, "requiere_observacion": False,
-        "clase_cierre": "ADMINISTRATIVO", "requiere_validacion_entrega": False,
-    })
+    service = service_with(
+        {
+            "id": "id",
+            "activo": True,
+            "requiere_observacion": False,
+            "clase_cierre": "ADMINISTRATIVO",
+            "requiere_validacion_entrega": False,
+        }
+    )
     with pytest.raises(HTTPException) as error:
         await service._validar_motivo_cierre("id", None, clase_cierre="DESCARTE")
     assert error.value.status_code == 422
@@ -231,7 +251,7 @@ async def test_actualizar_fecha_custodia_audita_y_deja_historial():
         return politica
 
     service.obtener_politica_custodia = obtener_politica
-    nueva_fecha = datetime.now(timezone.utc) + timedelta(days=3)
+    nueva_fecha = datetime.now(UTC) + timedelta(days=3)
 
     result = await service.actualizar_custodia(
         "22222222-2222-2222-2222-222222222222",
@@ -249,7 +269,7 @@ async def test_actualizar_fecha_custodia_audita_y_deja_historial():
 
 
 def test_estado_custodia_se_recalcula_con_politica_vigente():
-    now = datetime(2026, 6, 25, 12, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 25, 12, tzinfo=UTC)
     politica = CustodiaPoliticaItem(
         dias_maximos_custodia=30,
         dias_alerta_vencimiento=7,
@@ -257,42 +277,66 @@ def test_estado_custodia_se_recalcula_con_politica_vigente():
         horas_maximas_perecibles=24,
         horas_alerta_perecible=6,
     )
-    assert LostFoundService._estado_custodia_por_vencimiento(now - timedelta(minutes=1), False, politica, now) == "VENCIDA"
-    assert LostFoundService._estado_custodia_por_vencimiento(now + timedelta(days=3), False, politica, now) == "PROXIMA_VENCER"
-    assert LostFoundService._estado_custodia_por_vencimiento(now + timedelta(days=10), False, politica, now) == "ACTIVA"
-    assert LostFoundService._estado_custodia_por_vencimiento(now + timedelta(hours=4), True, politica, now) == "PROXIMA_VENCER"
+    assert (
+        LostFoundService._estado_custodia_por_vencimiento(
+            now - timedelta(minutes=1), False, politica, now
+        )
+        == "VENCIDA"
+    )
+    assert (
+        LostFoundService._estado_custodia_por_vencimiento(
+            now + timedelta(days=3), False, politica, now
+        )
+        == "PROXIMA_VENCER"
+    )
+    assert (
+        LostFoundService._estado_custodia_por_vencimiento(
+            now + timedelta(days=10), False, politica, now
+        )
+        == "ACTIVA"
+    )
+    assert (
+        LostFoundService._estado_custodia_por_vencimiento(
+            now + timedelta(hours=4), True, politica, now
+        )
+        == "PROXIMA_VENCER"
+    )
 
 
 def test_dashboard_agrega_metricas_series_y_actividad():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     case_id = "00000000-0000-0000-0000-000000000001"
     current = {
-        "casos": [{
-            "id": case_id,
-            "codigo": "LF-001",
-            "titulo": "Mochila",
-            "tipo": "ENCONTRADO",
-            "estado": "DEVUELTO",
-            "categoria": "Accesorios",
-            "created_at": now - timedelta(days=2),
-            "updated_at": now - timedelta(days=1),
-            "reportante_nombre": "Ana",
-            "reportante_apellido": "Pérez",
-            "matching_total": 2,
-            "matching_confirmados": 1,
-        }],
-        "custodias": [{
-            "id": "00000000-0000-0000-0000-000000000010",
-            "caso_id": case_id,
-            "estado": "DEVUELTA",
-            "fecha_recepcion": now - timedelta(days=2),
-            "fecha_vencimiento": now + timedelta(days=5),
-            "fecha_devolucion": now - timedelta(days=1),
-            "updated_at": now - timedelta(days=1),
-            "codigo": "LF-001",
-            "titulo": "Mochila",
-            "categoria": "Accesorios",
-        }],
+        "casos": [
+            {
+                "id": case_id,
+                "codigo": "LF-001",
+                "titulo": "Mochila",
+                "tipo": "ENCONTRADO",
+                "estado": "DEVUELTO",
+                "categoria": "Accesorios",
+                "created_at": now - timedelta(days=2),
+                "updated_at": now - timedelta(days=1),
+                "reportante_nombre": "Ana",
+                "reportante_apellido": "Pérez",
+                "matching_total": 2,
+                "matching_confirmados": 1,
+            }
+        ],
+        "custodias": [
+            {
+                "id": "00000000-0000-0000-0000-000000000010",
+                "caso_id": case_id,
+                "estado": "DEVUELTA",
+                "fecha_recepcion": now - timedelta(days=2),
+                "fecha_vencimiento": now + timedelta(days=5),
+                "fecha_devolucion": now - timedelta(days=1),
+                "updated_at": now - timedelta(days=1),
+                "codigo": "LF-001",
+                "titulo": "Mochila",
+                "categoria": "Accesorios",
+            }
+        ],
     }
     politica = CustodiaPoliticaItem(
         dias_maximos_custodia=30,

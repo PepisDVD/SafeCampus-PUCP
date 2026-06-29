@@ -103,10 +103,6 @@ class LlmAuditService:
 
         from app.models.sc_omnicanal import ChatbotLlmUsage
 
-        stmt = (
-            select(ChatbotLlmUsage.provider)
-            .distinct()
-            .order_by(ChatbotLlmUsage.provider)
-        )
+        stmt = select(ChatbotLlmUsage.provider).distinct().order_by(ChatbotLlmUsage.provider)
         result = await self._repo.db.execute(stmt)
         return [row[0] for row in result]

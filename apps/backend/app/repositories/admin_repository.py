@@ -2,7 +2,7 @@
 Repository for the admin module using normalized SQLAlchemy schema models.
 """
 
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime, time
 from typing import Any
 from uuid import UUID
 
@@ -37,7 +37,7 @@ def _parse_fecha(value: str, *, end_of_day: bool = False) -> datetime:
         # Sólo fecha o datetime naive: asumimos UTC.
         if end_of_day and parsed.time() == time(0, 0):
             parsed = datetime.combine(parsed.date(), time.max)
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
@@ -125,9 +125,7 @@ class AdminRepository:
 
     async def get_usuario_by_email(self, email: str) -> dict[str, Any] | None:
         statement = (
-            select(Usuario.id)
-            .where(Usuario.email == email, Usuario.deleted_at.is_(None))
-            .limit(1)
+            select(Usuario.id).where(Usuario.email == email, Usuario.deleted_at.is_(None)).limit(1)
         )
         result = await self.db.execute(statement)
         row = result.mappings().one_or_none()
@@ -175,9 +173,7 @@ class AdminRepository:
         await self.db.execute(statement)
 
     async def replace_rol(self, usuario_id: str, rol_id: str) -> None:
-        await self.db.execute(
-            delete(UsuarioRol).where(UsuarioRol.usuario_id == UUID(usuario_id))
-        )
+        await self.db.execute(delete(UsuarioRol).where(UsuarioRol.usuario_id == UUID(usuario_id)))
         await self.assign_rol(usuario_id, rol_id)
 
     async def update_usuario_profile(self, usuario_id: str, data: dict[str, Any]) -> bool:
@@ -342,15 +338,11 @@ class AdminRepository:
         if usuario_id:
             statement = statement.where(RegistroAuditoria.usuario_id == UUID(usuario_id))
         if entidad:
-            statement = statement.where(
-                RegistroAuditoria.entidad.ilike(f"%{entidad}%")
-            )
+            statement = statement.where(RegistroAuditoria.entidad.ilike(f"%{entidad}%"))
         if resultados:
             statement = statement.where(resultado_expr.in_(resultados))
         if desde:
-            statement = statement.where(
-                RegistroAuditoria.fecha_registro >= _parse_fecha(desde)
-            )
+            statement = statement.where(RegistroAuditoria.fecha_registro >= _parse_fecha(desde))
         if hasta:
             statement = statement.where(
                 RegistroAuditoria.fecha_registro <= _parse_fecha(hasta, end_of_day=True)
@@ -383,16 +375,12 @@ class AdminRepository:
         return [dict(row) for row in result.mappings()]
 
     async def get_modulos_distintos(self) -> list[str]:
-        statement = select(RegistroAuditoria.modulo).distinct().order_by(
-            RegistroAuditoria.modulo
-        )
+        statement = select(RegistroAuditoria.modulo).distinct().order_by(RegistroAuditoria.modulo)
         result = await self.db.execute(statement)
         return [row[0] for row in result]
 
     async def get_acciones_distintas(self) -> list[str]:
-        statement = select(RegistroAuditoria.accion).distinct().order_by(
-            RegistroAuditoria.accion
-        )
+        statement = select(RegistroAuditoria.accion).distinct().order_by(RegistroAuditoria.accion)
         result = await self.db.execute(statement)
         return [row[0] for row in result]
 

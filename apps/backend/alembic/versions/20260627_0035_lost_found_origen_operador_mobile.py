@@ -5,9 +5,9 @@ Revises: 20260627_0034
 Create Date: 2026-06-27
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "20260627_0035"
 down_revision = "20260627_0034"
@@ -30,5 +30,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("idx_lf_caso_origen_created", table_name="caso_lost_found", schema="sc_lost_found")
+    op.drop_index(
+        "idx_lf_caso_origen_created", table_name="caso_lost_found", schema="sc_lost_found"
+    )
     op.drop_column("caso_lost_found", "origen", schema="sc_lost_found")

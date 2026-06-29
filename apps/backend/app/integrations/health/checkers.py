@@ -72,9 +72,7 @@ class OpenAIHealthChecker(_HttpHealthChecker):
                 http_status=429,
             )
         if response.is_success:
-            return HealthCheckResult.ok(
-                tiempo_respuesta_ms=elapsed, modelo=settings.OPENAI_MODEL
-            )
+            return HealthCheckResult.ok(tiempo_respuesta_ms=elapsed, modelo=settings.OPENAI_MODEL)
         return HealthCheckResult.degradado(
             f"Respuesta inesperada de OpenAI ({response.status_code}).",
             tiempo_respuesta_ms=elapsed,
@@ -112,9 +110,7 @@ class GeminiHealthChecker(_HttpHealthChecker):
                 http_status=429,
             )
         if response.is_success:
-            return HealthCheckResult.ok(
-                tiempo_respuesta_ms=elapsed, modelo=settings.GEMINI_MODEL
-            )
+            return HealthCheckResult.ok(tiempo_respuesta_ms=elapsed, modelo=settings.GEMINI_MODEL)
         return HealthCheckResult.degradado(
             f"Respuesta inesperada de Gemini ({response.status_code}).",
             tiempo_respuesta_ms=elapsed,

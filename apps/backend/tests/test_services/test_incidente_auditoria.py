@@ -110,8 +110,7 @@ class FakeGeminiService:
         assert contexto["historial"][0]["estado_nuevo"] == "EN_ATENCION"
         return incidente_service.ExpedienteCierreAiDraft(
             resumen_cierre=(
-                "El incidente fue atendido con la informacion registrada "
-                "y puede cerrarse."
+                "El incidente fue atendido con la informacion registrada y puede cerrarse."
             ),
             resultado_cierre="Cerrado con atencion operativa.",
         )
@@ -293,8 +292,7 @@ async def test_crear_incidente_prioriza_con_ia_y_descripcion_opcional(monkeypatc
     assert service._repo.created_incidente["severidad"] == "ALTO"
     assert service._repo.created_clasificacion["severidad_sugerida"] == "ALTO"
     assert (
-        "Gemini priorizo incidente: severidad=ALTO categoria=robo confianza=0.82"
-        in caplog.messages
+        "Gemini priorizo incidente: severidad=ALTO categoria=robo confianza=0.82" in caplog.messages
     )
     acciones = [registro["accion"] for registro in FakeAuditoriaRepository.created]
     assert "priorizar_incidente_ia" in acciones

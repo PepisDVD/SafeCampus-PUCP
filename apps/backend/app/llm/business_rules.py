@@ -12,10 +12,9 @@ class BusinessRulesEngine:
         if any(indicator in lowered for indicator in CRITICAL_INDICATORS):
             classification.severidad = NivelSeveridadIA.CRITICO
             applied_rules.append("BR-SEV-01")
-        elif (
-            any(indicator in lowered for indicator in HIGH_RISK_INDICATORS)
-            and classification.severidad in {NivelSeveridadIA.BAJO, NivelSeveridadIA.MEDIO}
-        ):
+        elif any(
+            indicator in lowered for indicator in HIGH_RISK_INDICATORS
+        ) and classification.severidad in {NivelSeveridadIA.BAJO, NivelSeveridadIA.MEDIO}:
             classification.severidad = NivelSeveridadIA.ALTO
             applied_rules.append("BR-SEV-02")
 

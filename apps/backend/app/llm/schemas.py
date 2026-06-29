@@ -141,3 +141,58 @@ class ClassificationPipelineResult(BaseModel):
     normalized: LLMNormalizedResponse
     final: ClasificacionFinal
     provider_response: LLMProviderResponse | None = None
+
+
+# --- Conversational WhatsApp bot (capa unica, independiente del clasificador) ---
+
+
+class WhatsAppBotIntent(StrEnum):
+    GREETING = "GREETING"
+    GENERAL_HELP = "GENERAL_HELP"
+    INCIDENT_REPORT = "INCIDENT_REPORT"
+    EMERGENCY = "EMERGENCY"
+    FOLLOW_UP = "FOLLOW_UP"
+    PROVIDE_DETAILS = "PROVIDE_DETAILS"
+    SMALL_TALK = "SMALL_TALK"
+    NON_ACTIONABLE = "NON_ACTIONABLE"
+    HUMAN_REQUEST = "HUMAN_REQUEST"
+
+
+class WhatsAppUrgencySignal(StrEnum):
+    NONE = "NONE"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class WhatsAppBotDecision(BaseModel):
+    """Decision conversacional del bot de WhatsApp para un turno."""
+
+    intent: WhatsAppBotIntent
+    urgency_signal: WhatsAppUrgencySignal
+    should_reply: bool = True
+    should_create_incident: bool = False
+    should_handoff: bool = False
+    requires_human_review: bool = False
+    missing_fields: list[str] = Field(default_factory=list)
+    reply: str | None = None
+    conversation_summary: str | None = None
+    incident_category: CategoriaIncidente | None = None
+    incident_severity: NivelSeveridadIA | None = None
+    incident_location: str | None = None
+
+
+class WhatsAppBotDecisionResult(BaseModel):
+    """Resultado del pipeline conversacional, con metadatos de proveedor y fallback."""
+
+    decision: WhatsAppBotDecision
+    provider_response: LLMProviderResponse | None = None
+    correlation_id: str
+    model_used: str
+    provider_used: LLMProviderName
+    prompt_version: str | None = None
+    latency_ms: int | None = None
+    fallback_applied: bool = False
+    fallback_reason: str | None = None
+    normalization_events: list[str] = Field(default_factory=list)

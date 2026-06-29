@@ -2,10 +2,11 @@
 Create schema sc_maestros and base table ubicacion_maestra.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
+
+import sqlalchemy as sa
 
 from alembic import op
-import sqlalchemy as sa
 
 revision: str = "20260514_0014"
 down_revision: str | None = "20260514_0013"
@@ -24,10 +25,22 @@ def upgrade() -> None:
         sa.Column("latitud", sa.Numeric(9, 6), nullable=False),
         sa.Column("longitud", sa.Numeric(9, 6), nullable=False),
         sa.Column("activa", sa.Boolean(), server_default="true", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint("latitud >= -90 AND latitud <= 90", name="ck_ubicacion_maestra_latitud"),
-        sa.CheckConstraint("longitud >= -180 AND longitud <= 180", name="ck_ubicacion_maestra_longitud"),
+        sa.CheckConstraint(
+            "longitud >= -180 AND longitud <= 180", name="ck_ubicacion_maestra_longitud"
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("codigo", name="uq_ubicacion_maestra_codigo"),
         sa.UniqueConstraint("nombre", name="uq_ubicacion_maestra_nombre"),

@@ -1,36 +1,42 @@
 """Business service for omnichannel inbound reports."""
 
+import asyncio
 import base64
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import BackgroundTasks, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.constants import NivelSeveridad
+from app.core.constants import NivelSeveridad, TipoCanal
+from app.core.database import AsyncSessionLocal
 from app.integrations.messaging import MessagingService
 from app.integrations.messaging.evolution_client import EvolutionApiClient
 from app.repositories.omnicanal_repository import OmnicanalRepository
 from app.schemas.incidente import IncidenteCreateInput
 from app.schemas.omnicanal import (
     AsignarConversacionInput,
-    ChatbotBorradorUpdateInput,
     CerrarConversacionInput,
+    ChatbotBorradorUpdateInput,
+    ChatbotConversationStateOut,
     ConversacionCicloDetail,
     ConversacionCicloListItem,
     ConversacionCiclosDetail,
     ConversacionCiclosListResponse,
     ConversacionCiclosResumen,
     ConversacionDetail,
+    ConversacionesHistorialResponse,
     ConversacionHistorialDetail,
     ConversacionHistorialListItem,
     ConversacionListItem,
     ConversacionListResponse,
-    ConversacionesHistorialResponse,
     CrearIncidenteConversacionInput,
     EventoConversacionOut,
     EventosConversacionResponse,
+    IncidenteConversacionOut,
+    IncidenteHistorialConversacionOut,
     MensajeConversacionOut,
     MensajeMediaOut,
     MensajesConversacionResponse,
@@ -45,6 +51,8 @@ from app.services.chatbot_service import ChatbotService
 from app.services.incidente_service import IncidenteService
 from app.services.omnicanal_realtime import omnicanal_realtime_hub
 
+logger = logging.getLogger(__name__)
+
 
 class OmnicanalService:
     _IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -52,6 +60,7 @@ class OmnicanalService:
     _MAX_IMAGES_PER_MESSAGE = 5
 
     def __init__(self, db: AsyncSession) -> None:
+        self._db = db
         self._repo = OmnicanalRepository(db)
         self._messaging = MessagingService()
         self._evolution = EvolutionApiClient()
@@ -66,6 +75,7 @@ class OmnicanalService:
         webhook_secret: str | None,
         ip_origen: str | None,
         user_agent: str | None,
+        background_tasks: BackgroundTasks | None = None,
     ) -> WhatsAppWebhookResponse:
         self._validate_webhook_secret(webhook_secret)
         incoming = self._messaging.parse_incoming_webhook(
@@ -128,6 +138,7 @@ class OmnicanalService:
                     conversacion_id=str(conversacion.id),
                     preview="",
                 )
+                assert conversacion is not None
                 await self._chatbot.reset_for_new_cycle(
                     str(conversacion.id),
                     reason="AUTO_REOPEN_AFTER_CLOSE",
@@ -144,6 +155,7 @@ class OmnicanalService:
                     conversacion_id=str(conversacion.id),
                     preview="",
                 )
+                assert conversacion is not None
                 await self._chatbot.reset_for_new_cycle(
                     str(conversacion.id),
                     reason="AUTO_REOPEN_AFTER_INACTIVITY",
@@ -182,13 +194,11 @@ class OmnicanalService:
                     )
                 )
                 if not incoming.metadata.get("from_me"):
-                    await self._chatbot.process_incoming_contact_message(
-                        conversacion,
-                        incoming.content_for_storage,
-                    )
-                    await self._broadcast_conversacion(
-                        "conversacion_actualizada",
-                        str(conversacion.id),
+                    await self._db.commit()
+                    self._enqueue_chatbot_processing(
+                        background_tasks=background_tasks,
+                        conversacion_id=str(conversacion.id),
+                        content=incoming.content_for_storage,
                     )
         return WhatsAppWebhookResponse(
             reporte=ReporteEntranteCreated(
@@ -251,13 +261,64 @@ class OmnicanalService:
             total=len(rows),
         )
 
-    async def obtener_historial_conversacion(self, conversacion_id: str) -> ConversacionHistorialDetail:
+    async def obtener_historial_conversacion(
+        self, conversacion_id: str
+    ) -> ConversacionHistorialDetail:
         detail, rows = await self._repo.get_conversacion_historial(conversacion_id)
         if not detail:
             raise self._not_found()
         return ConversacionHistorialDetail(
             conversacion=self._map_conversacion_model(detail),
             incidentes=[self._map_incidente_historial_row(row) for row in rows],
+        )
+
+    def _enqueue_chatbot_processing(
+        self,
+        *,
+        background_tasks: BackgroundTasks | None,
+        conversacion_id: str,
+        content: str,
+    ) -> None:
+        if background_tasks is not None:
+            background_tasks.add_task(
+                self.process_incoming_chatbot_background,
+                conversacion_id,
+                content,
+            )
+            return
+        asyncio.create_task(self.process_incoming_chatbot_background(conversacion_id, content))
+
+    @classmethod
+    async def process_incoming_chatbot_background(
+        cls,
+        conversacion_id: str,
+        content: str,
+    ) -> None:
+        async with AsyncSessionLocal() as db:
+            service = cls(db)
+            try:
+                detail = await service._repo.get_conversacion_detail(conversacion_id)
+                if not detail:
+                    return
+                conversacion = detail["Conversacion"]
+                await service._chatbot.process_incoming_contact_message(
+                    conversacion,
+                    content,
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                logger.exception(
+                    "No se pudo procesar chatbot asincrono para conversacion %s.",
+                    conversacion_id,
+                )
+                return
+
+        await omnicanal_realtime_hub.broadcast(
+            OmnicanalRealtimeEvent(
+                type="conversacion_actualizada",
+                conversacion_id=conversacion_id,
+            )
         )
 
     async def listar_conversaciones_ciclos(
@@ -291,7 +352,9 @@ class OmnicanalService:
     async def obtener_ciclo(self, ciclo_id: str) -> ConversacionCicloDetail:
         detail = await self._repo.get_ciclo_detail(ciclo_id)
         if not detail:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ciclo de conversacion no encontrado.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Ciclo de conversacion no encontrado."
+            )
         cycle_row = detail["cycle"]
         cycle = cycle_row["ConversacionCiclo"]
         return ConversacionCicloDetail(
@@ -506,7 +569,7 @@ class OmnicanalService:
                 severidad=NivelSeveridad(data.severidad) if data.severidad else None,
                 categoria=data.categoria or "WhatsApp",
                 lugar_referencia=data.lugar_referencia,
-                canal_origen="MENSAJERIA",
+                canal_origen=TipoCanal.MENSAJERIA,
             ),
         )
         await self._repo.vincular_incidente(conversacion_id, incidente.id)
@@ -639,7 +702,10 @@ class OmnicanalService:
 
         valid_files = [archivo for archivo in archivos if archivo and archivo.filename]
         if not valid_files:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Adjunta al menos una imagen.")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Adjunta al menos una imagen.",
+            )
         if len(valid_files) > self._MAX_IMAGES_PER_MESSAGE:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -687,7 +753,11 @@ class OmnicanalService:
             if mensaje:
                 created_messages.append(mensaje)
 
-        preview = caption.strip() if caption and caption.strip() else f"{len(created_messages)} imagen(es)"
+        preview = (
+            caption.strip()
+            if caption and caption.strip()
+            else f"{len(created_messages)} imagen(es)"
+        )
         await self._repo.update_conversacion_after_message(
             conversacion_id=conversacion.id,
             preview=preview,
@@ -706,7 +776,10 @@ class OmnicanalService:
         )
         await self._broadcast_conversacion("mensaje_enviado", str(conversacion.id))
         return MensajesConversacionResponse(
-            items=[self._map_mensaje_row({"MensajeConversacion": mensaje}) for mensaje in created_messages]
+            items=[
+                self._map_mensaje_row({"MensajeConversacion": mensaje})
+                for mensaje in created_messages
+            ]
         )
 
     async def _close_and_reset_conversation(
@@ -767,13 +840,9 @@ class OmnicanalService:
             motivo=motivo,
             cierre_tipo=cierre_tipo,
             mensajes_snapshot=[
-                self._map_mensaje_row(row).model_dump(mode="json")
-                for row in messages
+                self._map_mensaje_row(row).model_dump(mode="json") for row in messages
             ],
-            eventos_snapshot=[
-                self._map_evento_row(row).model_dump(mode="json")
-                for row in events
-            ],
+            eventos_snapshot=[self._map_evento_row(row).model_dump(mode="json") for row in events],
             chatbot_snapshot=chatbot_snapshot,
             asignaciones_snapshot=assigned.get(conversacion_id, []),
             clasificacion_snapshot=classification_snapshot,
@@ -828,7 +897,7 @@ class OmnicanalService:
             return False
         if last_at.tzinfo is None:
             last_at = last_at.replace(tzinfo=UTC)
-        return datetime.now(UTC) - last_at >= timedelta(hours=threshold_hours)
+        return bool(datetime.now(UTC) - last_at >= timedelta(hours=threshold_hours))
 
     @staticmethod
     def _compose_close_message(detail: dict[str, Any]) -> str:
@@ -944,25 +1013,11 @@ class OmnicanalService:
     def _map_conversacion_row(cls, row: dict[str, Any]) -> ConversacionListItem:
         conversacion = row["Conversacion"]
         is_closed = conversacion.estado == "CERRADA"
-        chatbot = None if is_closed else cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
-        incidente = None
-        if row.get("incidente_id"):
-            incidente = {
-                "id": str(row["incidente_id"]),
-                "codigo": row["incidente_codigo"],
-                "titulo": row["incidente_titulo"],
-                "estado": row["incidente_estado"],
-                "severidad": row["incidente_severidad"],
-            }
-        ultimo_incidente = None
-        if row.get("ultimo_incidente_id"):
-            ultimo_incidente = {
-                "id": str(row["ultimo_incidente_id"]),
-                "codigo": row["ultimo_incidente_codigo"],
-                "titulo": row["ultimo_incidente_titulo"],
-                "estado": row["ultimo_incidente_estado"],
-                "severidad": row["ultimo_incidente_severidad"],
-            }
+        chatbot = (
+            None if is_closed else cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
+        )
+        incidente = cls._incidente_out(row, "incidente")
+        ultimo_incidente = cls._incidente_out(row, "ultimo_incidente")
         return ConversacionListItem(
             id=str(conversacion.id),
             canal_id=str(conversacion.canal_id),
@@ -1014,23 +1069,11 @@ class OmnicanalService:
             row = conversacion
             conversacion = row["Conversacion"]
             is_closed = conversacion.estado == "CERRADA"
-            chatbot = None if is_closed else cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
-            if row.get("incidente_id"):
-                incidente = {
-                    "id": str(row["incidente_id"]),
-                    "codigo": row["incidente_codigo"],
-                    "titulo": row["incidente_titulo"],
-                    "estado": row["incidente_estado"],
-                    "severidad": row["incidente_severidad"],
-                }
-            if row.get("ultimo_incidente_id"):
-                ultimo_incidente = {
-                    "id": str(row["ultimo_incidente_id"]),
-                    "codigo": row["ultimo_incidente_codigo"],
-                    "titulo": row["ultimo_incidente_titulo"],
-                    "estado": row["ultimo_incidente_estado"],
-                    "severidad": row["ultimo_incidente_severidad"],
-                }
+            chatbot = (
+                None if is_closed else cls._map_chatbot_state(row.get("ChatbotEstadoConversacion"))
+            )
+            incidente = cls._incidente_out(row, "incidente")
+            ultimo_incidente = cls._incidente_out(row, "ultimo_incidente")
             historico_incidentes_count = int(row.get("historico_incidentes_count") or 0)
             operador_asignado = cls._user_from_parts(
                 row.get("operador_id"),
@@ -1102,15 +1145,7 @@ class OmnicanalService:
     @classmethod
     def _map_ciclo_row(cls, row: dict[str, Any]) -> ConversacionCicloListItem:
         ciclo = row["ConversacionCiclo"]
-        incidente = None
-        if row.get("incidente_id"):
-            incidente = {
-                "id": str(row["incidente_id"]),
-                "codigo": row["incidente_codigo"],
-                "titulo": row["incidente_titulo"],
-                "estado": row["incidente_estado"],
-                "severidad": row["incidente_severidad"],
-            }
+        incidente = cls._incidente_out(row, "incidente")
         return ConversacionCicloListItem(
             id=str(ciclo.id),
             conversacion_id=str(ciclo.conversacion_id),
@@ -1132,56 +1167,62 @@ class OmnicanalService:
         )
 
     @classmethod
-    def _map_incidente_historial_row(cls, row: dict[str, Any]) -> dict[str, Any]:
+    def _map_incidente_historial_row(cls, row: dict[str, Any]) -> IncidenteHistorialConversacionOut:
         historial = row["ConversacionIncidenteHistorial"]
-        incidente = None
-        if row.get("incidente_id"):
-            incidente = {
-                "id": str(row["incidente_id"]),
-                "codigo": row["incidente_codigo"],
-                "titulo": row["incidente_titulo"],
-                "estado": row["incidente_estado"],
-                "severidad": row["incidente_severidad"],
-            }
-        return {
-            "id": str(historial.id),
-            "incidente": incidente,
-            "actor_usuario": cls._user_from_parts(
+        return IncidenteHistorialConversacionOut(
+            id=str(historial.id),
+            incidente=cls._incidente_out(row, "incidente"),
+            actor_usuario=cls._user_from_parts(
                 row.get("actor_id"),
                 row.get("actor_nombre"),
                 row.get("actor_apellido"),
                 row.get("actor_email"),
                 row.get("actor_avatar_url"),
             ),
-            "actor_tipo": historial.actor_tipo,
-            "tipo_asociacion": historial.tipo_asociacion,
-            "asociado_at": historial.asociado_at,
-            "finalizado_at": historial.finalizado_at,
-            "motivo_finalizacion": historial.motivo_finalizacion,
-        }
+            actor_tipo=historial.actor_tipo,
+            tipo_asociacion=historial.tipo_asociacion,
+            asociado_at=historial.asociado_at,
+            finalizado_at=historial.finalizado_at,
+            motivo_finalizacion=historial.motivo_finalizacion,
+        )
 
     @staticmethod
-    def _map_chatbot_state(chatbot_state: Any) -> dict[str, Any] | None:
+    def _incidente_out(
+        row: dict[str, Any], prefix: str = "incidente"
+    ) -> IncidenteConversacionOut | None:
+        incidente_id = row.get(f"{prefix}_id")
+        if not incidente_id:
+            return None
+        return IncidenteConversacionOut(
+            id=str(incidente_id),
+            codigo=row[f"{prefix}_codigo"],
+            titulo=row[f"{prefix}_titulo"],
+            estado=row[f"{prefix}_estado"],
+            severidad=row[f"{prefix}_severidad"],
+        )
+
+    @staticmethod
+    def _map_chatbot_state(chatbot_state: Any) -> ChatbotConversationStateOut | None:
         if chatbot_state is None:
             return None
-        return {
-            "bot_status": chatbot_state.bot_status,
-            "last_intent": chatbot_state.last_intent,
-            "last_action": chatbot_state.last_action,
-            "requires_human_review": chatbot_state.requires_human_review,
-            "handoff_reason": chatbot_state.handoff_reason,
-            "ai_summary": chatbot_state.ai_summary,
-            "classification_category": chatbot_state.classification_category,
-            "classification_severity": chatbot_state.classification_severity,
-            "classification_confidence": chatbot_state.classification_confidence,
-            "missing_fields": chatbot_state.missing_fields or [],
-            "incident_draft": chatbot_state.incident_draft or {},
-            "suggested_reply": chatbot_state.suggested_reply,
-            "last_bot_reply": chatbot_state.last_bot_reply,
-            "last_user_message_at": chatbot_state.last_user_message_at,
-            "last_bot_message_at": chatbot_state.last_bot_message_at,
-            "last_processed_at": chatbot_state.last_processed_at,
-        }
+        return ChatbotConversationStateOut(
+            bot_status=chatbot_state.bot_status,
+            last_intent=chatbot_state.last_intent,
+            last_action=chatbot_state.last_action,
+            requires_human_review=chatbot_state.requires_human_review,
+            handoff_reason=chatbot_state.handoff_reason,
+            ai_summary=chatbot_state.ai_summary,
+            classification_category=chatbot_state.classification_category,
+            classification_severity=chatbot_state.classification_severity,
+            classification_confidence=chatbot_state.classification_confidence,
+            missing_fields=chatbot_state.missing_fields or [],
+            incident_draft=chatbot_state.incident_draft or {},
+            suggested_reply=chatbot_state.suggested_reply,
+            last_bot_reply=chatbot_state.last_bot_reply,
+            last_user_message_at=chatbot_state.last_user_message_at,
+            last_bot_message_at=chatbot_state.last_bot_message_at,
+            last_processed_at=chatbot_state.last_processed_at,
+        )
 
     @classmethod
     def _map_mensaje_row(cls, row: dict[str, Any]) -> MensajeConversacionOut:
@@ -1230,11 +1271,16 @@ class OmnicanalService:
     def _extract_message_media(mensaje: Any) -> MensajeMediaOut | None:
         if mensaje.tipo_contenido != "image":
             return None
-        payload = mensaje.payload_raw or {}
-        message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
-        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-        nested_message = data.get("message") if isinstance(data.get("message"), dict) else message
-        image = nested_message.get("imageMessage") if isinstance(nested_message.get("imageMessage"), dict) else {}
+        payload_raw = mensaje.payload_raw
+        payload: dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
+        message_raw = payload.get("message")
+        message: dict[str, Any] = message_raw if isinstance(message_raw, dict) else {}
+        data_raw = payload.get("data")
+        data: dict[str, Any] = data_raw if isinstance(data_raw, dict) else {}
+        nested_raw = data.get("message")
+        nested_message: dict[str, Any] = nested_raw if isinstance(nested_raw, dict) else message
+        image_raw = nested_message.get("imageMessage")
+        image: dict[str, Any] = image_raw if isinstance(image_raw, dict) else {}
         base64_value = (
             payload.get("base64")
             or data.get("base64")
@@ -1252,7 +1298,9 @@ class OmnicanalService:
         data_url = payload.get("media_data_url")
         if not data_url and isinstance(base64_value, str) and base64_value.strip():
             data_url = f"data:{mimetype};base64,{base64_value}"
-        thumbnail = image.get("jpegThumbnail") or data.get("jpegThumbnail") or payload.get("jpegThumbnail")
+        thumbnail = (
+            image.get("jpegThumbnail") or data.get("jpegThumbnail") or payload.get("jpegThumbnail")
+        )
         thumbnail_data_url = None
         if isinstance(thumbnail, str) and thumbnail.strip():
             thumbnail_data_url = f"data:image/jpeg;base64,{thumbnail}"
@@ -1279,8 +1327,10 @@ class OmnicanalService:
 
     @staticmethod
     def _extract_sent_message_id(response: dict[str, Any]) -> str | None:
-        key = response.get("key") if isinstance(response.get("key"), dict) else {}
-        return key.get("id") or response.get("id") or response.get("messageId")
+        key_raw = response.get("key")
+        key: dict[str, Any] = key_raw if isinstance(key_raw, dict) else {}
+        result = key.get("id") or response.get("id") or response.get("messageId")
+        return str(result) if result else None
 
     @staticmethod
     def _incident_description(raw_description: str | None, conversacion: Any) -> str:
@@ -1296,5 +1346,5 @@ class OmnicanalService:
     @staticmethod
     def _evolution_recipient(conversacion: Any) -> str:
         if conversacion.telefono_contacto:
-            return conversacion.telefono_contacto
+            return str(conversacion.telefono_contacto)
         return str(conversacion.external_chat_id).split("@", maxsplit=1)[0]

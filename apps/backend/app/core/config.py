@@ -13,7 +13,6 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -106,9 +105,7 @@ class Settings(BaseSettings):
     @property
     def dev_allowed_emails_set(self) -> set[str]:
         return {
-            value.strip().lower()
-            for value in self.DEV_ALLOWED_EMAILS.split(",")
-            if value.strip()
+            value.strip().lower() for value in self.DEV_ALLOWED_EMAILS.split(",") if value.strip()
         }
 
     @property

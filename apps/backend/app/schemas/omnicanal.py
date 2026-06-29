@@ -1,7 +1,7 @@
 """Schemas for omnichannel WhatsApp operations."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +31,7 @@ class ChatbotConversationStateOut(BaseModel):
     classification_severity: str | None = None
     classification_confidence: float | None = None
     missing_fields: list[str] = Field(default_factory=list)
-    incident_draft: dict = Field(default_factory=dict)
+    incident_draft: dict[str, Any] = Field(default_factory=dict)
     suggested_reply: str | None = None
     last_bot_reply: str | None = None
     last_user_message_at: datetime | None = None
@@ -126,7 +126,7 @@ class ConversacionListResponse(BaseModel):
 
 
 class ConversacionDetail(ConversacionListItem):
-    metadatos: dict = Field(default_factory=dict)
+    metadatos: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConversacionHistorialListItem(BaseModel):
@@ -197,10 +197,10 @@ class ConversacionCicloDetail(BaseModel):
     ciclo: ConversacionCicloListItem
     mensajes: list[MensajeConversacionOut]
     eventos: list["EventoConversacionOut"]
-    chatbot_snapshot: dict = Field(default_factory=dict)
-    clasificacion_snapshot: dict = Field(default_factory=dict)
-    asignaciones_snapshot: list[dict] = Field(default_factory=list)
-    metadatos: dict = Field(default_factory=dict)
+    chatbot_snapshot: dict[str, Any] = Field(default_factory=dict)
+    clasificacion_snapshot: dict[str, Any] = Field(default_factory=dict)
+    asignaciones_snapshot: list[dict[str, Any]] = Field(default_factory=list)
+    metadatos: dict[str, Any] = Field(default_factory=dict)
 
 
 class MensajesConversacionResponse(BaseModel):
@@ -213,7 +213,7 @@ class EventoConversacionOut(BaseModel):
     ciclo_id: str | None = None
     tipo_evento: str
     actor_usuario: UsuarioConversacionOut | None = None
-    payload: dict = Field(default_factory=dict)
+    payload: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
@@ -259,7 +259,7 @@ class ChatbotBorradorUpdateInput(BaseModel):
 class OmnicanalRealtimeEvent(BaseModel):
     type: str
     conversacion_id: str | None = None
-    payload: dict = Field(default_factory=dict)
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class OmnicanalStats(BaseModel):

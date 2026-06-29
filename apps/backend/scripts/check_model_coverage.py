@@ -139,7 +139,7 @@ async def main() -> int:
     if column_mismatches:
         print("\nColumn mismatches:")
         for mismatch in column_mismatches:
-            print(f"  {mismatch.schema}.{mismatch.table}.{mismatch.column}: " f"{mismatch.detail}")
+            print(f"  {mismatch.schema}.{mismatch.table}.{mismatch.column}: {mismatch.detail}")
 
     return 1 if missing or extra or column_mismatches else 0
 

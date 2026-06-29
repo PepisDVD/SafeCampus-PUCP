@@ -4,6 +4,11 @@
       "id": "PROMPT-IA-CLAS-v1.0",
       "tipo": "clasificacion",
       "estado": "activo"
+    },
+    {
+      "id": "PROMPT-WHATSAPP-BOT-v1.0",
+      "tipo": "conversacional",
+      "estado": "activo"
     }
   ]
 }

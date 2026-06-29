@@ -74,7 +74,7 @@ def test_normalizer_maps_invalid_values() -> None:
     result = normalizer.normalize(
         '{"categoria":"hurto","severidad":"urgente","confidence_score":1.2,'
         '"requires_human_review":"yes","indicadores_detectados":"arma",'
-        '"razonamiento_breve":"' + ('x' * 140) + '","version_prompt":null}'
+        '"razonamiento_breve":"' + ("x" * 140) + '","version_prompt":null}'
     )
 
     assert result.categoria == "ROBO_HURTO"

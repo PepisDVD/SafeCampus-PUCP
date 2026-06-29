@@ -2,7 +2,7 @@
 Canonicalize legacy Lost & Found category names after seeding the full catalog.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from alembic import op
 

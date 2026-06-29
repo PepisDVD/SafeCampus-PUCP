@@ -5,10 +5,11 @@ Permite clasificar cada ubicación del catálogo (pabellón, biblioteca, etc.)
 para mostrarla de forma compacta en la tabla y filtrarla en el sistema.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
+
+import sqlalchemy as sa
 
 from alembic import op
-import sqlalchemy as sa
 
 revision: str = "20260514_0018"
 down_revision: str | None = "20260514_0017"

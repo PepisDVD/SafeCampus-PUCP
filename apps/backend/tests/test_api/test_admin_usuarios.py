@@ -130,9 +130,7 @@ def test_crear_usuario_rechaza_dominio_no_permitido(client):
     app.dependency_overrides[get_service] = lambda: fake
     app.dependency_overrides[get_current_user] = _fake_admin
     try:
-        response = client.post(
-            "/api/v1/admin/usuarios", json=_crear_payload("intruso@hotmail.com")
-        )
+        response = client.post("/api/v1/admin/usuarios", json=_crear_payload("intruso@hotmail.com"))
         assert response.status_code == 422
     finally:
         app.dependency_overrides.pop(get_service, None)

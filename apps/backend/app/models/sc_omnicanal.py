@@ -6,7 +6,19 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -166,7 +178,9 @@ class Conversacion(Base):
 class ConversacionOperadorAsignado(Base):
     __tablename__ = "conversacion_operador_asignado"
     __table_args__ = (
-        UniqueConstraint("conversacion_id", "operador_id", name="uq_conversacion_operador_asignado"),
+        UniqueConstraint(
+            "conversacion_id", "operador_id", name="uq_conversacion_operador_asignado"
+        ),
         Index("idx_conversacion_operador_asignado_conv", "conversacion_id"),
         Index("idx_conversacion_operador_asignado_operador", "operador_id"),
         {"schema": "sc_omnicanal"},
@@ -284,11 +298,19 @@ class ConversacionCiclo(Base):
     )
     cierre_motivo: Mapped[str | None] = mapped_column(Text)
     cierre_tipo: Mapped[str] = mapped_column(String(32), nullable=False, server_default="MANUAL")
-    mensajes_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, server_default="[]")
-    eventos_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, server_default="[]")
+    mensajes_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, server_default="[]"
+    )
+    eventos_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, server_default="[]"
+    )
     chatbot_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
-    asignaciones_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, server_default="[]")
-    clasificacion_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
+    asignaciones_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, server_default="[]"
+    )
+    clasificacion_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, server_default="{}"
+    )
     metadatos: Mapped[dict[str, Any] | None] = mapped_column(JSONB, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

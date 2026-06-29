@@ -27,7 +27,9 @@ async def listar_ubicaciones(
     return await service.listar_ubicaciones(include_inactive=include_inactive)
 
 
-@router.post("/ubicaciones", response_model=UbicacionMaestraItem, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/ubicaciones", response_model=UbicacionMaestraItem, status_code=status.HTTP_201_CREATED
+)
 async def crear_ubicacion(
     body: UbicacionMaestraCreateInput,
     _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),

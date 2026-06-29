@@ -5,7 +5,7 @@
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -18,6 +18,8 @@ from app.core.constants import CanalNotificacion, NivelSeveridad, OrigenAlerta, 
 from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.incidente_repository import IncidenteRepository
 from app.repositories.notificacion_repository import NotificacionRepository
+from app.schemas.alerta import AlertaCreateInput, AlertaSegmentoInput
+from app.schemas.auth import AuthUserResponse
 from app.schemas.incidente import (
     ComentarioIncidenteCreateInput,
     ComentarioIncidenteItem,
@@ -32,8 +34,8 @@ from app.schemas.incidente import (
     IncidenteCreateInput,
     IncidenteDetail,
     IncidenteEstadoUpdate,
-    IncidenteLiveLocationUpdate,
     IncidenteListItem,
+    IncidenteLiveLocationUpdate,
     IncidenteMapaItem,
     IncidenteMapaResponse,
     IncidentePriorizacionAi,
@@ -45,8 +47,6 @@ from app.schemas.incidente import (
     UsuarioMini,
     ZonaCount,
 )
-from app.schemas.auth import AuthUserResponse
-from app.schemas.alerta import AlertaCreateInput, AlertaSegmentoInput
 from app.services.alerta_service import AlertaService
 from app.services.gemini_service import GeminiService
 from app.services.storage_service import StorageService
@@ -152,17 +152,14 @@ class IncidenteService:
             criticos=counts["criticos"],
             en_atencion=counts["en_atencion"],
             resueltos_24h=counts["resueltos_24h"],
-            por_zona=[
-                ZonaCount(zona=str(z["zona"]), total=int(z["total"]))
-                for z in zonas
-            ],
+            por_zona=[ZonaCount(zona=str(z["zona"]), total=int(z["total"])) for z in zonas],
         )
 
     async def obtener_kpis(self, period: str) -> KpisResponse:
         """KPIs del periodo + comparación vs periodo anterior + breakdowns."""
         period_norm = period if period in {"semana", "mes", "trimestre", "año"} else "mes"
         days = _period_days(period_norm)
-        end = datetime.now(timezone.utc)
+        end = datetime.now(UTC)
         start_current = end - timedelta(days=days)
         start_previous = start_current - timedelta(days=days)
 
@@ -177,21 +174,13 @@ class IncidenteService:
             return (stats["resueltos"] / stats["total"] * 100) if stats["total"] else 0.0
 
         def sla_pct(stats: dict[str, Any]) -> float:
-            return (
-                stats["frt_within_target"] / stats["total"] * 100
-                if stats["total"]
-                else 0.0
-            )
+            return stats["frt_within_target"] / stats["total"] * 100 if stats["total"] else 0.0
 
         def escalamiento_pct(stats: dict[str, Any]) -> float:
             return (stats["escalados"] / stats["total"] * 100) if stats["total"] else 0.0
 
         def sla_criticos_pct(stats: dict[str, Any]) -> float:
-            return (
-                stats["criticos_sla_ok"] / stats["criticos"] * 100
-                if stats["criticos"]
-                else 0.0
-            )
+            return stats["criticos_sla_ok"] / stats["criticos"] * 100 if stats["criticos"] else 0.0
 
         cur_tasa = tasa_resolucion(current)
         prev_tasa = tasa_resolucion(previous)
@@ -219,10 +208,7 @@ class IncidenteService:
             for row in evolucion_rows
         ]
 
-        por_zona = [
-            ZonaCount(zona=str(r["zona"]), total=int(r["total"]))
-            for r in zona_rows
-        ]
+        por_zona = [ZonaCount(zona=str(r["zona"]), total=int(r["total"])) for r in zona_rows]
 
         sla_indicadores = {
             "frt": SlaIndicador(
@@ -353,9 +339,7 @@ class IncidenteService:
             comentarios=[self._map_comentario(c) for c in comentarios_rows],
             evidencias=[self._map_evidencia(e) for e in evidencias_rows],
             expediente_cierre=(
-                self._map_expediente_cierre(expediente_row)
-                if expediente_row
-                else None
+                self._map_expediente_cierre(expediente_row) if expediente_row else None
             ),
         )
 
@@ -427,9 +411,7 @@ class IncidenteService:
             comentarios=[self._map_comentario(c) for c in comentarios_rows],
             evidencias=[self._map_evidencia(e) for e in evidencias_rows],
             expediente_cierre=(
-                self._map_expediente_cierre(expediente_row)
-                if expediente_row
-                else None
+                self._map_expediente_cierre(expediente_row) if expediente_row else None
             ),
         )
 
@@ -546,11 +528,7 @@ class IncidenteService:
             latitud=data.latitud,
             longitud=data.longitud,
             precision_metros=data.precision_metros,
-            expires_at=(
-                datetime.now(timezone.utc) + timedelta(seconds=20)
-                if data.activo
-                else None
-            ),
+            expires_at=(datetime.now(UTC) + timedelta(seconds=20) if data.activo else None),
         )
         if result is None:
             raise HTTPException(
@@ -560,9 +538,7 @@ class IncidenteService:
 
         await self._registrar_auditoria_incidente(
             usuario_id=reportante_id,
-            accion="actualizar_ubicacion_en_vivo"
-            if data.activo
-            else "detener_ubicacion_en_vivo",
+            accion="actualizar_ubicacion_en_vivo" if data.activo else "detener_ubicacion_en_vivo",
             incidente_id=incidente_id,
             detalle={
                 "codigo": result["codigo"],
@@ -758,16 +734,12 @@ class IncidenteService:
         priorizacion_override: IncidentePriorizacionAi | None = None,
     ) -> IncidenteCreated:
         descripcion = data.descripcion.strip() if data.descripcion else None
-        priorizacion = priorizacion_override or await self._priorizar_incidente_ia(data, descripcion)
-        severidad_final = (
-            data.severidad.value
-            if data.severidad
-            else priorizacion.severidad.value
+        priorizacion = priorizacion_override or await self._priorizar_incidente_ia(
+            data, descripcion
         )
+        severidad_final = data.severidad.value if data.severidad else priorizacion.severidad.value
         categoria_final = (
-            data.categoria.strip()
-            if data.categoria
-            else priorizacion.categoria_sugerida
+            data.categoria.strip() if data.categoria else priorizacion.categoria_sugerida
         )
         creado = await self._repo.create_incidente(
             reportante_id=reportante_id,
@@ -828,9 +800,7 @@ class IncidenteService:
                 "justificacion": priorizacion.justificacion,
             },
         )
-        supervisores = await self._repo.list_usuarios_by_roles(
-            {"supervisor", "administrador"}
-        )
+        supervisores = await self._repo.list_usuarios_by_roles({"supervisor", "administrador"})
         await self._notify_unique(
             destinatarios=[row["id"] for row in supervisores],
             tipo_evento="INCIDENTE_NUEVO",
@@ -907,9 +877,7 @@ class IncidenteService:
             "descripcion": descripcion,
             "categoria_reportada": data.categoria.strip() if data.categoria else None,
             "severidad_reportada": data.severidad.value if data.severidad else None,
-            "lugar_referencia": (
-                data.lugar_referencia.strip() if data.lugar_referencia else None
-            ),
+            "lugar_referencia": (data.lugar_referencia.strip() if data.lugar_referencia else None),
             "canal_origen": "WEB",
         }
         try:
@@ -924,8 +892,7 @@ class IncidenteService:
         except Exception as exc:
             fallback = data.severidad or NivelSeveridad.MEDIO
             logger.warning(
-                "Gemini no pudo priorizar incidente; aplicando fallback: "
-                "severidad=%s error=%s",
+                "Gemini no pudo priorizar incidente; aplicando fallback: severidad=%s error=%s",
                 fallback.value,
                 type(exc).__name__,
             )
@@ -970,7 +937,9 @@ class IncidenteService:
             )
 
         es_reportante = str(participantes["reportante_id"]) == usuario_actual.id
-        es_staff = bool({"supervisor", "operador", "administrador"}.intersection(usuario_actual.roles))
+        es_staff = bool(
+            {"supervisor", "operador", "administrador"}.intersection(usuario_actual.roles)
+        )
         if not es_reportante and not es_staff:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -1199,16 +1168,12 @@ class IncidenteService:
                     else None
                 ),
                 "resuelto_el": (
-                    detalle.fecha_resolucion.isoformat()
-                    if detalle.fecha_resolucion
-                    else None
+                    detalle.fecha_resolucion.isoformat() if detalle.fecha_resolucion else None
                 ),
             },
             "participantes": {
                 "reportante": cls._usuario_contexto(detalle.reportante),
-                "operador_asignado": cls._usuario_contexto(
-                    detalle.operador_asignado
-                ),
+                "operador_asignado": cls._usuario_contexto(detalle.operador_asignado),
                 "supervisor": cls._usuario_contexto(detalle.supervisor),
             },
             "historial": [

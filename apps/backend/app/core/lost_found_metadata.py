@@ -66,21 +66,33 @@ def normalizar_metadatos_schema(raw: dict[str, Any] | None) -> dict[str, Any]:
 
     campos_raw = raw.get("campos", [])
     if not isinstance(campos_raw, list):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="metadatos_schema.campos debe ser una lista.")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="metadatos_schema.campos debe ser una lista.",
+        )
 
     usados: set[str] = set()
     campos: list[dict[str, Any]] = []
     for orden_default, item in enumerate(campos_raw, start=1):
         if not isinstance(item, dict):
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Cada metadato debe ser un objeto.")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cada metadato debe ser un objeto.",
+            )
 
         etiqueta = str(item.get("etiqueta") or "").strip()
         if not etiqueta:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Cada metadato requiere un nombre (etiqueta).")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cada metadato requiere un nombre (etiqueta).",
+            )
 
         tipo_raw = str(item.get("tipo") or MetadatoTipo.TEXTO.value).strip().lower()
         if tipo_raw not in (MetadatoTipo.TEXTO.value, MetadatoTipo.NUMERO.value):
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Tipo de metadato no soportado: '{tipo_raw}'.")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Tipo de metadato no soportado: '{tipo_raw}'.",
+            )
         es_textual = tipo_raw == MetadatoTipo.TEXTO.value
 
         codigo = slug_codigo_campo(str(item.get("codigo") or etiqueta))
@@ -103,7 +115,8 @@ def normalizar_metadatos_schema(raw: dict[str, Any] | None) -> dict[str, Any]:
                 "etiqueta": etiqueta,
                 "tipo": tipo_raw,
                 "requerido": bool(item.get("requerido", False)),
-                "participa_en_matching": bool(item.get("participa_en_matching", False)) and es_textual,
+                "participa_en_matching": bool(item.get("participa_en_matching", False))
+                and es_textual,
                 "orden": orden,
                 "activo": bool(item.get("activo", True)),
             }
@@ -119,7 +132,9 @@ def _campos_activos(schema: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
     return {c["codigo"]: c for c in schema.get("campos", []) if c.get("activo")}
 
 
-def validar_metadatos_caso(metadatos: dict[str, Any] | None, schema: dict[str, Any] | None) -> dict[str, Any]:
+def validar_metadatos_caso(
+    metadatos: dict[str, Any] | None, schema: dict[str, Any] | None
+) -> dict[str, Any]:
     """Valida los `metadatos` enviados al crear/actualizar un caso contra el
     `metadatos_schema` de su categoría.
 
@@ -130,7 +145,9 @@ def validar_metadatos_caso(metadatos: dict[str, Any] | None, schema: dict[str, A
     """
     metadatos = metadatos or {}
     if not isinstance(metadatos, dict):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="metadatos debe ser un objeto.")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="metadatos debe ser un objeto."
+        )
 
     activos = _campos_activos(schema)
 

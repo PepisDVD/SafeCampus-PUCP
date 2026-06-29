@@ -16,15 +16,14 @@ def _validar_dominio_email(value: str) -> str:
     dominio = value.rsplit("@", 1)[-1].lower()
     if dominio not in ALLOWED_EMAIL_DOMAINS:
         permitidos = " o ".join(f"@{d}" for d in ALLOWED_EMAIL_DOMAINS)
-        raise ValueError(
-            f"El correo debe pertenecer a un dominio válido ({permitidos})."
-        )
+        raise ValueError(f"El correo debe pertenecer a un dominio válido ({permitidos}).")
     return value.lower()
 
 
 # ---------------------------------------------------------------------------
 # Usuarios
 # ---------------------------------------------------------------------------
+
 
 class RolBrief(BaseModel):
     id: str
@@ -99,6 +98,7 @@ class CambiarEstadoInput(BaseModel):
 # Roles & Permisos
 # ---------------------------------------------------------------------------
 
+
 class PermisoOut(BaseModel):
     id: str
     modulo: str
@@ -129,6 +129,7 @@ class ActualizarPermisosInput(BaseModel):
 # ---------------------------------------------------------------------------
 # Auditoría
 # ---------------------------------------------------------------------------
+
 
 class AuditoriaUsuarioOut(BaseModel):
     id: str
@@ -182,6 +183,7 @@ class AuditoriaUsuariosResponse(BaseModel):
 # Integraciones
 # ---------------------------------------------------------------------------
 
+
 class IntegracionOut(BaseModel):
     id: str
     servicio: str
@@ -199,6 +201,7 @@ class IntegracionesListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # LLM Audit
 # ---------------------------------------------------------------------------
+
 
 class LlmUsageItemOut(BaseModel):
     id: str

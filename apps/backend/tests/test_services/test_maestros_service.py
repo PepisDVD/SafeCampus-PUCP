@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -24,8 +24,8 @@ def _row(**overrides):
         "longitud": -77.08,
         "activa": True,
         "tiene_relaciones": False,
-        "created_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 5, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 5, 1, tzinfo=UTC),
     }
     base.update(overrides)
     return base
