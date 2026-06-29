@@ -12,14 +12,42 @@ function isPrivateLanAddress(address) {
   return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
 }
 
+function isVirtualInterface(name) {
+  const normalized = name.toLowerCase();
+  return [
+    "vethernet",
+    "wsl",
+    "hyper-v",
+    "virtualbox",
+    "vmware",
+    "docker",
+    "npcap",
+    "loopback",
+  ].some((value) => normalized.includes(value));
+}
+
 function getLanIp() {
-  const candidates = Object.values(os.networkInterfaces())
+  const interfaces = os.networkInterfaces();
+  const candidates = Object.values(interfaces)
     .flatMap((items) => items ?? [])
     .filter((item) => item.family === "IPv4" && !item.internal)
     .map((item) => item.address)
     .filter((address) => !address.startsWith("169.254."));
 
-  return candidates.find(isPrivateLanAddress) ?? candidates[0] ?? null;
+  const physicalCandidates = Object.entries(interfaces)
+    .filter(([name]) => !isVirtualInterface(name))
+    .flatMap(([, items]) => items ?? [])
+    .filter((item) => item.family === "IPv4" && !item.internal)
+    .map((item) => item.address)
+    .filter((address) => !address.startsWith("169.254."));
+
+  return (
+    physicalCandidates.find(isPrivateLanAddress) ??
+    physicalCandidates[0] ??
+    candidates.find(isPrivateLanAddress) ??
+    candidates[0] ??
+    null
+  );
 }
 
 const lanIp = process.env.SAFECAMPUS_LAN_IP || getLanIp();

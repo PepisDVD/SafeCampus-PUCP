@@ -14,6 +14,7 @@ from app.schemas.lost_found import (
     ComentarioLfItem,
     ComentarioReaccionResult,
     CustodiaLfItem,
+    HistorialLfItem,
     RecepcionLfMobileResult,
     SupervisorLfItem,
 )
@@ -35,6 +36,22 @@ class FakeLostFoundService:
         self.fijar_args = None
         self.acceso_set_args = None
         self.recepcion_args = None
+        self.detail_reads = 0
+        self.historial_entry = HistorialLfItem(
+            id="44444444-4444-4444-4444-444444444444",
+            estado_anterior=None,
+            estado_nuevo=EstadoCasoLF.ABIERTO,
+            accion="Caso registrado",
+            comentario="Registro inicial del caso.",
+            ejecutado_por=UsuarioMini(
+                id=USER_ID,
+                nombre_completo="Ana Perez",
+                email="ana@pucp.edu.pe",
+                avatar_url=None,
+                rol=None,
+            ),
+            created_at=datetime(2026, 5, 30, 11, 0, tzinfo=UTC),
+        )
 
     async def tiene_acceso_lf(self, usuario_id, roles) -> bool:
         if "administrador" in roles:
@@ -172,6 +189,36 @@ class FakeLostFoundService:
             comentarios=[],
         )
 
+    async def obtener_detalle(self, ref, usuario_id, roles) -> CasoLfDetail:
+        self.detail_reads += 1
+        return CasoLfDetail(
+            id=CASE_ID,
+            codigo="LF-202605-00001",
+            tipo=TipoCasoLF.PERDIDO,
+            estado=EstadoCasoLF.ABIERTO,
+            titulo="Mochila negra",
+            descripcion="Mochila negra con cuadernos y cargador.",
+            categoria_id=None,
+            categoria_nombre="Ropa y accesorios personales",
+            lugar_referencia="Biblioteca Central",
+            fecha_evento=datetime(2026, 5, 30, 10, 0, tzinfo=UTC),
+            foto_url=None,
+            foto_adicional_urls=[],
+            etiquetas=[],
+            conteo_comentarios=0,
+            reportante=UsuarioMini(
+                id=USER_ID,
+                nombre_completo="Ana Perez",
+                email="ana@pucp.edu.pe",
+                avatar_url=None,
+                rol=None,
+            ),
+            created_at=datetime(2026, 5, 30, 11, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 5, 30, 11, 5, tzinfo=UTC),
+            historial=[self.historial_entry],
+            comentarios=[],
+        )
+
     async def eliminar_comentario_propio(self, comentario_id, usuario_id) -> None:
         self.deleted_comment = (comentario_id, usuario_id)
 
@@ -260,6 +307,40 @@ def test_lost_found_delete_comentario_propio_usa_usuario_actual(client):
         )
         assert response.status_code == 204
         assert fake.deleted_comment == ("22222222-2222-2222-2222-222222222222", USER_ID)
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_lost_found_historial_no_permite_patch_ni_delete_via_api(client):
+    """Prueba funcional: el historial de un caso es inmutable via API."""
+    fake = FakeLostFoundService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_comunidad
+    historial_id = fake.historial_entry.id
+    historial_path = f"/api/v1/lost-found/casos/{CASE_ID}/historial/{historial_id}"
+    try:
+        before = client.get(f"/api/v1/lost-found/casos/{CASE_ID}")
+        assert before.status_code == 200
+        before_historial = before.json()["historial"]
+        assert len(before_historial) == 1
+
+        patch_response = client.patch(
+            historial_path,
+            json={
+                "accion": "Alteracion indebida",
+                "comentario": "Este cambio no debe persistir.",
+            },
+        )
+        delete_response = client.delete(historial_path)
+
+        assert patch_response.status_code == 403
+        assert delete_response.status_code == 403
+
+        after = client.get(f"/api/v1/lost-found/casos/{CASE_ID}")
+        assert after.status_code == 200
+        assert after.json()["historial"] == before_historial
+        assert fake.detail_reads == 2
     finally:
         app.dependency_overrides.pop(get_service, None)
         app.dependency_overrides.pop(get_current_user, None)

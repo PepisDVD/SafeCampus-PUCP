@@ -1,7 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Button,
   Dialog,
   DialogContent,
@@ -20,14 +29,20 @@ import {
   Textarea,
   toast,
 } from "@safecampus/ui-kit";
-import { ImageIcon, X } from "lucide-react";
+import { ImageIcon, MapPin, X } from "lucide-react";
 import { lostFoundClient } from "../client";
 import { activeMetadatoCampos, MetadatoFields, metadatosToValues, validateMetadatos, valuesToMetadatos } from "./metadato-fields";
 import { CharCounter, LF_TEXT_LIMITS } from "./text-field-help";
-import type { CasoLfDetail, CategoriaLf } from "../types";
+import type { CasoLfDetail, CategoriaLf, UbicacionMaestra } from "../types";
 
 const ACCEPT_IMAGES = "image/jpeg,image/png,image/webp,image/heic,image/gif";
 const MAX_IMAGES = 3;
+const DEFAULT_MAP_POINT = { lat: -12.06945, lng: -77.08055 };
+
+const LeafletCoordinatePicker = dynamic(
+  () => import("@/features/admin/components/maestros/leaflet-coordinate-picker").then((mod) => mod.LeafletCoordinatePicker),
+  { ssr: false },
+);
 
 type FotoAdjunta = { file: File; previewUrl: string };
 
@@ -36,18 +51,26 @@ export function EditCaseModal({
   onOpenChange,
   caso,
   categorias,
+  ubicaciones,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   caso: CasoLfDetail;
   categorias: CategoriaLf[];
+  ubicaciones?: UbicacionMaestra[];
   onSaved: (caso: CasoLfDetail) => void;
 }) {
   const [titulo, setTitulo] = useState(caso.titulo);
   const [descripcion, setDescripcion] = useState(caso.descripcion);
   const [categoriaId, setCategoriaId] = useState(caso.categoria_id ?? "");
   const [lugar, setLugar] = useState(caso.lugar_referencia ?? "");
+  const [latitud, setLatitud] = useState<number | null>(caso.latitud ?? null);
+  const [longitud, setLongitud] = useState<number | null>(caso.longitud ?? null);
+  const [ubicacionSeleccionada, setUbicacionSeleccionada] = useState(() => resolveInitialLocation(caso, ubicaciones));
+  const [mapDialogOpen, setMapDialogOpen] = useState(false);
+  const [mapConfirmOpen, setMapConfirmOpen] = useState(false);
+  const [mapDraft, setMapDraft] = useState<{ lat: number; lng: number } | null>(null);
   const [fecha, setFecha] = useState(caso.fecha_evento ?? caso.created_at);
   const [metadatos, setMetadatos] = useState<Record<string, string>>(() =>
     metadatosToValues(activeMetadatoCampos(categorias.find((c) => c.id === (caso.categoria_id ?? ""))), caso.metadatos ?? {}),
@@ -109,6 +132,43 @@ export function EditCaseModal({
     setMetadatos(metadatosToValues(nuevos, value === caso.categoria_id ? (caso.metadatos ?? {}) : {}));
   };
 
+  const onUbicacion = (value: string) => {
+    setUbicacionSeleccionada(value);
+    if (value === "OTRO") {
+      setLugar("");
+      setLatitud(null);
+      setLongitud(null);
+      openMapDialog();
+      return;
+    }
+    const ubicacion = ubicaciones?.find((item) => item.id === value);
+    if (!ubicacion) return;
+    setLugar(ubicacion.nombre);
+    setLatitud(ubicacion.latitud);
+    setLongitud(ubicacion.longitud);
+  };
+
+  const openMapDialog = () => {
+    const selectedLocation = ubicaciones?.find((item) => item.id === ubicacionSeleccionada);
+    setMapDraft({
+      lat: latitud ?? selectedLocation?.latitud ?? DEFAULT_MAP_POINT.lat,
+      lng: longitud ?? selectedLocation?.longitud ?? DEFAULT_MAP_POINT.lng,
+    });
+    setMapDialogOpen(true);
+  };
+
+  const applyMapCoordinates = () => {
+    if (!mapDraft) {
+      setMapConfirmOpen(false);
+      return;
+    }
+    setLatitud(Number(mapDraft.lat.toFixed(6)));
+    setLongitud(Number(mapDraft.lng.toFixed(6)));
+    setMapConfirmOpen(false);
+    setMapDialogOpen(false);
+    toast.success("Ubicacion marcada en el mapa");
+  };
+
   const submit = () => {
     if (titulo.trim().length < 3) { toast.error("El título debe tener al menos 3 caracteres."); return; }
     if (descripcion.trim().length < 10) { toast.error("La descripción debe tener al menos 10 caracteres."); return; }
@@ -130,8 +190,8 @@ export function EditCaseModal({
           marca: caso.marca ?? undefined,
           etiquetas: caso.etiquetas,
           contacto_info: caso.contacto_info ?? undefined,
-          latitud: caso.latitud ?? null,
-          longitud: caso.longitud ?? null,
+          latitud,
+          longitud,
           metadatos: valuesToMetadatos(campos, metadatos),
         });
 
@@ -161,6 +221,7 @@ export function EditCaseModal({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="border-b px-6 py-4 text-left">
@@ -205,8 +266,25 @@ export function EditCaseModal({
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-lugar">Lugar de referencia</Label>
-            <Input id="edit-lugar" value={lugar} maxLength={LF_TEXT_LIMITS.lugar_referencia.max} onChange={(e) => setLugar(e.target.value)} />
+            {ubicaciones?.length ? (
+              <Select value={ubicacionSeleccionada} onValueChange={onUbicacion}>
+                <SelectTrigger><SelectValue placeholder="Ubicacion" /></SelectTrigger>
+                <SelectContent>
+                  {ubicaciones.map((ubicacion) => <SelectItem key={ubicacion.id} value={ubicacion.id}>{ubicacion.nombre}</SelectItem>)}
+                  <SelectItem value="OTRO">Otro</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <Input id="edit-lugar" value={lugar} maxLength={LF_TEXT_LIMITS.lugar_referencia.max} onChange={(e) => setLugar(e.target.value)} />
+              <Button type="button" variant="outline" size="icon" onClick={openMapDialog} aria-label="Seleccionar ubicacion exacta">
+                <MapPin className="h-4 w-4" />
+              </Button>
+            </div>
             <CharCounter value={lugar} min={LF_TEXT_LIMITS.lugar_referencia.min} max={LF_TEXT_LIMITS.lugar_referencia.max} />
+            {latitud != null && longitud != null && (
+              <p className="text-xs text-slate-500">Coordenadas: {latitud.toFixed(6)}, {longitud.toFixed(6)}</p>
+            )}
           </div>
           <MetadatoFields campos={campos} values={metadatos} onChange={(c, v) => setMetadatos((prev) => ({ ...prev, [c]: v }))} />
 
@@ -262,6 +340,47 @@ export function EditCaseModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={mapDialogOpen} onOpenChange={setMapDialogOpen}>
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Seleccionar ubicacion exacta</DialogTitle>
+          <DialogDescription>
+            Haz clic en el mapa para marcar donde se perdio o encontro el objeto.
+          </DialogDescription>
+        </DialogHeader>
+        <LeafletCoordinatePicker
+          lat={mapDraft?.lat ?? null}
+          lng={mapDraft?.lng ?? null}
+          mapClassName="h-[58vh]"
+          showHelperText={false}
+          onChange={(lat, lng) => setMapDraft({ lat, lng })}
+        />
+        <p className="text-xs text-slate-500">
+          Coordenada seleccionada: {mapDraft?.lat.toFixed(6) ?? "-"}, {mapDraft?.lng.toFixed(6) ?? "-"}
+        </p>
+        <DialogFooter className="gap-2 sm:justify-end">
+          <Button type="button" variant="outline" onClick={() => setMapDialogOpen(false)}>Cancelar</Button>
+          <Button type="button" onClick={() => setMapConfirmOpen(true)}>Guardar ubicacion</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog open={mapConfirmOpen} onOpenChange={setMapConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Confirmar ubicacion</AlertDialogTitle>
+          <AlertDialogDescription>
+            Se aplicaran las coordenadas seleccionadas al caso. Puedes ajustar el lugar de referencia antes de guardar.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={applyMapCoordinates}>Confirmar</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 
@@ -275,4 +394,15 @@ function toDateTimeLocalValue(value?: string | null) {
 
 function fromDateTimeLocalValue(value: string) {
   return value ? new Date(value).toISOString() : "";
+}
+
+function resolveInitialLocation(caso: CasoLfDetail, ubicaciones?: UbicacionMaestra[]) {
+  const match = ubicaciones?.find((ubicacion) => (
+    ubicacion.nombre === caso.lugar_referencia ||
+    (caso.latitud != null &&
+      caso.longitud != null &&
+      Math.abs(ubicacion.latitud - caso.latitud) < 0.000001 &&
+      Math.abs(ubicacion.longitud - caso.longitud) < 0.000001)
+  ));
+  return match?.id ?? "OTRO";
 }

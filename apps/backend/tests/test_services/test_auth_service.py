@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from app.core.auth_policy import AuthChannel
 from app.core.config import settings
+from app.core.security import get_password_hash
 from app.services import auth_service as auth_service_module
 from app.services.auth_service import AuthService
 
@@ -29,7 +30,18 @@ class FakeAuthRepository:
     async def get_user_credentials_by_email(self, email):
         if not self._registered:
             return None
-        return {"id": str(uuid4()), "email": email, "estado": "ACTIVO"}
+        return {
+            "id": str(uuid4()),
+            "email": email,
+            "nombre": "Usuario",
+            "apellido": "Prueba",
+            "avatar_url": None,
+            "codigo_institucional": None,
+            "telefono": None,
+            "departamento": None,
+            "estado": "ACTIVO",
+            "password_hash": get_password_hash("Password123!"),
+        }
 
     async def list_role_names(self, _usuario_id):
         return list(self._roles)
@@ -40,9 +52,18 @@ class FakeAuthRepository:
         self._roles.append("comunidad")
 
 
+class FakeAuditoriaRepository:
+    def __init__(self) -> None:
+        self.created: list[dict] = []
+
+    async def create_registro(self, **data):
+        self.created.append(data)
+
+
 def _make_service(repo: FakeAuthRepository) -> AuthService:
     service = AuthService.__new__(AuthService)
     service._repo = repo
+    service._audit = FakeAuditoriaRepository()
     return service
 
 
@@ -139,7 +160,8 @@ async def test_google_externo_rechaza_correo_institucional():
 
 
 @pytest.mark.anyio
-async def test_credenciales_rechazan_correo_institucional():
+async def test_credenciales_rechazan_correo_institucional(monkeypatch):
+    monkeypatch.setattr(settings, "ALLOW_INSTITUTIONAL_CREDENTIALS", False)
     # El login por credenciales es exclusivo para cuentas NO institucionales.
     service = _make_service(FakeAuthRepository(None))
 
@@ -151,6 +173,49 @@ async def test_credenciales_rechazan_correo_institucional():
 
     assert exc.value.status_code == 400
     assert "SSO" in str(exc.value.detail)
+
+
+@pytest.mark.anyio
+async def test_credenciales_institucionales_se_permiten_solo_con_flag(monkeypatch):
+    monkeypatch.setattr(settings, "ALLOW_INSTITUTIONAL_CREDENTIALS", True)
+    repo = FakeAuthRepository(None, existing_roles=["comunidad"], registered=True)
+    service = _make_service(repo)
+
+    user, token = await service.login_web_with_credentials(
+        email="docente@pucp.edu.pe",
+        password="Password123!",
+    )
+
+    assert user.email == "docente@pucp.edu.pe"
+    assert user.roles == ["comunidad"]
+    assert token
+
+
+@pytest.mark.anyio
+async def test_login_web_con_credenciales_registra_auditoria(monkeypatch):
+    monkeypatch.setattr(settings, "ALLOW_INSTITUTIONAL_CREDENTIALS", True)
+    repo = FakeAuthRepository(None, existing_roles=["comunidad"], registered=True)
+    service = _make_service(repo)
+
+    await service.login_web_with_credentials(
+        email="docente@pucp.edu.pe",
+        password="Password123!",
+        ip_origen="127.0.0.1",
+        dispositivo="pytest",
+    )
+
+    audit = service._audit.created[0]
+    assert audit["modulo"] == "seguridad"
+    assert audit["accion"] == "login"
+    assert audit["entidad"] == "usuario"
+    assert audit["usuario_id"] == audit["entidad_id"]
+    assert audit["ip_origen"] == "127.0.0.1"
+    assert audit["dispositivo"] == "pytest"
+    assert audit["detalle"]["origen"] == "WEB"
+    assert audit["detalle"]["resultado"] == "exitoso"
+    assert audit["detalle"]["metodo"] == "credentials"
+    assert audit["detalle"]["canal"] == "web"
+    assert audit["detalle"]["codigo_entidad"] == "docente@pucp.edu.pe"
 
 
 def test_enforce_channel_access_deniega_operador_en_web():

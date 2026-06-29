@@ -1,8 +1,17 @@
 "use client";
 
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   Button,
   Card,
@@ -11,6 +20,7 @@ import {
   CardTitle,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   Drawer,
@@ -106,6 +116,7 @@ type CommunityTouchedFields = Partial<Record<keyof CommunityFormErrors, boolean>
 
 const DRAFT_KEY = "safecampus:lost-found:draft";
 const ALL_CATEGORIES = "__todas__";
+const DEFAULT_MAP_POINT = { lat: -12.06945, lng: -77.08055 };
 const emptyForm: CasoLfCreatePayload = {
   tipo: "PERDIDO",
   titulo: "",
@@ -119,6 +130,11 @@ const emptyForm: CasoLfCreatePayload = {
 };
 const commentableStates = new Set(["ABIERTO", "EN_REVISION"]);
 const terminalStates = new Set(["CERRADO", "DEVUELTO", "DESCARTADO"]);
+
+const LeafletCoordinatePicker = dynamic(
+  () => import("@/features/admin/components/maestros/leaflet-coordinate-picker").then((mod) => mod.LeafletCoordinatePicker),
+  { ssr: false },
+);
 
 export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubicaciones }: Props) {
   const [feed, setFeed] = useState(initialFeed);
@@ -156,6 +172,9 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
     [categorias, form.categoria_id],
   );
   const [ubicacionSeleccionada, setUbicacionSeleccionada] = useState("OTRO");
+  const [mapDialogOpen, setMapDialogOpen] = useState(false);
+  const [mapConfirmOpen, setMapConfirmOpen] = useState(false);
+  const [mapDraft, setMapDraft] = useState<{ lat: number; lng: number } | null>(null);
   const [photos, setPhotos] = useState<FotoAdjunta[]>([]);
   const [photoPreview, setPhotoPreview] = useState<FotoAdjunta | null>(null);
   const photosRef = useRef<FotoAdjunta[]>([]);
@@ -387,11 +406,43 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
     setFormTouched((current) => ({ ...current, lugar_referencia: true }));
     setUbicacionSeleccionada(value);
     if (value === "OTRO") {
-      setForm((current) => ({ ...current, lugar_referencia: "" }));
+      setForm((current) => ({ ...current, lugar_referencia: "", latitud: null, longitud: null }));
+      openMapDialog();
       return;
     }
     const ubicacion = ubicacionesMaestras.find((item) => item.id === value);
-    if (ubicacion) setForm((current) => ({ ...current, lugar_referencia: ubicacion.nombre }));
+    if (ubicacion) {
+      setForm((current) => ({
+        ...current,
+        lugar_referencia: ubicacion.nombre,
+        latitud: ubicacion.latitud,
+        longitud: ubicacion.longitud,
+      }));
+    }
+  };
+
+  const openMapDialog = () => {
+    const selectedLocation = ubicacionesMaestras.find((item) => item.id === ubicacionSeleccionada);
+    setMapDraft({
+      lat: form.latitud ?? selectedLocation?.latitud ?? DEFAULT_MAP_POINT.lat,
+      lng: form.longitud ?? selectedLocation?.longitud ?? DEFAULT_MAP_POINT.lng,
+    });
+    setMapDialogOpen(true);
+  };
+
+  const applyMapCoordinates = () => {
+    if (!mapDraft) {
+      setMapConfirmOpen(false);
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      latitud: Number(mapDraft.lat.toFixed(6)),
+      longitud: Number(mapDraft.lng.toFixed(6)),
+    }));
+    setMapConfirmOpen(false);
+    setMapDialogOpen(false);
+    toast.success("Ubicacion marcada en el mapa");
   };
 
   const handlePhotos = (files: FileList | null) => {
@@ -589,6 +640,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
             onOpenChange={setEditOpen}
             caso={selected}
             categorias={categorias}
+            ubicaciones={ubicacionesMaestras}
             onSaved={(saved) => setSelected(saved)}
           />
         )}
@@ -909,15 +961,25 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
                 </FieldBlock>
                 {ubicacionSeleccionada === "OTRO" && (
                   <FieldBlock label="Lugar de referencia" required>
-                    <Input
-                      placeholder="Ej. Entrada principal, aula N-201"
-                      value={form.lugar_referencia}
-                      maxLength={LF_TEXT_LIMITS.lugar_referencia.max}
-                      aria-invalid={Boolean(visibleFormError(formErrors.lugar_referencia, formTouched.lugar_referencia, formSubmitted))}
-                      onBlur={() => setFormTouched((current) => ({ ...current, lugar_referencia: true }))}
-                      onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))}
-                    />
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <Input
+                        placeholder="Ej. Entrada principal, aula N-201"
+                        value={form.lugar_referencia}
+                        maxLength={LF_TEXT_LIMITS.lugar_referencia.max}
+                        aria-invalid={Boolean(visibleFormError(formErrors.lugar_referencia, formTouched.lugar_referencia, formSubmitted))}
+                        onBlur={() => setFormTouched((current) => ({ ...current, lugar_referencia: true }))}
+                        onChange={(e) => setForm((f) => ({ ...f, lugar_referencia: e.target.value }))}
+                      />
+                      <Button type="button" variant="outline" size="icon" onClick={openMapDialog} aria-label="Seleccionar ubicacion exacta">
+                        <MapPin className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <CharCounter value={form.lugar_referencia} min={LF_TEXT_LIMITS.lugar_referencia.min} max={LF_TEXT_LIMITS.lugar_referencia.max} />
+                    {form.latitud != null && form.longitud != null && (
+                      <p className="text-[11px] text-slate-500">
+                        Coordenadas: {form.latitud.toFixed(6)}, {form.longitud.toFixed(6)}
+                      </p>
+                    )}
                     <FieldError message={visibleFormError(formErrors.lugar_referencia, formTouched.lugar_referencia, formSubmitted)} />
                   </FieldBlock>
                 )}
@@ -1030,6 +1092,46 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={mapDialogOpen} onOpenChange={setMapDialogOpen}>
+        <DialogContent className="max-w-[calc(100vw-2rem)] rounded-lg sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Seleccionar ubicacion exacta</DialogTitle>
+            <DialogDescription>
+              Toca el mapa para marcar donde se perdio o encontro el objeto.
+            </DialogDescription>
+          </DialogHeader>
+          <LeafletCoordinatePicker
+            lat={mapDraft?.lat ?? null}
+            lng={mapDraft?.lng ?? null}
+            mapClassName="h-[58vh]"
+            showHelperText={false}
+            onChange={(lat, lng) => setMapDraft({ lat, lng })}
+          />
+          <p className="text-xs text-slate-500">
+            Coordenada seleccionada: {mapDraft?.lat.toFixed(6) ?? "-"}, {mapDraft?.lng.toFixed(6) ?? "-"}
+          </p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setMapDialogOpen(false)}>Cancelar</Button>
+            <Button type="button" onClick={() => setMapConfirmOpen(true)}>Guardar ubicacion</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={mapConfirmOpen} onOpenChange={setMapConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar ubicacion</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se aplicaran las coordenadas seleccionadas al caso. Puedes ajustar el lugar de referencia antes de publicar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={applyMapCoordinates}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <LostFoundFeedFilters
         open={filtersOpen}

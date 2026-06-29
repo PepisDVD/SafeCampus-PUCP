@@ -65,6 +65,11 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+# El gate de tipos cubre el paquete de producción `app`. Tests, scripts de
+# desarrollo y migraciones de Alembic no se verifican en modo estricto (usan
+# fakes, datos de ejemplo y código generado).
+files = ["app"]
+exclude = '^(alembic|scripts|tests)/'
 
 # `python-jose` no publica stubs de tipos; evitamos el ruido de import-untyped.
 [[tool.mypy.overrides]]

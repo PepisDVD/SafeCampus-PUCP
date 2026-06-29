@@ -51,6 +51,7 @@ class AuditAccion(StrEnum):
     FINALIZAR = "finalizar"
     EXPORTAR = "exportar"
     VERIFICAR = "verificar"
+    LOGIN = "login"
     ACCESO_DENEGADO = "acceso_denegado"
     # Acciones específicas conservadas por compatibilidad / tests existentes.
     GENERAR_EXPEDIENTE_CIERRE = "generar_expediente_cierre"

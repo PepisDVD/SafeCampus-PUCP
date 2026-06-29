@@ -305,6 +305,24 @@ async def obtener_caso(
     return await service.obtener_detalle(ref, current_user.id, current_user.roles)
 
 
+@router.api_route(
+    "/casos/{caso_id}/historial/{historial_id}",
+    methods=["PATCH", "DELETE"],
+    status_code=status.HTTP_403_FORBIDDEN,
+)
+async def rechazar_mutacion_historial_caso(
+    caso_id: str,
+    historial_id: str,
+    current_user: AuthUserResponse = Depends(get_current_user),
+) -> None:
+    """El historial de un caso es append-only; no se modifica ni elimina por API."""
+    _ = (caso_id, historial_id, current_user)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="El historial del caso es inmutable.",
+    )
+
+
 @router.patch("/casos/{caso_id}", response_model=CasoLfDetail)
 async def actualizar_caso(
     caso_id: str,

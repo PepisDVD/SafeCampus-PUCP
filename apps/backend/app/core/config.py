@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     SESSION_COOKIE_NAME: str = "safecampus_session"
     SESSION_COOKIE_SECURE: bool = False
     SESSION_COOKIE_DOMAIN: str | None = None
+    ALLOW_INSTITUTIONAL_CREDENTIALS: bool = False
     WEB_APP_URL: str = "http://localhost:3000"
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"
     DEV_LAN_WEB_APP_URL: str | None = None

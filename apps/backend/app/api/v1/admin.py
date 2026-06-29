@@ -34,6 +34,7 @@ from app.services.llm_audit_service import LlmAuditService
 
 require_admin = require_roles({"administrador"})
 router = APIRouter(dependencies=[Depends(require_admin)])
+USUARIOS_SEARCH_MAX_LENGTH = 120
 
 
 def _split_csv(value: str | None) -> list[str] | None:
@@ -54,7 +55,7 @@ def get_service(db: AsyncSession = Depends(get_session)) -> AdminService:
 
 @router.get("/usuarios", response_model=UsuariosListResponse, tags=["Admin - Usuarios"])
 async def listar_usuarios(
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=USUARIOS_SEARCH_MAX_LENGTH),
     estado: str | None = Query(default=None),
     service: AdminService = Depends(get_service),
 ) -> UsuariosListResponse:

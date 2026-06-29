@@ -14,9 +14,18 @@ import httpx
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import (
+    AuditAccion,
+    AuditEntidad,
+    AuditModulo,
+    AuditOrigen,
+    AuditResultado,
+    build_detalle,
+)
 from app.core.auth_policy import AuthChannel, evaluate_channel_access
 from app.core.config import settings
 from app.core.security import create_access_token, decode_access_token, verify_password
+from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import AuthProfileUpdateInput, AuthUserResponse
 
@@ -26,6 +35,7 @@ logger = logging.getLogger(__name__)
 class AuthService:
     def __init__(self, db: AsyncSession) -> None:
         self._repo = AuthRepository(db)
+        self._audit = AuditoriaRepository(db)
 
     def build_google_login_url(
         self,
@@ -97,6 +107,9 @@ class AuthService:
         self,
         code: str,
         state: str,
+        *,
+        ip_origen: str | None = None,
+        dispositivo: str | None = None,
     ) -> tuple[AuthUserResponse, str, str, str | None]:
         state_payload = decode_access_token(state)
         if not state_payload or state_payload.get("kind") != "oauth_state":
@@ -122,6 +135,13 @@ class AuthService:
         )
         user = user.model_copy(update={"roles": effective_roles})
         session_token = self._create_user_session_token(user, AuthChannel.WEB)
+        await self._audit_login(
+            user=user,
+            channel=AuthChannel.WEB,
+            metodo="google",
+            ip_origen=ip_origen,
+            dispositivo=dispositivo,
+        )
         return user, session_token, next_path, web_origin
 
     async def login_operator_with_password(
@@ -129,11 +149,15 @@ class AuthService:
         *,
         email: str,
         password: str,
+        ip_origen: str | None = None,
+        dispositivo: str | None = None,
     ) -> tuple[AuthUserResponse, str]:
         return await self._login_with_credentials(
             email=email,
             password=password,
             channel=AuthChannel.MOBILE,
+            ip_origen=ip_origen,
+            dispositivo=dispositivo,
         )
 
     async def login_web_with_credentials(
@@ -141,11 +165,15 @@ class AuthService:
         *,
         email: str,
         password: str,
+        ip_origen: str | None = None,
+        dispositivo: str | None = None,
     ) -> tuple[AuthUserResponse, str]:
         return await self._login_with_credentials(
             email=email,
             password=password,
             channel=AuthChannel.WEB,
+            ip_origen=ip_origen,
+            dispositivo=dispositivo,
         )
 
     async def _login_with_credentials(
@@ -154,11 +182,16 @@ class AuthService:
         email: str,
         password: str,
         channel: AuthChannel,
+        ip_origen: str | None = None,
+        dispositivo: str | None = None,
     ) -> tuple[AuthUserResponse, str]:
         normalized_email = email.strip().lower()
         # El login por credenciales es EXCLUSIVO para cuentas NO institucionales.
         # Las cuentas @pucp.edu.pe se autentican por SSO y nunca tienen contraseña.
-        if self._is_institutional_email(normalized_email):
+        if (
+            self._is_institutional_email(normalized_email)
+            and not settings.ALLOW_INSTITUTIONAL_CREDENTIALS
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Las cuentas institucionales (@pucp.edu.pe) ingresan con SSO.",
@@ -184,11 +217,22 @@ class AuthService:
             channel=channel,
         )
         user = self._build_auth_user_response(profile, effective_roles)
-        return user, self._create_user_session_token(user, channel)
+        session_token = self._create_user_session_token(user, channel)
+        await self._audit_login(
+            user=user,
+            channel=channel,
+            metodo="credentials",
+            ip_origen=ip_origen,
+            dispositivo=dispositivo,
+        )
+        return user, session_token
 
     async def login_mobile_with_supabase_access_token(
         self,
         access_token: str,
+        *,
+        ip_origen: str | None = None,
+        dispositivo: str | None = None,
     ) -> tuple[AuthUserResponse, str]:
         supabase_user = await self._get_supabase_user(access_token)
         user = await self.sync_supabase_user_data(supabase_user)
@@ -199,7 +243,43 @@ class AuthService:
             channel=AuthChannel.MOBILE,
         )
         user = user.model_copy(update={"roles": effective_roles})
-        return user, self._create_user_session_token(user, AuthChannel.MOBILE)
+        session_token = self._create_user_session_token(user, AuthChannel.MOBILE)
+        await self._audit_login(
+            user=user,
+            channel=AuthChannel.MOBILE,
+            metodo="supabase",
+            ip_origen=ip_origen,
+            dispositivo=dispositivo,
+        )
+        return user, session_token
+
+    async def _audit_login(
+        self,
+        *,
+        user: AuthUserResponse,
+        channel: AuthChannel,
+        metodo: str,
+        ip_origen: str | None,
+        dispositivo: str | None,
+    ) -> None:
+        await self._audit.create_registro(
+            usuario_id=user.id,
+            modulo=AuditModulo.SEGURIDAD,
+            accion=AuditAccion.LOGIN,
+            entidad=AuditEntidad.USUARIO,
+            entidad_id=user.id,
+            detalle=build_detalle(
+                origen=AuditOrigen.WEB if channel == AuthChannel.WEB else AuditOrigen.APP_MOVIL,
+                resultado=AuditResultado.EXITOSO,
+                codigo_entidad=user.email,
+                resumen=f"Login de usuario {user.email}",
+                metodo=metodo,
+                canal=channel.value,
+                roles=user.roles,
+            ),
+            ip_origen=ip_origen,
+            dispositivo=dispositivo,
+        )
 
     def _enforce_channel_access(
         self,

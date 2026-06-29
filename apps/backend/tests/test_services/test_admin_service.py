@@ -200,6 +200,32 @@ async def test_cambiar_estado_registra_auditoria_con_actor(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_reactivar_usuario_registra_auditoria_con_actor(monkeypatch):
+    FakeAuditoriaRepository.created = []
+    monkeypatch.setattr(admin_service, "AdminRepository", FakeAdminRepository)
+    monkeypatch.setattr(admin_service, "AuditoriaRepository", FakeAuditoriaRepository)
+    service = AdminService(db=None)  # type: ignore[arg-type]
+    usuario_id = str(uuid4())
+    actor_id = str(uuid4())
+
+    await service.cambiar_estado(
+        usuario_id,
+        CambiarEstadoInput(estado="ACTIVO"),
+        actor_id=actor_id,
+    )
+
+    assert len(FakeAuditoriaRepository.created) == 1
+    audit = FakeAuditoriaRepository.created[0]
+    assert audit["modulo"] == "usuarios"
+    assert audit["accion"] == "activar"
+    assert audit["entidad"] == "usuario"
+    assert str(audit["usuario_id"]) == actor_id
+    assert audit["detalle"]["origen"] == "WEB"
+    assert audit["detalle"]["resultado"] == "exitoso"
+    assert audit["detalle"]["after"] == {"estado": "ACTIVO"}
+
+
+@pytest.mark.anyio
 async def test_cambiar_estado_sin_actor_no_audita(monkeypatch):
     FakeAuditoriaRepository.created = []
     monkeypatch.setattr(admin_service, "AdminRepository", FakeAdminRepository)

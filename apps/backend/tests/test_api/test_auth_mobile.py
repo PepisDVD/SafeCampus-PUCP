@@ -4,13 +4,30 @@ from app.schemas.auth import AuthUserResponse
 
 
 class FakeAuthService:
-    async def login_operator_with_password(self, *, email: str, password: str):
+    async def login_operator_with_password(
+        self,
+        *,
+        email: str,
+        password: str,
+        ip_origen: str | None = None,
+        dispositivo: str | None = None,
+    ):
         assert email == "operador.seguridad@example.com"
         assert password == "secret"
+        assert ip_origen
+        assert dispositivo
         return _operator(), "mobile-jwt"
 
-    async def login_mobile_with_supabase_access_token(self, access_token: str):
+    async def login_mobile_with_supabase_access_token(
+        self,
+        access_token: str,
+        *,
+        ip_origen: str | None = None,
+        dispositivo: str | None = None,
+    ):
         assert access_token == "supabase-token"
+        assert ip_origen
+        assert dispositivo
         return _operator(email="jorge.salinas@pucp.edu.pe"), "institutional-jwt"
 
 
