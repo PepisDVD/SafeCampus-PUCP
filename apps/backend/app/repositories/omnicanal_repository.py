@@ -25,6 +25,12 @@ from app.models.sc_omnicanal import (
 )
 from app.models.sc_users import Usuario
 
+# Cache de ids de canal de mensajería a nivel de proceso. El canal de WhatsApp
+# es una fila de configuración estable (una por provider) que se consulta en
+# cada webhook entrante; cachear su id evita un round-trip a la BD por mensaje.
+# Clave: nombre canónico del canal ("WhatsApp <provider>").
+_WHATSAPP_CHANNEL_ID_CACHE: dict[str, UUID] = {}
+
 
 class OmnicanalRepository:
     def __init__(self, db: AsyncSession) -> None:
@@ -191,6 +197,30 @@ class OmnicanalRepository:
         await self.db.flush()
         await self.db.refresh(channel)
         return channel
+
+    async def get_or_create_whatsapp_channel_id(
+        self,
+        *,
+        provider: str,
+        instance_name: str | None,
+    ) -> UUID:
+        """Devuelve el id del canal de WhatsApp, usando cache de proceso.
+
+        Los callers del webhook solo necesitan el id del canal, no la entidad
+        completa. Cacheamos el id por nombre de canal para no golpear la BD en
+        cada mensaje entrante. En cache-miss se delega en el get_or_create.
+        """
+        channel_name = f"WhatsApp {provider}".strip()
+        cached = _WHATSAPP_CHANNEL_ID_CACHE.get(channel_name)
+        if cached is not None:
+            return cached
+
+        channel = await self.get_or_create_whatsapp_channel(
+            provider=provider,
+            instance_name=instance_name,
+        )
+        _WHATSAPP_CHANNEL_ID_CACHE[channel_name] = channel.id
+        return channel.id
 
     async def create_reporte_entrante(
         self,

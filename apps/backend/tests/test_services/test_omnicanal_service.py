@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -15,7 +16,7 @@ class FakeMessagingService:
         sender_phone: str,
         *,
         is_group: bool = False,
-        event_type: str | None = None,
+        event_type: str | None = "messages.upsert",
         chat_id: str | None = None,
     ) -> None:
         self.sender_phone = sender_phone
@@ -46,6 +47,9 @@ class FakeMessagingService:
 
 class FailingRepository:
     async def get_or_create_whatsapp_channel(self, **kwargs: Any) -> Any:
+        raise AssertionError("No debe persistir mensajes fuera de allowlist.")
+
+    async def get_or_create_whatsapp_channel_id(self, **kwargs: Any) -> Any:
         raise AssertionError("No debe persistir mensajes fuera de allowlist.")
 
     async def create_reporte_entrante(self, **kwargs: Any) -> Any:
@@ -97,6 +101,9 @@ class FakeWebhookRepository:
 
     async def get_or_create_whatsapp_channel(self, **kwargs: Any) -> Any:
         return self.channel
+
+    async def get_or_create_whatsapp_channel_id(self, **kwargs: Any) -> Any:
+        return self.channel.id
 
     async def create_reporte_entrante(self, **kwargs: Any) -> Any:
         return self.report
@@ -269,6 +276,30 @@ async def test_registrar_whatsapp_webhook_ignora_numero_fuera_de_allowlist(monke
 
 
 @pytest.mark.anyio
+async def test_registrar_whatsapp_webhook_ignora_eventos_no_de_mensajes(monkeypatch):
+    monkeypatch.setattr(settings, "WHATSAPP_ALLOWED_TEST_PHONES", "")
+    service = OmnicanalService(db=None)  # type: ignore[arg-type]
+    # Evento de conexión (no messages.*): debe descartarse sin tocar el repo.
+    service._messaging = FakeMessagingService(  # noqa: SLF001
+        sender_phone="51999999999",
+        event_type="connection.update",
+    )
+    service._repo = FailingRepository()  # noqa: SLF001
+
+    response = await service.registrar_whatsapp_webhook(
+        payload={"event": "connection.update"},
+        provider_name="evolution",
+        webhook_secret=None,
+        ip_origen="127.0.0.1",
+        user_agent="pytest",
+    )
+
+    assert response.ok is True
+    assert response.ignored is True
+    assert response.reporte is None
+
+
+@pytest.mark.anyio
 async def test_registrar_whatsapp_webhook_ignora_grupos_por_defecto(monkeypatch):
     monkeypatch.setattr(settings, "WHATSAPP_ALLOWED_TEST_PHONES", "")
     monkeypatch.setattr(settings, "WHATSAPP_IGNORE_GROUP_MESSAGES", True)
@@ -330,7 +361,64 @@ async def test_registrar_whatsapp_webhook_difiere_chatbot_en_tarea_de_fondo(monk
     assert fake_chatbot.processed is False
     assert len(background_tasks.tasks) == 1
     _, args, _ = background_tasks.tasks[0]
-    assert args == (str(fake_repo.conversation.id), "Mensaje de prueba")
+    assert args == (str(fake_repo.conversation.id), "Mensaje de prueba", None, None)
+
+
+@pytest.mark.anyio
+async def test_debounce_agrupa_mensajes_en_rafaga(monkeypatch):
+    """Mensajes en rafaga de una conversacion se procesan como un solo turno."""
+    monkeypatch.setattr(settings, "CHATBOT_DEBOUNCE_SECONDS", 0.05)
+    calls: list[tuple[str, str]] = []
+
+    async def fake_process(
+        conversacion_id: str,
+        content: str,
+        latitud: float | None = None,
+        longitud: float | None = None,
+    ) -> None:
+        calls.append((conversacion_id, content))
+
+    monkeypatch.setattr(
+        OmnicanalService,
+        "process_incoming_chatbot_background",
+        staticmethod(fake_process),
+    )
+
+    cid = "conv-debounce-rafaga"
+    tasks = []
+    for fragment in ("tengo", "una emergencia", "en el pabellon V"):
+        tasks.append(asyncio.create_task(OmnicanalService._debounce_and_process(cid, fragment)))
+        await asyncio.sleep(0.01)
+    await asyncio.gather(*tasks)
+
+    # Solo el ultimo turno procesa, con los tres fragmentos unidos en un bloque.
+    assert calls == [(cid, "tengo\nuna emergencia\nen el pabellon V")]
+
+
+@pytest.mark.anyio
+async def test_debounce_procesa_mensaje_unico(monkeypatch):
+    """Un mensaje aislado se procesa una sola vez tras la ventana de debounce."""
+    monkeypatch.setattr(settings, "CHATBOT_DEBOUNCE_SECONDS", 0.02)
+    calls: list[tuple[str, str]] = []
+
+    async def fake_process(
+        conversacion_id: str,
+        content: str,
+        latitud: float | None = None,
+        longitud: float | None = None,
+    ) -> None:
+        calls.append((conversacion_id, content))
+
+    monkeypatch.setattr(
+        OmnicanalService,
+        "process_incoming_chatbot_background",
+        staticmethod(fake_process),
+    )
+
+    cid = "conv-debounce-unico"
+    await OmnicanalService._debounce_and_process(cid, "necesito ayuda")
+
+    assert calls == [(cid, "necesito ayuda")]
 
 
 @pytest.mark.anyio

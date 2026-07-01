@@ -64,6 +64,16 @@ class Settings(BaseSettings):
     CHATBOT_AUTO_CREATE_INCIDENTS: bool = True
     CHATBOT_SYSTEM_USER_ID: str = ""
     CHATBOT_INACTIVITY_CLOSE_HOURS: int = 5
+    # Minutos de inactividad tras los cuales el borrador/contexto guardado del
+    # chatbot se considera vencido: si el usuario vuelve a escribir después de
+    # este lapso, no se arrastran el draft ni los datos previos (arranca limpio).
+    # Debe ser menor que CHATBOT_INACTIVITY_CLOSE_HOURS. 0 = deshabilitado.
+    CHATBOT_DRAFT_EXPIRY_MINUTES: int = 30
+    # Ventana de "debounce" del chatbot: al recibir un mensaje, el bot espera
+    # estos segundos por mensajes adicionales de la misma conversacion y procesa
+    # todo el bloque como un solo turno (evita respuestas duplicadas cuando el
+    # usuario escribe en fragmentos). 0 = procesar de inmediato.
+    CHATBOT_DEBOUNCE_SECONDS: float = 6.0
     WHATSAPP_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_PROVIDER: str = "evolution"

@@ -53,21 +53,44 @@ SEED_USERS: tuple[SeedUser, ...] = (
     SeedUser("hector.paredes.ronda@gmail.com", "Hector", "Paredes", "operador", "Seguridad"),
     SeedUser("irene.castillo.control@gmail.com", "Irene", "Castillo", "operador", "Seguridad"),
     SeedUser("jorge.salinas.operador@gmail.com", "Jorge", "Salinas", "operador", "Seguridad"),
-    SeedUser("karla.benavides.supervision@gmail.com", "Karla", "Benavides", "supervisor", "Seguridad"),
+    SeedUser(
+        "karla.benavides.supervision@gmail.com", "Karla", "Benavides", "supervisor", "Seguridad"
+    ),
     SeedUser("luis.cardenas.coordinacion@gmail.com", "Luis", "Cardenas", "supervisor", "Seguridad"),
     SeedUser("mariana.vera.respuesta@gmail.com", "Mariana", "Vera", "supervisor", "Seguridad"),
-    SeedUser("nicolas.herrera.incidencias@gmail.com", "Nicolas", "Herrera", "supervisor", "Seguridad"),
+    SeedUser(
+        "nicolas.herrera.incidencias@gmail.com", "Nicolas", "Herrera", "supervisor", "Seguridad"
+    ),
     SeedUser("paola.rios.campus@gmail.com", "Paola", "Rios", "supervisor", "Seguridad"),
-    SeedUser("alvaro.munoz@pucp.edu.pe", "Alvaro", "Munoz", "comunidad", "Estudios Generales Letras", "20260001"),
-    SeedUser("beatriz.lopez@pucp.edu.pe", "Beatriz", "Lopez", "comunidad", "Ingenieria", "20260002"),
-    SeedUser("cesar.romero@pucp.edu.pe", "Cesar", "Romero", "comunidad", "Ciencias Sociales", "20260003"),
-    SeedUser("daniela.flores@pucp.edu.pe", "Daniela", "Flores", "comunidad", "Arquitectura", "20260004"),
+    SeedUser(
+        "alvaro.munoz@pucp.edu.pe",
+        "Alvaro",
+        "Munoz",
+        "comunidad",
+        "Estudios Generales Letras",
+        "20260001",
+    ),
+    SeedUser(
+        "beatriz.lopez@pucp.edu.pe", "Beatriz", "Lopez", "comunidad", "Ingenieria", "20260002"
+    ),
+    SeedUser(
+        "cesar.romero@pucp.edu.pe", "Cesar", "Romero", "comunidad", "Ciencias Sociales", "20260003"
+    ),
+    SeedUser(
+        "daniela.flores@pucp.edu.pe", "Daniela", "Flores", "comunidad", "Arquitectura", "20260004"
+    ),
     SeedUser("emilio.garcia@pucp.edu.pe", "Emilio", "Garcia", "comunidad", "Derecho", "20260005"),
-    SeedUser("fatima.chavez@pucp.edu.pe", "Fatima", "Chavez", "comunidad", "Comunicaciones", "20260006"),
+    SeedUser(
+        "fatima.chavez@pucp.edu.pe", "Fatima", "Chavez", "comunidad", "Comunicaciones", "20260006"
+    ),
     SeedUser("gustavo.ortiz@pucp.edu.pe", "Gustavo", "Ortiz", "comunidad", "Gestion", "20260007"),
     SeedUser("helena.soto@pucp.edu.pe", "Helena", "Soto", "comunidad", "Arte y Diseno", "20260008"),
-    SeedUser("ivan.reyes@pucp.edu.pe", "Ivan", "Reyes", "comunidad", "Ciencias e Ingenieria", "20260009"),
-    SeedUser("juliana.morales@pucp.edu.pe", "Juliana", "Morales", "comunidad", "Educacion", "20260010"),
+    SeedUser(
+        "ivan.reyes@pucp.edu.pe", "Ivan", "Reyes", "comunidad", "Ciencias e Ingenieria", "20260009"
+    ),
+    SeedUser(
+        "juliana.morales@pucp.edu.pe", "Juliana", "Morales", "comunidad", "Educacion", "20260010"
+    ),
 )
 
 
@@ -83,8 +106,7 @@ async def get_role_ids() -> dict[SeedRole, object]:
     missing_roles = sorted({"operador", "supervisor", "comunidad"} - set(role_ids))
     if missing_roles:
         raise RuntimeError(
-            "No se encontraron roles requeridos en sc_users.rol: "
-            + ", ".join(missing_roles)
+            "No se encontraron roles requeridos en sc_users.rol: " + ", ".join(missing_roles)
         )
     return role_ids  # type: ignore[return-value]
 

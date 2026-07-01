@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +13,7 @@ from app.llm.schemas import (
     WhatsAppUrgencySignal,
 )
 from app.services.chatbot_service import ChatbotService
+from app.services.ubicacion_matcher import UbicacionMatch
 
 
 class FakeRepo:
@@ -101,11 +103,33 @@ class FakeDecider:
 
 
 class FakeIncidentes:
+    def __init__(self) -> None:
+        self.created: list = []
+
     async def crear_incidente(self, reportante_id, data, priorizacion_override=None):
+        self.created.append(data)
         return SimpleNamespace(id="incident-id", codigo="INC-20260628-0001")
 
 
-def _build_service(decision: WhatsAppBotDecision) -> tuple[ChatbotService, FakeRepo, FakeEvolution]:
+class FakeMatcher:
+    """Reemplaza al UbicacionMatcher con resultados fijos (o None)."""
+
+    def __init__(self, match=None, coords_match=None) -> None:
+        self.match = match
+        self.coords_match = coords_match
+
+    async def resolve(self, text):
+        return self.match
+
+    async def resolve_by_coords(self, latitud, longitud, **kwargs):
+        return self.coords_match
+
+
+def _build_service(
+    decision: WhatsAppBotDecision,
+    matcher_result=None,
+    coords_match=None,
+) -> tuple[ChatbotService, FakeRepo, FakeEvolution]:
     service = ChatbotService(db=None)
     repo = FakeRepo()
     evolution = FakeEvolution()
@@ -113,6 +137,7 @@ def _build_service(decision: WhatsAppBotDecision) -> tuple[ChatbotService, FakeR
     service._evolution = evolution  # noqa: SLF001
     service._bot_decider = FakeDecider(decision)  # noqa: SLF001
     service._incidentes = FakeIncidentes()  # noqa: SLF001
+    service._ubicacion_matcher = FakeMatcher(matcher_result, coords_match)  # noqa: SLF001
     return service, repo, evolution
 
 
@@ -202,6 +227,179 @@ async def test_chatbot_creates_incident_for_complete_non_critical_report(monkeyp
     assert repo.llm_usage_entries
     assert repo.chatbot_updates[-1]["bot_status"] == "BOT_INCIDENT_DRAFTED"
     assert evolution.sent_messages
+
+
+@pytest.mark.anyio
+async def test_chatbot_geolocaliza_incidente_con_ubicacion_resuelta(monkeypatch):
+    _enable_autocreate(monkeypatch)
+    decision = WhatsAppBotDecision(
+        intent=WhatsAppBotIntent.INCIDENT_REPORT,
+        urgency_signal=WhatsAppUrgencySignal.MEDIUM,
+        should_reply=True,
+        should_create_incident=True,
+        should_handoff=False,
+        requires_human_review=False,
+        missing_fields=[],
+        reply="Gracias. Registre tu reporte para seguimiento operativo.",
+        conversation_summary="Caida en pabellon V.",
+        incident_category=CategoriaIncidente.OTRO,
+        incident_severity=NivelSeveridadIA.MEDIO,
+        incident_location="pabellon V",
+    )
+    resolved = UbicacionMatch(
+        id="loc-1",
+        nombre="Pabellón V",
+        latitud=-12.07,
+        longitud=-77.08,
+        score=1.0,
+    )
+    service, repo, evolution = _build_service(decision, matcher_result=resolved)
+
+    await service.process_incoming_contact_message(
+        _conversation(),
+        "mi amigo se cayo en el pabellon V",
+    )
+
+    incidente = service._incidentes.created[-1]  # noqa: SLF001
+    # Usa el nombre canónico del maestro y geolocaliza el incidente.
+    assert incidente.lugar_referencia == "Pabellón V"
+    assert incidente.latitud == -12.07
+    assert incidente.longitud == -77.08
+
+
+@pytest.mark.anyio
+async def test_chatbot_no_marca_faltante_ubicacion_ya_capturada(monkeypatch):
+    _enable_autocreate(monkeypatch)
+    decision = WhatsAppBotDecision(
+        intent=WhatsAppBotIntent.PROVIDE_DETAILS,
+        urgency_signal=WhatsAppUrgencySignal.MEDIUM,
+        should_reply=True,
+        should_create_incident=False,
+        should_handoff=False,
+        requires_human_review=False,
+        missing_fields=["lugar_referencia"],
+        reply="¿En que lugar exacto estas?",
+        conversation_summary="Reporte en curso.",
+        incident_category=None,
+        incident_severity=None,
+        incident_location=None,
+    )
+    service, repo, evolution = _build_service(decision)
+    # La ubicación ya fue capturada en un turno anterior (vive en el borrador).
+    repo.state.incident_draft = {
+        "titulo": "Reporte WhatsApp",
+        "descripcion": "hay un hombre sospechoso",
+        "lugar_referencia": "Pabellón A",
+    }
+
+    await service.process_incoming_contact_message(_conversation(), "tiene un cuchillo")
+
+    # No debe volver a reportar lugar_referencia como dato faltante.
+    assert "lugar_referencia" not in repo.chatbot_updates[-1]["missing_fields"]
+
+
+@pytest.mark.anyio
+async def test_chatbot_captura_ubicacion_gps_compartida(monkeypatch):
+    _enable_autocreate(monkeypatch)
+    decision = WhatsAppBotDecision(
+        intent=WhatsAppBotIntent.PROVIDE_DETAILS,
+        urgency_signal=WhatsAppUrgencySignal.MEDIUM,
+        should_reply=True,
+        should_create_incident=False,
+        should_handoff=False,
+        requires_human_review=False,
+        missing_fields=[],
+        reply="Gracias por tu ubicacion.",
+        conversation_summary="",
+        incident_category=None,
+        incident_severity=None,
+        incident_location=None,
+    )
+    nearby = UbicacionMatch(
+        id="loc-1", nombre="Pabellón A", latitud=-12.07, longitud=-77.08, score=1.0
+    )
+    service, repo, evolution = _build_service(decision, coords_match=nearby)
+
+    await service.process_incoming_contact_message(
+        _conversation(),
+        "📍 Ubicación compartida",
+        latitud=-12.0701,
+        longitud=-77.0802,
+    )
+
+    saved = repo.chatbot_updates[-1]["incident_draft"]
+    # Coordenadas exactas del GPS + nombre de la ubicación maestra más cercana.
+    assert saved["latitud"] == -12.0701
+    assert saved["longitud"] == -77.0802
+    assert saved["lugar_referencia"] == "Pabellón A"
+
+
+@pytest.mark.anyio
+async def test_chatbot_acumula_draft_sin_degradar_clasificacion(monkeypatch):
+    _enable_autocreate(monkeypatch)
+    # Turno de detalle que NO reclasifica, sobre un borrador ya clasificado.
+    decision = WhatsAppBotDecision(
+        intent=WhatsAppBotIntent.PROVIDE_DETAILS,
+        urgency_signal=WhatsAppUrgencySignal.MEDIUM,
+        should_reply=True,
+        should_create_incident=False,
+        should_handoff=False,
+        requires_human_review=False,
+        missing_fields=[],
+        reply="Entendido.",
+        conversation_summary="",
+        incident_category=None,
+        incident_severity=None,
+        incident_location=None,
+    )
+    service, repo, evolution = _build_service(decision)
+    repo.state.incident_draft = {
+        "titulo": "Violencia: Contacto",
+        "descripcion": "hay un hombre con cuchillo",
+        "categoria": "VIOLENCIA",
+        "severidad": "CRITICO",
+        "lugar_referencia": "Pabellón A",
+    }
+    repo.state.bot_status = "BOT_INCIDENT_DRAFTED"
+
+    await service.process_incoming_contact_message(_conversation(), "está sangrando")
+
+    saved = repo.chatbot_updates[-1]["incident_draft"]
+    assert saved["categoria"] == "VIOLENCIA"  # no se degrada a OTRO
+    assert saved["severidad"] == "CRITICO"  # no se degrada a MEDIO
+    assert "hay un hombre con cuchillo" in saved["descripcion"]  # conserva lo previo
+    assert "está sangrando" in saved["descripcion"]  # acumula lo nuevo
+
+
+@pytest.mark.anyio
+async def test_chatbot_expira_draft_por_inactividad(monkeypatch):
+    monkeypatch.setattr("app.core.config.settings.CHATBOT_ENABLED", True)
+    monkeypatch.setattr("app.core.config.settings.CHATBOT_DRAFT_EXPIRY_MINUTES", 30)
+    decision = WhatsAppBotDecision(
+        intent=WhatsAppBotIntent.GREETING,
+        urgency_signal=WhatsAppUrgencySignal.NONE,
+        should_reply=True,
+        should_create_incident=False,
+        should_handoff=False,
+        requires_human_review=False,
+        missing_fields=[],
+        reply="Hola, ¿en qué te ayudo?",
+        conversation_summary="",
+        incident_category=None,
+        incident_severity=None,
+        incident_location=None,
+    )
+    service, repo, evolution = _build_service(decision)
+    # Borrador viejo + última interacción hace 2 horas → contexto vencido.
+    repo.state.incident_draft = {"lugar_referencia": "Pabellón A", "descripcion": "algo viejo"}
+    repo.state.bot_status = "BOT_INCIDENT_DRAFTED"
+    repo.state.last_user_message_at = datetime.now(UTC) - timedelta(hours=2)
+    repo.state.last_processed_at = datetime.now(UTC) - timedelta(hours=2)
+
+    await service.process_incoming_contact_message(_conversation(), "hola de nuevo")
+
+    # El LLM debe recibir un borrador vacío: no se arrastra el contexto viejo.
+    assert service._bot_decider.calls[0]["incident_draft"] == {}
 
 
 @pytest.mark.anyio

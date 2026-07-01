@@ -12,7 +12,12 @@ export default async function OperativoLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const profile = await getCurrentUserProfile();
+  // Ambas peticiones son independientes: se lanzan en paralelo para no
+  // encadenar dos round-trips al backend en la carga inicial del layout.
+  const [profile, lostFoundEnabled] = await Promise.all([
+    getCurrentUserProfile(),
+    getLostFoundAccess(),
+  ]);
 
   if (!profile) {
     redirect("/login?next=/dashboard");
@@ -25,9 +30,6 @@ export default async function OperativoLayout({
   if (profile.roles.includes("administrador")) {
     return <AdminShell user={profile.navUser}>{children}</AdminShell>;
   }
-
-  // Solo los supervisores asignados al módulo Lost & Found ven su entrada en el sidebar.
-  const lostFoundEnabled = await getLostFoundAccess();
 
   return (
     <OperativoShell user={profile.navUser} lostFoundEnabled={lostFoundEnabled}>

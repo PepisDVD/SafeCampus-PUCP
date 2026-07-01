@@ -8,6 +8,7 @@ aplica un fallback seguro cuando el proveedor LLM falla.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -126,65 +127,98 @@ class WhatsAppBotDecisionService:
             prompt_version=prompt.metadata.id,
         )
 
-        try:
-            api_key = self._key_manager.get_active_key(selected_provider)
-            client = self._provider_clients[selected_provider]
-            provider_response = await client.invoke_classification(request, api_key=api_key)
-            self._key_manager.record_usage(
-                provider=selected_provider,
-                correlation_id=correlation_id,
-                incident_id=None,
-                model=model,
-                prompt_version=prompt.metadata.id,
-                prompt_tokens=provider_response.prompt_tokens,
-                completion_tokens=provider_response.completion_tokens,
-                total_tokens=provider_response.total_tokens,
-            )
-            decision, events = self._normalize(provider_response.text, last_user_message)
-            return WhatsAppBotDecisionResult(
-                decision=decision,
-                provider_response=provider_response,
-                correlation_id=correlation_id,
-                model_used=model,
-                provider_used=selected_provider,
-                prompt_version=prompt.metadata.id,
-                latency_ms=provider_response.latency_ms,
-                fallback_applied=False,
-                fallback_reason=None,
-                normalization_events=events,
-            )
-        except (
-            LLMAuthError,
-            LLMRateLimitError,
-            LLMTimeoutError,
-            LLMServerError,
-            LLMClientError,
-        ) as exc:
-            logger.warning(
-                "whatsapp_bot_decision_provider_error",
-                extra={"correlation_id": correlation_id, "error": exc.__class__.__name__},
-            )
-            return self._fallback_result(
-                last_user_message,
-                correlation_id=correlation_id,
-                provider=selected_provider,
-                model=model,
-                prompt_version=prompt.metadata.id,
-                fallback_reason=exc.__class__.__name__,
-            )
-        except Exception:  # noqa: BLE001 - cualquier fallo debe degradar de forma segura
-            logger.exception(
-                "whatsapp_bot_decision_unexpected_error",
-                extra={"correlation_id": correlation_id},
-            )
-            return self._fallback_result(
-                last_user_message,
-                correlation_id=correlation_id,
-                provider=selected_provider,
-                model=model,
-                prompt_version=prompt.metadata.id,
-                fallback_reason="UNEXPECTED_ERROR",
-            )
+        # Errores transitorios (sobrecarga 503, rate-limit 429, timeout) se
+        # reintentan con backoff antes de degradar al heurístico, porque suelen
+        # resolverse solos. Los no transitorios (auth, 4xx) no se reintentan.
+        transient_errors = (LLMRateLimitError, LLMTimeoutError, LLMServerError)
+        max_attempts = max(1, settings.LLM_MAX_ATTEMPTS)
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                api_key = self._key_manager.get_active_key(selected_provider)
+                client = self._provider_clients[selected_provider]
+                provider_response = await client.invoke_classification(request, api_key=api_key)
+                self._key_manager.record_usage(
+                    provider=selected_provider,
+                    correlation_id=correlation_id,
+                    incident_id=None,
+                    model=model,
+                    prompt_version=prompt.metadata.id,
+                    prompt_tokens=provider_response.prompt_tokens,
+                    completion_tokens=provider_response.completion_tokens,
+                    total_tokens=provider_response.total_tokens,
+                )
+                decision, events = self._normalize(provider_response.text, last_user_message)
+                return WhatsAppBotDecisionResult(
+                    decision=decision,
+                    provider_response=provider_response,
+                    correlation_id=correlation_id,
+                    model_used=model,
+                    provider_used=selected_provider,
+                    prompt_version=prompt.metadata.id,
+                    latency_ms=provider_response.latency_ms,
+                    fallback_applied=False,
+                    fallback_reason=None,
+                    normalization_events=events,
+                )
+            except transient_errors as exc:
+                logger.warning(
+                    "whatsapp_bot_decision_provider_error (intento %s/%s): %s: %s",
+                    attempt,
+                    max_attempts,
+                    exc.__class__.__name__,
+                    exc,
+                    extra={"correlation_id": correlation_id, "error": exc.__class__.__name__},
+                )
+                if attempt < max_attempts:
+                    await asyncio.sleep(min(0.5 * 2 ** (attempt - 1), 4.0))
+                    continue
+                return self._fallback_result(
+                    last_user_message,
+                    correlation_id=correlation_id,
+                    provider=selected_provider,
+                    model=model,
+                    prompt_version=prompt.metadata.id,
+                    fallback_reason=exc.__class__.__name__,
+                )
+            except (LLMAuthError, LLMClientError) as exc:
+                logger.warning(
+                    "whatsapp_bot_decision_provider_error: %s: %s",
+                    exc.__class__.__name__,
+                    exc,
+                    extra={"correlation_id": correlation_id, "error": exc.__class__.__name__},
+                )
+                return self._fallback_result(
+                    last_user_message,
+                    correlation_id=correlation_id,
+                    provider=selected_provider,
+                    model=model,
+                    prompt_version=prompt.metadata.id,
+                    fallback_reason=exc.__class__.__name__,
+                )
+            except Exception:  # noqa: BLE001 - cualquier fallo debe degradar de forma segura
+                logger.exception(
+                    "whatsapp_bot_decision_unexpected_error",
+                    extra={"correlation_id": correlation_id},
+                )
+                return self._fallback_result(
+                    last_user_message,
+                    correlation_id=correlation_id,
+                    provider=selected_provider,
+                    model=model,
+                    prompt_version=prompt.metadata.id,
+                    fallback_reason="UNEXPECTED_ERROR",
+                )
+
+        # Salvaguarda de tipos (el bucle siempre retorna en el último intento).
+        return self._fallback_result(
+            last_user_message,
+            correlation_id=correlation_id,
+            provider=selected_provider,
+            model=model,
+            prompt_version=prompt.metadata.id,
+            fallback_reason="UNKNOWN",
+        )
 
     # --- construccion de prompts ---
 

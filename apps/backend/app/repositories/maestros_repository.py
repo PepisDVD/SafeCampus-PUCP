@@ -64,6 +64,35 @@ class MaestrosRepository:
             _serialize(row, tiene_relaciones=str(row.id) in referenced) for row in result.scalars()
         ]
 
+    async def list_ubicaciones_para_matching(self) -> list[dict[str, Any]]:
+        """Catálogo mínimo de ubicaciones activas para el matcher del chatbot.
+
+        Solo las columnas necesarias y sin el cálculo de relaciones, ya que el
+        resultado se cachea en memoria y se consulta de forma frecuente.
+        """
+        statement = (
+            select(
+                UbicacionMaestra.id,
+                UbicacionMaestra.codigo,
+                UbicacionMaestra.nombre,
+                UbicacionMaestra.latitud,
+                UbicacionMaestra.longitud,
+            )
+            .where(UbicacionMaestra.activa.is_(True))
+            .order_by(UbicacionMaestra.nombre.asc())
+        )
+        rows = (await self.db.execute(statement)).mappings().all()
+        return [
+            {
+                "id": str(row["id"]),
+                "codigo": row["codigo"],
+                "nombre": row["nombre"],
+                "latitud": float(row["latitud"]),
+                "longitud": float(row["longitud"]),
+            }
+            for row in rows
+        ]
+
     async def create_ubicacion(self, data: dict[str, Any]) -> dict[str, Any]:
         row = UbicacionMaestra(**data)
         self.db.add(row)

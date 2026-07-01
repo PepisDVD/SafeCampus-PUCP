@@ -7,12 +7,14 @@
  * No accede a la BD directamente.
  */
 
+import { Suspense } from "react";
 import Link from "next/link";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  Skeleton,
   cn,
 } from "@safecampus/ui-kit";
 import {
@@ -85,32 +87,120 @@ function MetricCard({
   );
 }
 
-export default async function DashboardPage() {
-  const [stats, recientes, mapaData, chatStats] = await Promise.all([
-    obtenerStats().catch(() => ({
-      total: 0,
-      activos: 0,
-      criticos: 0,
-      en_atencion: 0,
-      resueltos_24h: 0,
-      por_zona: [],
-    })),
-    listarIncidentes({ limit: 20 }).catch(() => ({
-      items: [] as IncidenteListItem[],
-      total: 0,
-    })),
+function MetricsSkeleton() {
+  return (
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-28 rounded-xl" />
+      ))}
+    </section>
+  );
+}
+
+async function MetricsSection() {
+  const stats = await obtenerStats().catch(() => ({
+    total: 0,
+    activos: 0,
+    criticos: 0,
+    en_atencion: 0,
+    resueltos_24h: 0,
+    por_zona: [],
+  }));
+
+  return (
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <MetricCard
+        title="Incidentes activos"
+        value={stats.activos}
+        hint="Con seguimiento en curso"
+        icon={Siren}
+      />
+      <MetricCard
+        title="Críticos"
+        value={stats.criticos}
+        hint="Severidad máxima"
+        icon={AlertTriangle}
+        tone="danger"
+      />
+      <MetricCard
+        title="En atención"
+        value={stats.en_atencion}
+        hint="Operadores asignados"
+        icon={Clock3}
+        tone="warning"
+      />
+      <MetricCard
+        title="Resueltos 24h"
+        value={stats.resueltos_24h}
+        hint="Cerrados en las últimas 24 horas"
+        icon={ShieldCheck}
+        tone="success"
+      />
+    </section>
+  );
+}
+
+async function ChatbotSection() {
+  const chatStats = await obtenerOmnicanalStats().catch(() => ({
+    en_bot: 0,
+    en_cola: 0,
+    en_atencion: 0,
+    abierta: 0,
+    total_activos: 0,
+  }));
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <MetricCard
+        title="Chats activos"
+        value={chatStats.total_activos}
+        hint="En bot, cola o atención"
+        icon={MessageSquare}
+      />
+      <MetricCard
+        title="En bot"
+        value={chatStats.en_bot}
+        hint="Atendidos por IA"
+        icon={BotMessageSquare}
+      />
+      <MetricCard
+        title="En cola"
+        value={chatStats.en_cola}
+        hint="Esperando operador"
+        icon={Users}
+        tone="warning"
+      />
+      <MetricCard
+        title="En atención humana"
+        value={chatStats.en_atencion}
+        hint="Con operador asignado"
+        icon={Clock3}
+        tone="success"
+      />
+    </div>
+  );
+}
+
+function MapaFeedSkeleton() {
+  return (
+    <section className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
+      <Skeleton className="h-150 rounded-xl" />
+      <Skeleton className="h-150 rounded-xl" />
+    </section>
+  );
+}
+
+async function MapaFeedSection() {
+  const [mapaData, recientes] = await Promise.all([
     listarIncidentesMapa({ limit: 300, activos_only: false }).catch(() => ({
       items: [],
       total: 0,
       georreferenciados: 0,
       sin_coordenadas: 0,
     })),
-    obtenerOmnicanalStats().catch(() => ({
-      en_bot: 0,
-      en_cola: 0,
-      en_atencion: 0,
-      abierta: 0,
-      total_activos: 0,
+    listarIncidentes({ limit: 20 }).catch(() => ({
+      items: [] as IncidenteListItem[],
+      total: 0,
     })),
   ]);
 
@@ -118,6 +208,69 @@ export default async function DashboardPage() {
     .filter((item) => !ESTADOS_TERMINALES.has(item.estado))
     .slice(0, 6);
 
+  return (
+    <section className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
+      <IncidentesHeatmapCard items={mapaData.items} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between text-base">
+            <span>Feed de incidentes activos</span>
+            <Link
+              href="/incidentes"
+              className="flex items-center gap-0.5 text-xs font-medium text-[#001C55]"
+            >
+              Ver todos <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {activos.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No hay incidentes activos.
+            </p>
+          ) : (
+            activos.map((item) => {
+              const severidadColor = item.severidad
+                ? SEVERIDAD_COLOR[item.severidad]
+                : "bg-slate-300";
+              return (
+                <Link
+                  key={item.id}
+                  href={`/incidentes/${item.id}`}
+                  className="block rounded-lg border p-3 transition hover:bg-slate-50"
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <p className="font-mono text-xs font-semibold text-muted-foreground">
+                      {item.codigo}
+                    </p>
+                    {item.severidad && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                        <span
+                          aria-hidden
+                          className={cn("h-2 w-2 rounded-full", severidadColor)}
+                        />
+                        {SEVERIDAD_LABEL[item.severidad]}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm font-semibold">{item.titulo}</p>
+                  {item.lugar_referencia && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {item.lugar_referencia}
+                    </p>
+                  )}
+                </Link>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+export default function DashboardPage() {
   return (
     <div className="w-full min-w-0 space-y-5 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -132,35 +285,9 @@ export default async function DashboardPage() {
       </div>
 
       {/* Métricas */}
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          title="Incidentes activos"
-          value={stats.activos}
-          hint="Con seguimiento en curso"
-          icon={Siren}
-        />
-        <MetricCard
-          title="Críticos"
-          value={stats.criticos}
-          hint="Severidad máxima"
-          icon={AlertTriangle}
-          tone="danger"
-        />
-        <MetricCard
-          title="En atención"
-          value={stats.en_atencion}
-          hint="Operadores asignados"
-          icon={Clock3}
-          tone="warning"
-        />
-        <MetricCard
-          title="Resueltos 24h"
-          value={stats.resueltos_24h}
-          hint="Cerrados en las últimas 24 horas"
-          icon={ShieldCheck}
-          tone="success"
-        />
-      </section>
+      <Suspense fallback={<MetricsSkeleton />}>
+        <MetricsSection />
+      </Suspense>
 
       {/* Chatbot — chats activos */}
       <section>
@@ -176,102 +303,18 @@ export default async function DashboardPage() {
             Ver consola <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            title="Chats activos"
-            value={chatStats.total_activos}
-            hint="En bot, cola o atención"
-            icon={MessageSquare}
-          />
-          <MetricCard
-            title="En bot"
-            value={chatStats.en_bot}
-            hint="Atendidos por IA"
-            icon={BotMessageSquare}
-          />
-          <MetricCard
-            title="En cola"
-            value={chatStats.en_cola}
-            hint="Esperando operador"
-            icon={Users}
-            tone="warning"
-          />
-          <MetricCard
-            title="En atención humana"
-            value={chatStats.en_atencion}
-            hint="Con operador asignado"
-            icon={Clock3}
-            tone="success"
-          />
-        </div>
+        <Suspense fallback={<MetricsSkeleton />}>
+          <ChatbotSection />
+        </Suspense>
       </section>
 
       {/* Mapa de calor + Feed */}
-      <section className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
-        <IncidentesHeatmapCard items={mapaData.items} />
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between text-base">
-              <span>Feed de incidentes activos</span>
-              <Link
-                href="/incidentes"
-                className="flex items-center gap-0.5 text-xs font-medium text-[#001C55]"
-              >
-                Ver todos <ChevronRight className="h-3.5 w-3.5" />
-              </Link>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {activos.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                No hay incidentes activos.
-              </p>
-            ) : (
-              activos.map((item) => {
-                const severidadColor = item.severidad
-                  ? SEVERIDAD_COLOR[item.severidad]
-                  : "bg-slate-300";
-                return (
-                  <Link
-                    key={item.id}
-                    href={`/incidentes/${item.id}`}
-                    className="block rounded-lg border p-3 transition hover:bg-slate-50"
-                  >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <p className="font-mono text-xs font-semibold text-muted-foreground">
-                        {item.codigo}
-                      </p>
-                      {item.severidad && (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                          <span
-                            aria-hidden
-                            className={cn(
-                              "h-2 w-2 rounded-full",
-                              severidadColor,
-                            )}
-                          />
-                          {SEVERIDAD_LABEL[item.severidad]}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm font-semibold">{item.titulo}</p>
-                    {item.lugar_referencia && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {item.lugar_referencia}
-                      </p>
-                    )}
-                  </Link>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
-      </section>
+      <Suspense fallback={<MapaFeedSkeleton />}>
+        <MapaFeedSection />
+      </Suspense>
 
       {/* Gráfico de evolución */}
       <IncidentesLineChart />
-
     </div>
   );
 }

@@ -19,6 +19,7 @@ class EvolutionWhatsAppProvider(MessagingProvider):
 
         text = self._extract_text(message)
         message_type = self._detect_message_type(message)
+        latitud, longitud = self._extract_location_coords(message)
         chat_id = self._first_str(
             key.get("remoteJid"),
             data.get("remoteJid"),
@@ -54,6 +55,8 @@ class EvolutionWhatsAppProvider(MessagingProvider):
             is_group=is_group,
             text=text,
             message_type=message_type,
+            latitud=latitud,
+            longitud=longitud,
             event_type=self._first_str(payload.get("event"), data.get("event")),
             raw_payload=payload,
             metadata={
@@ -79,6 +82,19 @@ class EvolutionWhatsAppProvider(MessagingProvider):
             if isinstance(value, str) and value.strip():
                 return value.strip()
         return None
+
+    @classmethod
+    def _extract_location_coords(cls, message: dict[str, Any]) -> tuple[float | None, float | None]:
+        """Extrae lat/lng de un mensaje de ubicación (estática o en vivo)."""
+        for key in ("locationMessage", "liveLocationMessage"):
+            node = message.get(key)
+            if not isinstance(node, dict):
+                continue
+            lat = node.get("degreesLatitude")
+            lng = node.get("degreesLongitude")
+            if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+                return float(lat), float(lng)
+        return None, None
 
     @staticmethod
     def _detect_message_type(message: dict[str, Any]) -> str:

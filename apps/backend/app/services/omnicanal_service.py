@@ -53,6 +53,15 @@ from app.services.omnicanal_realtime import omnicanal_realtime_hub
 
 logger = logging.getLogger(__name__)
 
+# Estado de "debounce" del chatbot, a nivel de proceso. Cuando llegan mensajes
+# en rafaga de una misma conversacion (el usuario escribe en fragmentos), se
+# acumulan aqui y solo el ultimo turno programado procesa el bloque completo.
+# Nota: es estado en memoria; con varios workers el agrupado es por worker.
+_chatbot_debounce_buffers: dict[str, list[str]] = {}
+_chatbot_debounce_tokens: dict[str, int] = {}
+# Última ubicación GPS compartida dentro de la ráfaga (la más reciente gana).
+_chatbot_debounce_coords: dict[str, tuple[float, float]] = {}
+
 
 class OmnicanalService:
     _IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -82,7 +91,32 @@ class OmnicanalService:
             payload,
             provider_name=provider_name,
         )
+        logger.info(
+            "Webhook WhatsApp recibido: event=%s sender=%s chat=%s group=%s from_me=%s type=%s",
+            incoming.event_type,
+            incoming.sender_phone,
+            incoming.chat_id,
+            incoming.is_group,
+            incoming.metadata.get("from_me"),
+            incoming.message_type,
+        )
+        # Solo los eventos de mensajes (messages.*) son accionables. Los eventos
+        # de sistema (connection.update, presence.update, etc.) se descartan
+        # temprano para no ensuciar el log ni pasar por el allowlist con sender
+        # nulo.
+        if not (incoming.event_type or "").startswith("messages."):
+            logger.info(
+                "WhatsApp: evento no accionable '%s' (no es de mensajes); ignorado.",
+                incoming.event_type,
+            )
+            return WhatsAppWebhookResponse(
+                ok=True,
+                ignored=True,
+                detail=f"Evento '{incoming.event_type}' no accionable.",
+            )
+
         if self._should_ignore_group(incoming.is_group):
+            logger.info("WhatsApp ignorado (grupo): chat=%s", incoming.chat_id)
             return WhatsAppWebhookResponse(
                 ok=True,
                 ignored=True,
@@ -90,13 +124,19 @@ class OmnicanalService:
             )
 
         if self._should_ignore_sender(incoming.sender_phone):
+            logger.info(
+                "WhatsApp ignorado (allowlist): sender=%s no está en "
+                "WHATSAPP_ALLOWED_TEST_PHONES=%s",
+                incoming.sender_phone,
+                sorted(settings.whatsapp_allowed_test_phones_set),
+            )
             return WhatsAppWebhookResponse(
                 ok=True,
                 ignored=True,
                 detail="Mensaje ignorado por allowlist local de WhatsApp.",
             )
 
-        channel = await self._repo.get_or_create_whatsapp_channel(
+        channel_id = await self._repo.get_or_create_whatsapp_channel_id(
             provider=incoming.provider,
             instance_name=incoming.instance_name,
         )
@@ -113,16 +153,23 @@ class OmnicanalService:
             **incoming.metadata,
         }
         reporte = await self._repo.create_reporte_entrante(
-            canal_id=channel.id,
+            canal_id=channel_id,
             contenido_raw=incoming.raw_payload,
             metadatos_canal=metadata,
             ip_origen=ip_origen,
             user_agent=user_agent,
         )
         conversacion = None
+        if incoming.event_type != "messages.upsert" or not incoming.chat_id:
+            logger.info(
+                "WhatsApp: evento '%s' (chat=%s) no crea conversación; solo se "
+                "guardó el reporte entrante.",
+                incoming.event_type,
+                incoming.chat_id,
+            )
         if incoming.event_type == "messages.upsert" and incoming.chat_id:
             conversacion = await self._repo.get_or_create_conversacion(
-                canal_id=channel.id,
+                canal_id=channel_id,
                 external_chat_id=incoming.chat_id,
                 telefono_contacto=incoming.sender_phone,
                 nombre_contacto=incoming.sender_name,
@@ -195,15 +242,23 @@ class OmnicanalService:
                 )
                 if not incoming.metadata.get("from_me"):
                     await self._db.commit()
+                    logger.info(
+                        "WhatsApp procesado: conversacion=%s sender=%s; mensaje "
+                        "encolado al chatbot.",
+                        str(conversacion.id),
+                        incoming.sender_phone,
+                    )
                     self._enqueue_chatbot_processing(
                         background_tasks=background_tasks,
                         conversacion_id=str(conversacion.id),
                         content=incoming.content_for_storage,
+                        latitud=incoming.latitud,
+                        longitud=incoming.longitud,
                     )
         return WhatsAppWebhookResponse(
             reporte=ReporteEntranteCreated(
                 id=str(reporte.id),
-                canal_id=str(channel.id),
+                canal_id=str(channel_id),
                 provider=incoming.provider,
                 external_message_id=incoming.external_message_id,
                 sender_phone=incoming.sender_phone,
@@ -278,21 +333,69 @@ class OmnicanalService:
         background_tasks: BackgroundTasks | None,
         conversacion_id: str,
         content: str,
+        latitud: float | None = None,
+        longitud: float | None = None,
     ) -> None:
         if background_tasks is not None:
             background_tasks.add_task(
-                self.process_incoming_chatbot_background,
+                self._debounce_and_process,
                 conversacion_id,
                 content,
+                latitud,
+                longitud,
             )
             return
-        asyncio.create_task(self.process_incoming_chatbot_background(conversacion_id, content))
+        asyncio.create_task(self._debounce_and_process(conversacion_id, content, latitud, longitud))
+
+    @classmethod
+    async def _debounce_and_process(
+        cls,
+        conversacion_id: str,
+        content: str,
+        latitud: float | None = None,
+        longitud: float | None = None,
+    ) -> None:
+        """Agrupa mensajes en rafaga antes de procesar el turno del chatbot.
+
+        Cada mensaje entrante se acumula en el buffer de la conversacion y avanza
+        un token. Tras esperar la ventana de debounce, solo el turno cuyo token
+        sigue siendo el ultimo procesa el bloque completo; los anteriores salen
+        sin hacer nada (un mensaje mas nuevo se encargara de todo lo acumulado).
+        """
+        buffer = _chatbot_debounce_buffers.setdefault(conversacion_id, [])
+        if content and content.strip():
+            buffer.append(content.strip())
+        if latitud is not None and longitud is not None:
+            # La ubicacion mas reciente de la rafaga es la que vale.
+            _chatbot_debounce_coords[conversacion_id] = (latitud, longitud)
+        token = _chatbot_debounce_tokens.get(conversacion_id, 0) + 1
+        _chatbot_debounce_tokens[conversacion_id] = token
+
+        delay = max(0.0, settings.CHATBOT_DEBOUNCE_SECONDS)
+        if delay:
+            await asyncio.sleep(delay)
+
+        # Llego un mensaje mas reciente durante la espera: ese turno procesara
+        # todo el buffer acumulado, asi que este sale sin duplicar el trabajo.
+        if _chatbot_debounce_tokens.get(conversacion_id) != token:
+            return
+
+        texts = _chatbot_debounce_buffers.pop(conversacion_id, [])
+        _chatbot_debounce_tokens.pop(conversacion_id, None)
+        coords = _chatbot_debounce_coords.pop(conversacion_id, None)
+        combined = "\n".join(texts).strip()
+        if not combined and coords is None:
+            return
+        lat, lng = coords if coords is not None else (None, None)
+        await cls.process_incoming_chatbot_background(conversacion_id, combined, lat, lng)
 
     @classmethod
     async def process_incoming_chatbot_background(
         cls,
         conversacion_id: str,
         content: str,
+        latitud: float | None = None,
+        longitud: float | None = None,
     ) -> None:
         async with AsyncSessionLocal() as db:
             service = cls(db)
@@ -304,6 +407,8 @@ class OmnicanalService:
                 await service._chatbot.process_incoming_contact_message(
                     conversacion,
                     content,
+                    latitud=latitud,
+                    longitud=longitud,
                 )
                 await db.commit()
             except Exception:

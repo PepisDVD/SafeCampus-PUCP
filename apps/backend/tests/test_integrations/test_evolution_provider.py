@@ -30,6 +30,65 @@ def test_evolution_provider_normalizes_text_message():
     assert message.is_group is False
 
 
+def test_evolution_provider_captures_shared_location():
+    provider = EvolutionWhatsAppProvider()
+
+    message = provider.parse_incoming_webhook(
+        {
+            "event": "messages.upsert",
+            "instance": "safecampus-dev",
+            "data": {
+                "key": {
+                    "id": "MSG-LOC",
+                    "remoteJid": "51999999999@s.whatsapp.net",
+                    "fromMe": False,
+                },
+                "pushName": "Alumno PUCP",
+                "message": {
+                    "locationMessage": {
+                        "degreesLatitude": -12.0701,
+                        "degreesLongitude": -77.0802,
+                    }
+                },
+            },
+        }
+    )
+
+    assert message.message_type == "location"
+    assert message.latitud == -12.0701
+    assert message.longitud == -77.0802
+    assert message.has_location is True
+    assert message.content_for_storage == "📍 Ubicación compartida"
+
+
+def test_evolution_provider_captures_live_location():
+    provider = EvolutionWhatsAppProvider()
+
+    message = provider.parse_incoming_webhook(
+        {
+            "event": "messages.upsert",
+            "instance": "safecampus-dev",
+            "data": {
+                "key": {
+                    "id": "MSG-LIVE",
+                    "remoteJid": "51999999999@s.whatsapp.net",
+                    "fromMe": False,
+                },
+                "message": {
+                    "liveLocationMessage": {
+                        "degreesLatitude": -12.05,
+                        "degreesLongitude": -77.05,
+                    }
+                },
+            },
+        }
+    )
+
+    assert message.has_location is True
+    assert message.latitud == -12.05
+    assert message.longitud == -77.05
+
+
 def test_evolution_provider_detects_group_message_and_sender_participant():
     provider = EvolutionWhatsAppProvider()
 

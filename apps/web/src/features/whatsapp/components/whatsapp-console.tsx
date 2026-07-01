@@ -15,6 +15,12 @@ import {
   AlertDialogTitle,
   Badge,
   Button,
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
   Input,
   MultiSelectFilter,
   Popover,
@@ -38,7 +44,9 @@ import {
 import {
   Bot,
   BrainCircuit,
+  Check,
   CheckCircle2,
+  ChevronsUpDown,
   ExternalLink,
   Filter,
   History,
@@ -354,6 +362,11 @@ export function WhatsAppConsole() {
   const messagesRequestRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  // Cache de mensajes por conversación: permite mostrar al instante al cambiar
+  // de chat mientras se revalida en segundo plano (evita el blanco + espera).
+  const messagesCacheRef = useRef<Map<string, ConversationMessage[]>>(new Map());
+  // Timer para coalescer refrescos de la lista disparados por el WebSocket.
+  const wsRefreshTimerRef = useRef<number | null>(null);
 
   const counts = useMemo(() => {
     return {
@@ -435,8 +448,9 @@ export function WhatsAppConsole() {
     try {
       const response = await api.get<ConversationMessagesResponse>(
         `/omnicanal/conversaciones/${conversationId}/mensajes`,
-        { params: { limit: "300" } },
+        { params: { limit: "100" } },
       );
+      messagesCacheRef.current.set(conversationId, response.items);
       if (messagesRequestRef.current !== requestId) return;
       setErrorMessage(null);
       setMessages(response.items);
@@ -459,6 +473,21 @@ export function WhatsAppConsole() {
     setOperators(response.map((operator, index) => ({ ...operator, online: index % 3 !== 2 })));
   }, []);
 
+  // Coalesce ráfagas de eventos del WebSocket en un solo refresco de la lista
+  // (el chatbot emite varios eventos por mensaje; sin esto se recargaría la
+  // lista de 100 conversaciones en cada uno).
+  const scheduleConversationsRefresh = useCallback(() => {
+    if (wsRefreshTimerRef.current !== null) return;
+    wsRefreshTimerRef.current = window.setTimeout(() => {
+      wsRefreshTimerRef.current = null;
+      loadConversations().catch((error) => {
+        setErrorMessage(
+          error instanceof Error ? error.message : "No se pudo refrescar la bandeja.",
+        );
+      });
+    }, 500);
+  }, [loadConversations]);
+
   useEffect(() => {
     selectedIdRef.current = selectedConversation?.id ?? null;
     setOperatorIds(
@@ -472,20 +501,14 @@ export function WhatsAppConsole() {
 
   useEffect(() => {
     setLoading(true);
+    // Solo carga la lista; el effect de selectedConversationId se encarga de los
+    // mensajes (evita el doble fetch inicial de la conversación seleccionada).
     loadConversations()
-      .then((items) => {
-        const current = selectedIdRef.current;
-        const nextId = current && items.some((item) => item.id === current)
-          ? current
-          : items[0]?.id;
-        if (nextId) return loadMessages(nextId, { clearBeforeLoad: true });
-        return undefined;
-      })
       .catch((error) => {
         setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar la bandeja.");
       })
       .finally(() => setLoading(false));
-  }, [loadConversations, loadMessages]);
+  }, [loadConversations]);
 
   useEffect(() => {
     loadOperators().catch((error) => {
@@ -498,6 +521,17 @@ export function WhatsAppConsole() {
       messagesRequestRef.current += 1;
       setMessages([]);
       setLoadingMessages(false);
+      return;
+    }
+    const cached = messagesCacheRef.current.get(selectedConversationId);
+    if (cached) {
+      // Muestra al instante lo cacheado y revalida en segundo plano (sin blanco).
+      messagesRequestRef.current += 1;
+      setMessages(cached);
+      setLoadingMessages(false);
+      loadMessages(selectedConversationId, { showLoader: false }).catch((error) => {
+        setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar mensajes.");
+      });
       return;
     }
     loadMessages(selectedConversationId, { clearBeforeLoad: true }).catch((error) => {
@@ -537,11 +571,7 @@ export function WhatsAppConsole() {
         } catch {
           return;
         }
-        loadConversations().catch((error) => {
-          setErrorMessage(
-            error instanceof Error ? error.message : "No se pudo refrescar la bandeja.",
-          );
-        });
+        scheduleConversationsRefresh();
         if (data.conversacion_id && data.conversacion_id === selectedIdRef.current) {
           loadMessages(data.conversacion_id, { showLoader: false }).catch((error) => {
             setErrorMessage(
@@ -556,9 +586,10 @@ export function WhatsAppConsole() {
     return () => {
       disposed = true;
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (wsRefreshTimerRef.current) window.clearTimeout(wsRefreshTimerRef.current);
       socket?.close();
     };
-  }, [loadConversations, loadMessages]);
+  }, [scheduleConversationsRefresh, loadMessages]);
 
   async function runConversationAction(action: () => Promise<unknown>) {
     try {
@@ -1464,6 +1495,69 @@ function AiClassificationPanel({
   );
 }
 
+type MasterLocation = { id: string; nombre: string };
+
+function LocationCombobox({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: MasterLocation[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between bg-white font-normal"
+        >
+          <span className={cn("truncate", !value && "text-muted-foreground")}>
+            {value || "Selecciona una ubicación"}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-(--radix-popover-trigger-width) p-0"
+        align="start"
+      >
+        <Command>
+          <CommandInput placeholder="Buscar ubicación registrada..." />
+          <CommandList>
+            <CommandEmpty>Sin coincidencias en el maestro.</CommandEmpty>
+            <CommandGroup>
+              {options.map((loc) => (
+                <CommandItem
+                  key={loc.id}
+                  value={loc.nombre}
+                  onSelect={() => {
+                    onChange(loc.nombre);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === loc.nombre ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  {loc.nombre}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ChatbotPanel({
   conversation,
   onUpdated,
@@ -1476,11 +1570,27 @@ function ChatbotPanel({
   const [draftForm, setDraftForm] = useState<IncidentDraftForm>(() => buildDraftForm(conversation));
   const [saving, setSaving] = useState(false);
   const [creatingIncident, setCreatingIncident] = useState(false);
+  const [locations, setLocations] = useState<MasterLocation[]>([]);
 
   useEffect(() => {
     setAiSummary(conversation.chatbot?.ai_summary || "");
     setDraftForm(buildDraftForm(conversation));
   }, [conversation]);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get<MasterLocation[]>("/maestros/ubicaciones")
+      .then((rows) => {
+        if (active) setLocations(rows);
+      })
+      .catch(() => {
+        // El combobox queda vacío; el supervisor aún puede registrar el incidente.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (!chatbot || conversation.estado === "CERRADA") return null;
 
@@ -1592,13 +1702,12 @@ function ChatbotPanel({
                 </SelectContent>
               </Select>
             </div>
-            <Input
+            <LocationCombobox
               value={draftForm.lugar_referencia}
-              onChange={(event) =>
-                setDraftForm((prev) => ({ ...prev, lugar_referencia: event.target.value }))
+              options={locations}
+              onChange={(value) =>
+                setDraftForm((prev) => ({ ...prev, lugar_referencia: value }))
               }
-              placeholder="Ubicación o referencia"
-              className="bg-white"
             />
             <div className="grid grid-cols-2 gap-2">
               <Button type="button" variant="outline" disabled={saving} onClick={() => void saveDraft()}>

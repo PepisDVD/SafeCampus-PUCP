@@ -4,6 +4,7 @@
 📦 Capa: App / Raíz del backend
 """
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,14 @@ from app.core.config import settings
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Ciclo de vida de la aplicación: startup y shutdown."""
     # Startup
+    # Configura el logging de la app para que los logs INFO (p. ej. la traza del
+    # webhook de WhatsApp) sean visibles. Sin esto, el root logger queda en
+    # WARNING bajo uvicorn y los INFO de `app.*` no se emiten.
+    logging.basicConfig(
+        level=logging.INFO if settings.DEBUG else logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    logging.getLogger("app").setLevel(logging.INFO if settings.DEBUG else logging.WARNING)
     print(f"🚀 SafeCampus Backend v{settings.VERSION} iniciando...")
     yield
     # Shutdown
