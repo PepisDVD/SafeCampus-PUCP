@@ -5,6 +5,7 @@
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -165,7 +166,7 @@ class ExpedienteCierreOut(BaseModel):
     incidente_id: str
     resumen_cierre: str
     resultado: str | None = None
-    snapshot: dict
+    snapshot: dict[str, Any]
     generado_por: UsuarioMini | None = None
     pdf_url: str | None = None
     created_at: datetime

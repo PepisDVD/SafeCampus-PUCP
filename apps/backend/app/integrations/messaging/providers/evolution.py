@@ -10,12 +10,16 @@ class EvolutionWhatsAppProvider(MessagingProvider):
     name = "evolution"
 
     def parse_incoming_webhook(self, payload: dict[str, Any]) -> IncomingMessage:
-        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-        key = data.get("key") if isinstance(data.get("key"), dict) else {}
-        message = data.get("message") if isinstance(data.get("message"), dict) else {}
+        data_raw = payload.get("data")
+        data: dict[str, Any] = data_raw if isinstance(data_raw, dict) else {}
+        key_raw = data.get("key")
+        key: dict[str, Any] = key_raw if isinstance(key_raw, dict) else {}
+        message_raw = data.get("message")
+        message: dict[str, Any] = message_raw if isinstance(message_raw, dict) else {}
 
         text = self._extract_text(message)
         message_type = self._detect_message_type(message)
+        latitud, longitud = self._extract_location_coords(message)
         chat_id = self._first_str(
             key.get("remoteJid"),
             data.get("remoteJid"),
@@ -51,6 +55,8 @@ class EvolutionWhatsAppProvider(MessagingProvider):
             is_group=is_group,
             text=text,
             message_type=message_type,
+            latitud=latitud,
+            longitud=longitud,
             event_type=self._first_str(payload.get("event"), data.get("event")),
             raw_payload=payload,
             metadata={
@@ -76,6 +82,19 @@ class EvolutionWhatsAppProvider(MessagingProvider):
             if isinstance(value, str) and value.strip():
                 return value.strip()
         return None
+
+    @classmethod
+    def _extract_location_coords(cls, message: dict[str, Any]) -> tuple[float | None, float | None]:
+        """Extrae lat/lng de un mensaje de ubicación (estática o en vivo)."""
+        for key in ("locationMessage", "liveLocationMessage"):
+            node = message.get(key)
+            if not isinstance(node, dict):
+                continue
+            lat = node.get("degreesLatitude")
+            lng = node.get("degreesLongitude")
+            if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+                return float(lat), float(lng)
+        return None, None
 
     @staticmethod
     def _detect_message_type(message: dict[str, Any]) -> str:

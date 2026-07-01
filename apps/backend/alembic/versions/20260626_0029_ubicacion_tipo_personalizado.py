@@ -40,7 +40,9 @@ def downgrade() -> None:
         """
         UPDATE sc_maestros.ubicacion_maestra
         SET tipo = 'OTRO'
-        WHERE tipo NOT IN ('""" + "', '".join(_TIPOS_BASE) + """');
+        WHERE tipo NOT IN ('"""
+        + "', '".join(_TIPOS_BASE)
+        + """');
         """
     )
     op.create_check_constraint(

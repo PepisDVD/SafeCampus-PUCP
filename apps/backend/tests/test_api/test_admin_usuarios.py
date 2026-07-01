@@ -12,6 +12,17 @@ class FakeAdminService:
     def __init__(self) -> None:
         self.profile_data = None
         self.statuses: list[str] = []
+        self.search = None
+
+    async def listar_usuarios(self, search=None, estado=None):
+        self.search = search
+        return {
+            "items": [],
+            "total": 0,
+            "activos": 0,
+            "inactivos": 0,
+            "suspendidos": 0,
+        }
 
     async def actualizar_perfil_usuario(self, usuario_id, data, actor_id=None):
         self.profile_data = (usuario_id, data)
@@ -100,6 +111,35 @@ def test_admin_actualiza_perfil_y_reactiva_usuario(client):
         app.dependency_overrides.pop(get_current_user, None)
 
 
+def test_listar_usuarios_rechaza_busqueda_muy_larga(client):
+    fake = FakeAdminService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_admin
+    try:
+        response = client.get("/api/v1/admin/usuarios", params={"search": "x" * 121})
+
+        assert response.status_code == 422
+        assert fake.search is None
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_listar_usuarios_acepta_busqueda_en_limite(client):
+    fake = FakeAdminService()
+    app.dependency_overrides[get_service] = lambda: fake
+    app.dependency_overrides[get_current_user] = _fake_admin
+    try:
+        search = "x" * 120
+        response = client.get("/api/v1/admin/usuarios", params={"search": search})
+
+        assert response.status_code == 200
+        assert fake.search == search
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
 def _crear_payload(email: str) -> dict:
     return {
         "nombre": "Nuevo",
@@ -130,9 +170,7 @@ def test_crear_usuario_rechaza_dominio_no_permitido(client):
     app.dependency_overrides[get_service] = lambda: fake
     app.dependency_overrides[get_current_user] = _fake_admin
     try:
-        response = client.post(
-            "/api/v1/admin/usuarios", json=_crear_payload("intruso@hotmail.com")
-        )
+        response = client.post("/api/v1/admin/usuarios", json=_crear_payload("intruso@hotmail.com"))
         assert response.status_code == 422
     finally:
         app.dependency_overrides.pop(get_service, None)

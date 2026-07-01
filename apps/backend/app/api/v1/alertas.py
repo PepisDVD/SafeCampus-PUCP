@@ -14,8 +14,8 @@ from app.schemas.alerta import (
     AlertaEstadoInput,
     AlertaListResponse,
     AlertaPublishResponse,
-    AlertaUpdateInput,
     AlertasStatsResponse,
+    AlertaUpdateInput,
 )
 from app.schemas.auth import AuthUserResponse
 from app.services.alerta_service import AlertaService
@@ -36,7 +36,7 @@ async def listar_alertas(
     limit: int = Query(default=100, ge=1, le=200),
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: AlertaService = Depends(get_service),
-):
+) -> AlertaListResponse:
     return await service.listar(
         search=search,
         estado=estado.value if estado else None,
@@ -49,7 +49,7 @@ async def listar_alertas(
 async def obtener_stats_alertas(
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: AlertaService = Depends(get_service),
-):
+) -> AlertasStatsResponse:
     return await service.stats()
 
 
@@ -59,7 +59,7 @@ async def listar_destinatarios(
     limit: int = Query(default=100, ge=1, le=200),
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: AlertaService = Depends(get_service),
-):
+) -> AlertaDestinatariosResponse:
     """Usuarios de comunidad activos para segmentar una alerta por usuario especifico."""
     return await service.listar_destinatarios(search=search, limit=limit)
 
@@ -69,7 +69,7 @@ async def crear_alerta(
     body: AlertaCreateInput,
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: AlertaService = Depends(get_service),
-):
+) -> AlertaDetail:
     return await service.crear(body=body, actor_id=current_user.id)
 
 
@@ -78,7 +78,7 @@ async def obtener_alerta(
     alerta_id: str,
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: AlertaService = Depends(get_service),
-):
+) -> AlertaDetail:
     return await service.obtener(alerta_id)
 
 
@@ -88,7 +88,7 @@ async def actualizar_alerta(
     body: AlertaUpdateInput,
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: AlertaService = Depends(get_service),
-):
+) -> AlertaDetail:
     return await service.actualizar(alerta_id=alerta_id, body=body, actor_id=current_user.id)
 
 
@@ -97,7 +97,7 @@ async def publicar_alerta(
     alerta_id: str,
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: AlertaService = Depends(get_service),
-):
+) -> AlertaPublishResponse:
     return await service.publicar(alerta_id=alerta_id, actor_id=current_user.id)
 
 
@@ -107,7 +107,7 @@ async def cancelar_alerta(
     body: AlertaEstadoInput,
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: AlertaService = Depends(get_service),
-):
+) -> AlertaDetail:
     return await service.cancelar(
         alerta_id=alerta_id,
         actor_id=current_user.id,
@@ -121,7 +121,7 @@ async def finalizar_alerta(
     body: AlertaEstadoInput,
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: AlertaService = Depends(get_service),
-):
+) -> AlertaDetail:
     return await service.finalizar(
         alerta_id=alerta_id,
         actor_id=current_user.id,

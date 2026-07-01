@@ -62,16 +62,21 @@ class GeminiClient:
             raise LLMClientError("Gemini request failed before receiving a response.") from exc
 
         if response.status_code in {401, 403}:
-            raise LLMAuthError("Gemini credentials are invalid.")
+            raise LLMAuthError(f"Gemini credentials are invalid. {self._error_detail(response)}")
         if response.status_code == 429:
             raise LLMRateLimitError(
-                "Gemini rate limit exceeded.",
+                f"Gemini rate limit exceeded. {self._error_detail(response)}",
                 retry_after_seconds=self._retry_after(response),
             )
         if 500 <= response.status_code <= 599:
-            raise LLMServerError("Gemini reported an internal error.")
+            raise LLMServerError(
+                f"Gemini reported an internal error. {self._error_detail(response)}"
+            )
         if response.is_error:
-            raise LLMClientError(f"Gemini request failed with status {response.status_code}.")
+            raise LLMClientError(
+                f"Gemini request failed with status {response.status_code}. "
+                f"{self._error_detail(response)}"
+            )
 
         body = response.json()
         text = self._extract_text(body)
@@ -95,6 +100,19 @@ class GeminiClient:
         parts = content.get("parts") or []
         text_parts = [part.get("text", "") for part in parts if isinstance(part, dict)]
         return "".join(text_parts).strip()
+
+    @staticmethod
+    def _error_detail(response: httpx.Response) -> str:
+        """Extrae el mensaje de error de la API de Gemini para el log/diagnóstico."""
+        try:
+            body = response.json()
+        except ValueError:
+            return f"detalle={response.text[:300]}"
+        if isinstance(body, dict):
+            err = body.get("error")
+            if isinstance(err, dict) and err.get("message"):
+                return f"detalle={err['message']}"
+        return f"detalle={response.text[:300]}"
 
     def _retry_after(self, response: httpx.Response) -> float | None:
         retry_after = response.headers.get("retry-after")

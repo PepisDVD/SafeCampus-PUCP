@@ -2,6 +2,7 @@
 Logica de negocio para notificaciones internas.
 """
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -40,9 +41,7 @@ class NotificacionService:
         )
 
     async def contar_no_leidas(self, usuario_id: str) -> NotificacionUnreadCount:
-        return NotificacionUnreadCount(
-            unread_count=await self._repo.count_unread(usuario_id)
-        )
+        return NotificacionUnreadCount(unread_count=await self._repo.count_unread(usuario_id))
 
     async def marcar_leida(self, usuario_id: str, notificacion_id: str) -> None:
         try:
@@ -65,7 +64,7 @@ class NotificacionService:
         return await self.contar_no_leidas(usuario_id)
 
     @staticmethod
-    def _map_item(row: dict) -> NotificacionItem:
+    def _map_item(row: dict[str, Any]) -> NotificacionItem:
         return NotificacionItem(
             id=str(row["id"]),
             incidente_id=str(row["incidente_id"]) if row.get("incidente_id") else None,

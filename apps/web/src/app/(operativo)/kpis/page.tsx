@@ -7,6 +7,9 @@
  * (FastAPI → sc_incidentes). No accede a la BD directamente.
  */
 
+import { Suspense } from "react";
+
+import { Skeleton } from "@safecampus/ui-kit";
 import type { KpisPeriod, KpisResponse } from "@safecampus/shared-types";
 
 import { obtenerKpis } from "@/features/incidentes/service";
@@ -54,31 +57,32 @@ function pickOne(value: string | string[] | undefined): string | undefined {
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
-export default async function KpisPage({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
-  const params = await searchParams;
-  const rawPeriod = pickOne(params.period);
-  const period: KpisPeriod =
-    rawPeriod && VALID_PERIODS.has(rawPeriod) ? (rawPeriod as KpisPeriod) : "mes";
+function KpisContentSkeleton() {
+  return (
+    <>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-28 rounded-2xl" />
+        ))}
+      </section>
+      {Array.from({ length: 4 }).map((_, i) => (
+        <section
+          key={i}
+          className="rounded-2xl border border-slate-200 bg-white p-6"
+        >
+          <Skeleton className="mb-4 h-5 w-56" />
+          <Skeleton className="h-48 w-full" />
+        </section>
+      ))}
+    </>
+  );
+}
 
+async function KpisContent({ period }: { period: KpisPeriod }) {
   const kpis = await obtenerKpis(period).catch(() => KPIS_VACIO);
 
   return (
-    <div className="w-full min-w-0 space-y-5 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">KPIs y Reportes</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Indicadores operativos de seguridad del campus
-          </p>
-        </div>
-        <PeriodToggle current={period} />
-      </div>
-
+    <>
       {/* 6 KPI cards */}
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <KpiCard title="FRT promedio" data={kpis.frt} inverso />
@@ -123,6 +127,36 @@ export default async function KpisPage({
         </h2>
         <SlaBars sla={kpis.sla} />
       </section>
+    </>
+  );
+}
+
+export default async function KpisPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const params = await searchParams;
+  const rawPeriod = pickOne(params.period);
+  const period: KpisPeriod =
+    rawPeriod && VALID_PERIODS.has(rawPeriod) ? (rawPeriod as KpisPeriod) : "mes";
+
+  return (
+    <div className="w-full min-w-0 space-y-5 p-4 sm:p-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">KPIs y Reportes</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Indicadores operativos de seguridad del campus
+          </p>
+        </div>
+        <PeriodToggle current={period} />
+      </div>
+
+      <Suspense key={period} fallback={<KpisContentSkeleton />}>
+        <KpisContent period={period} />
+      </Suspense>
 
       {/* Export */}
       <ExportReporte />

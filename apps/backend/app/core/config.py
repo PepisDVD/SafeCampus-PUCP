@@ -13,7 +13,6 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -46,6 +45,7 @@ class Settings(BaseSettings):
     SESSION_COOKIE_NAME: str = "safecampus_session"
     SESSION_COOKIE_SECURE: bool = False
     SESSION_COOKIE_DOMAIN: str | None = None
+    ALLOW_INSTITUTIONAL_CREDENTIALS: bool = False
     WEB_APP_URL: str = "http://localhost:3000"
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"
     DEV_LAN_WEB_APP_URL: str | None = None
@@ -63,6 +63,17 @@ class Settings(BaseSettings):
     CHATBOT_ENABLED: bool = True
     CHATBOT_AUTO_CREATE_INCIDENTS: bool = True
     CHATBOT_SYSTEM_USER_ID: str = ""
+    CHATBOT_INACTIVITY_CLOSE_HOURS: int = 5
+    # Minutos de inactividad tras los cuales el borrador/contexto guardado del
+    # chatbot se considera vencido: si el usuario vuelve a escribir después de
+    # este lapso, no se arrastran el draft ni los datos previos (arranca limpio).
+    # Debe ser menor que CHATBOT_INACTIVITY_CLOSE_HOURS. 0 = deshabilitado.
+    CHATBOT_DRAFT_EXPIRY_MINUTES: int = 30
+    # Ventana de "debounce" del chatbot: al recibir un mensaje, el bot espera
+    # estos segundos por mensajes adicionales de la misma conversacion y procesa
+    # todo el bloque como un solo turno (evita respuestas duplicadas cuando el
+    # usuario escribe en fragmentos). 0 = procesar de inmediato.
+    CHATBOT_DEBOUNCE_SECONDS: float = 6.0
     WHATSAPP_TOKEN: str = ""
     WHATSAPP_PHONE_ID: str = ""
     WHATSAPP_PROVIDER: str = "evolution"
@@ -105,9 +116,7 @@ class Settings(BaseSettings):
     @property
     def dev_allowed_emails_set(self) -> set[str]:
         return {
-            value.strip().lower()
-            for value in self.DEV_ALLOWED_EMAILS.split(",")
-            if value.strip()
+            value.strip().lower() for value in self.DEV_ALLOWED_EMAILS.split(",") if value.strip()
         }
 
     @property
@@ -170,4 +179,4 @@ class Settings(BaseSettings):
         return init_settings, dotenv_settings, env_settings, file_secret_settings
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]  # pydantic-settings carga los campos desde el entorno

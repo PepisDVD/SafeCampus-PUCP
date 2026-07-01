@@ -49,6 +49,11 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
 # FastAPI (no un bug). Se ignora globalmente para evitar ruido.
 ignore = ["B008"]
 
+[tool.ruff.lint.per-file-ignores]
+# Las migraciones de Alembic contienen DDL/seeds con líneas largas inevitables
+# y no son código mantenido manualmente; no aplicamos el límite de longitud allí.
+"alembic/versions/*" = ["E501"]
+
 [tool.black]
 line-length = 100
 target-version = ["py312"]
@@ -60,3 +65,13 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+# El gate de tipos cubre el paquete de producción `app`. Tests, scripts de
+# desarrollo y migraciones de Alembic no se verifican en modo estricto (usan
+# fakes, datos de ejemplo y código generado).
+files = ["app"]
+exclude = '^(alembic|scripts|tests)/'
+
+# `python-jose` no publica stubs de tipos; evitamos el ruido de import-untyped.
+[[tool.mypy.overrides]]
+module = ["jose.*"]
+ignore_missing_imports = true

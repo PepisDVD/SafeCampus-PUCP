@@ -2,7 +2,7 @@
 Shared FastAPI dependencies for database sessions and authorization.
 """
 
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 
 from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +40,7 @@ async def get_current_user(
     )
 
 
-def require_roles(roles: set[str]) -> Callable[..., AuthUserResponse]:
+def require_roles(roles: set[str]) -> Callable[..., Awaitable[AuthUserResponse]]:
     async def dependency(
         current_user: AuthUserResponse = Depends(get_current_user),
     ) -> AuthUserResponse:

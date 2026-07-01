@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import AuditEntidad, AuditModulo, AuditOrigen, AuditResultado
 from app.core.config import settings
-from app.core.constants import CanalNotificacion, EstadoAlertaCampus
+from app.core.constants import CanalNotificacion, EstadoAlertaCampus, OrigenAlerta
 from app.integrations.messaging.evolution_client import EvolutionApiClient
 from app.repositories.alerta_repository import AlertaRepository
 from app.repositories.auditoria_repository import AuditoriaRepository
@@ -26,8 +26,8 @@ from app.schemas.alerta import (
     AlertaListResponse,
     AlertaPublishResponse,
     AlertaSegmentoItem,
-    AlertaUpdateInput,
     AlertasStatsResponse,
+    AlertaUpdateInput,
 )
 
 
@@ -75,7 +75,9 @@ class AlertaService:
         self._validate_uuid(alerta_id)
         row = await self._repo.get_alerta(alerta_id)
         if not row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta no encontrada.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Alerta no encontrada."
+            )
         return await self._hydrate_detail(row)
 
     async def crear(self, *, body: AlertaCreateInput, actor_id: str) -> AlertaDetail:
@@ -107,7 +109,9 @@ class AlertaService:
         )
         return await self._hydrate_detail(row)
 
-    async def actualizar(self, *, alerta_id: str, body: AlertaUpdateInput, actor_id: str) -> AlertaDetail:
+    async def actualizar(
+        self, *, alerta_id: str, body: AlertaUpdateInput, actor_id: str
+    ) -> AlertaDetail:
         self._validate_uuid(alerta_id)
         self._validate_location(body.latitud, body.longitud)
         data = body.model_dump(exclude_unset=True, exclude={"segmentos"})
@@ -145,7 +149,11 @@ class AlertaService:
 
     async def publicar(self, *, alerta_id: str, actor_id: str) -> AlertaPublishResponse:
         detail = await self.obtener(alerta_id)
-        if detail.estado not in {EstadoAlertaCampus.BORRADOR, EstadoAlertaCampus.PROGRAMADA, EstadoAlertaCampus.ACTIVA}:
+        if detail.estado not in {
+            EstadoAlertaCampus.BORRADOR,
+            EstadoAlertaCampus.PROGRAMADA,
+            EstadoAlertaCampus.ACTIVA,
+        }:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La alerta no esta en un estado publicable.",
@@ -208,7 +216,9 @@ class AlertaService:
             entregas_fallidas=failed,
         )
 
-    async def cancelar(self, *, alerta_id: str, actor_id: str, comentario: str | None) -> AlertaDetail:
+    async def cancelar(
+        self, *, alerta_id: str, actor_id: str, comentario: str | None
+    ) -> AlertaDetail:
         await self.obtener(alerta_id)
         await self._repo.set_estado(alerta_id, estado="CANCELADA", actor_id=actor_id)
         await self._repo.add_evento(
@@ -225,7 +235,9 @@ class AlertaService:
         )
         return await self.obtener(alerta_id)
 
-    async def finalizar(self, *, alerta_id: str, actor_id: str, comentario: str | None) -> AlertaDetail:
+    async def finalizar(
+        self, *, alerta_id: str, actor_id: str, comentario: str | None
+    ) -> AlertaDetail:
         await self.obtener(alerta_id)
         await self._repo.set_estado(alerta_id, estado="ATENDIDA", actor_id=actor_id)
         await self._repo.add_evento(
@@ -273,7 +285,9 @@ class AlertaService:
             count = int(row["total"] or 0)
             total_alertas += count
             por_estado[str(row["estado"])] = por_estado.get(str(row["estado"]), 0) + count
-            por_severidad[str(row["severidad"])] = por_severidad.get(str(row["severidad"]), 0) + count
+            por_severidad[str(row["severidad"])] = (
+                por_severidad.get(str(row["severidad"]), 0) + count
+            )
 
         por_canal: dict[str, int] = {}
         entregas_total = 0
@@ -335,8 +349,12 @@ class AlertaService:
         alerta_id = str(row["id"])
         return AlertaDetail(
             **self._map_list_item(row).model_dump(),
-            segmentos=[self._map_segmento(item) for item in await self._repo.list_segmentos(alerta_id)],
-            entregas=[self._map_entrega(item) for item in await self._repo.list_entregas(alerta_id)],
+            segmentos=[
+                self._map_segmento(item) for item in await self._repo.list_segmentos(alerta_id)
+            ],
+            entregas=[
+                self._map_entrega(item) for item in await self._repo.list_entregas(alerta_id)
+            ],
             eventos=[self._map_evento(item) for item in await self._repo.list_eventos(alerta_id)],
         )
 
@@ -361,7 +379,7 @@ class AlertaService:
             contenido=str(row["contenido"]),
             severidad=row["severidad"],
             estado=row["estado"],
-            origen=row.get("origen") or "MANUAL",
+            origen=OrigenAlerta(row.get("origen") or "MANUAL"),
             canales=row.get("canales") or ["INAPP"],
             zona_id=str(row["zona_id"]) if row.get("zona_id") else None,
             zona_nombre=row.get("zona_nombre"),
@@ -420,7 +438,9 @@ class AlertaService:
         try:
             UUID(value)
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ID invalido.") from exc
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="ID invalido."
+            ) from exc
 
     @staticmethod
     def _validate_location(latitud: float | None, longitud: float | None) -> None:
@@ -437,5 +457,5 @@ class AlertaService:
             if isinstance(value, str):
                 return value
             if isinstance(value, dict) and isinstance(value.get("id"), str):
-                return value["id"]
+                return str(value["id"])
         return None

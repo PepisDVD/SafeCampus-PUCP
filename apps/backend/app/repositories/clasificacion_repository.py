@@ -44,9 +44,7 @@ class ClasificacionRepository:
                     "normalized": normalized.model_dump(mode="json"),
                     "final": final.model_dump(mode="json"),
                     "provider_response": (
-                        provider_response.model_dump(mode="json")
-                        if provider_response
-                        else None
+                        provider_response.model_dump(mode="json") if provider_response else None
                     ),
                 },
                 categoria_final=final.categoria,
@@ -71,9 +69,7 @@ class ClasificacionRepository:
                         "normalized": normalized.model_dump(mode="json"),
                         "final": final.model_dump(mode="json"),
                         "provider_response": (
-                            provider_response.model_dump(mode="json")
-                            if provider_response
-                            else None
+                            provider_response.model_dump(mode="json") if provider_response else None
                         ),
                     },
                     "categoria_final": final.categoria,

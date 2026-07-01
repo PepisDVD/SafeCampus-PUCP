@@ -114,6 +114,7 @@ export type ConversationHistoryDetail = {
 export type ConversationMessage = {
   id: string;
   conversacion_id: string;
+  ciclo_id?: string | null;
   external_message_id?: string | null;
   direccion: MessageDirection;
   autor_tipo: MessageAuthor;
@@ -121,6 +122,14 @@ export type ConversationMessage = {
   contenido?: string | null;
   tipo_contenido: string;
   estado_entrega: string;
+  media?: {
+    url?: string | null;
+    data_url?: string | null;
+    thumbnail_data_url?: string | null;
+    mimetype?: string | null;
+    filename?: string | null;
+    caption?: string | null;
+  } | null;
   created_at: string;
 };
 
@@ -132,4 +141,57 @@ export type RealtimeEvent = {
   type: string;
   conversacion_id?: string | null;
   payload?: Record<string, unknown>;
+};
+
+export type ConversationCycleSummary = {
+  id: string;
+  nombre_contacto?: string | null;
+  telefono_contacto?: string | null;
+  external_chat_id: string;
+  ciclos_count: number;
+  ultimo_ciclo_at?: string | null;
+};
+
+export type ConversationCyclesListResponse = {
+  items: ConversationCycleSummary[];
+  total: number;
+};
+
+export type ConversationCycleListItem = {
+  id: string;
+  conversacion_id: string;
+  incidente?: ConversationIncident | null;
+  estado: "ACTIVO" | "CERRADO";
+  cierre_tipo: string;
+  cierre_motivo?: string | null;
+  mensajes_count: number;
+  imagenes_count: number;
+  started_at: string;
+  closed_at?: string | null;
+  cerrado_por?: ConversationUser | null;
+};
+
+export type ConversationCyclesDetail = {
+  conversacion: ConversationCycleSummary;
+  ciclos: ConversationCycleListItem[];
+};
+
+export type ConversationEvent = {
+  id: string;
+  conversacion_id: string;
+  ciclo_id?: string | null;
+  tipo_evento: string;
+  actor_usuario?: ConversationUser | null;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ConversationCycleDetail = {
+  ciclo: ConversationCycleListItem;
+  mensajes: ConversationMessage[];
+  eventos: ConversationEvent[];
+  chatbot_snapshot: Record<string, unknown>;
+  clasificacion_snapshot: Record<string, unknown>;
+  asignaciones_snapshot: Record<string, unknown>[];
+  metadatos: Record<string, unknown>;
 };

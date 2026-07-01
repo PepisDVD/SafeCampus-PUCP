@@ -12,6 +12,7 @@ import json
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "20260622_0022"
@@ -65,7 +66,12 @@ CATEGORIAS = [
         "Laptops, celulares, tablets, cargadores, audífonos.",
         False,
         1,
-        [("MARCA", False, True), ("MODELO", False, True), ("COLOR", False, True), ("NUMERO_SERIE", False, True)],
+        [
+            ("MARCA", False, True),
+            ("MODELO", False, True),
+            ("COLOR", False, True),
+            ("NUMERO_SERIE", False, True),
+        ],
     ),
     (
         "DOCUMENTOS",
@@ -81,7 +87,12 @@ CATEGORIAS = [
         "Casacas, mochilas, gorras, lentes, bufandas.",
         False,
         3,
-        [("TIPO_PRENDA", False, True), ("COLOR", False, True), ("MARCA", False, True), ("TALLA_APROXIMADA", False, False)],
+        [
+            ("TIPO_PRENDA", False, True),
+            ("COLOR", False, True),
+            ("MARCA", False, True),
+            ("TALLA_APROXIMADA", False, False),
+        ],
     ),
     (
         "LLAVES",
@@ -89,7 +100,11 @@ CATEGORIAS = [
         "Llaves de casa, auto, candado, llaveros, tarjetas.",
         False,
         4,
-        [("TIPO_LLAVE", False, True), ("DISTINTIVO_LLAVERO", False, True), ("CANTIDAD", False, False)],
+        [
+            ("TIPO_LLAVE", False, True),
+            ("DISTINTIVO_LLAVERO", False, True),
+            ("CANTIDAD", False, False),
+        ],
     ),
     (
         "UTILES_ACADEMICOS",

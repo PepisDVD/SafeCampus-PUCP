@@ -21,16 +21,34 @@ def _user(roles: list[str], email: str = "operador@example.com") -> AuthUserResp
 
 
 class FakeAuthService:
-    async def login_web_with_credentials(self, *, email: str, password: str):
+    async def login_web_with_credentials(
+        self,
+        *,
+        email: str,
+        password: str,
+        ip_origen: str | None = None,
+        dispositivo: str | None = None,
+    ):
         assert password == "secret"
+        assert ip_origen
+        assert dispositivo
         return _user(["comunidad"], email=email), "web-session-token"
 
-    async def login_operator_with_password(self, *, email: str, password: str):
+    async def login_operator_with_password(
+        self,
+        *,
+        email: str,
+        password: str,
+        ip_origen: str | None = None,
+        dispositivo: str | None = None,
+    ):
+        assert ip_origen
+        assert dispositivo
         return _user(["operador"], email=email), "mobile-jwt"
 
 
 class DenyingAuthService:
-    async def login_web_with_credentials(self, *, email: str, password: str):
+    async def login_web_with_credentials(self, **_kwargs):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas.",

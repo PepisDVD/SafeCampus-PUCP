@@ -10,6 +10,7 @@ import json
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "20260623_0023"
@@ -55,11 +56,29 @@ def _schema(campos: list[tuple[str, bool, bool]]) -> str:
 
 # codigo_categoria -> campos [(codigo, requerido, participa_matching)]
 CATEGORIAS: dict[str, list[tuple[str, bool, bool]]] = {
-    "ELECTRONICOS": [("MARCA", False, True), ("MODELO", False, True), ("COLOR", False, True), ("NUMERO_SERIE", False, True)],
+    "ELECTRONICOS": [
+        ("MARCA", False, True),
+        ("MODELO", False, True),
+        ("COLOR", False, True),
+        ("NUMERO_SERIE", False, True),
+    ],
     "DOCUMENTOS": [("TIPO_DOCUMENTO", True, True), ("ENTIDAD_EMISORA", False, True)],
-    "ROPA_Y_ACCESORIOS": [("TIPO_PRENDA", False, True), ("COLOR", False, True), ("MARCA", False, True), ("TALLA_APROXIMADA", False, False)],
-    "LLAVES": [("TIPO_LLAVE", False, True), ("DISTINTIVO_LLAVERO", False, True), ("CANTIDAD", False, False)],
-    "UTILES_ACADEMICOS": [("MARCA", False, True), ("COLOR", False, True), ("CONDICION_OBJETO", False, False)],
+    "ROPA_Y_ACCESORIOS": [
+        ("TIPO_PRENDA", False, True),
+        ("COLOR", False, True),
+        ("MARCA", False, True),
+        ("TALLA_APROXIMADA", False, False),
+    ],
+    "LLAVES": [
+        ("TIPO_LLAVE", False, True),
+        ("DISTINTIVO_LLAVERO", False, True),
+        ("CANTIDAD", False, False),
+    ],
+    "UTILES_ACADEMICOS": [
+        ("MARCA", False, True),
+        ("COLOR", False, True),
+        ("CONDICION_OBJETO", False, False),
+    ],
     "OTROS": [("COLOR", False, True), ("CONDICION_OBJETO", False, False)],
 }
 

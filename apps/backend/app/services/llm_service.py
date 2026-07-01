@@ -12,7 +12,9 @@ from app.repositories.clasificacion_repository import ClasificacionRepository
 
 
 class LLMService:
-    def __init__(self, db: AsyncSession | None = None, *, orchestrator: LLMOrchestrator | None = None) -> None:
+    def __init__(
+        self, db: AsyncSession | None = None, *, orchestrator: LLMOrchestrator | None = None
+    ) -> None:
         self._db = db
         self._orchestrator = orchestrator or LLMOrchestrator()
         self._repo = ClasificacionRepository(db) if db is not None else None

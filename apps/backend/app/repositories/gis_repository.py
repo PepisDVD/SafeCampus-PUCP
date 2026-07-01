@@ -141,7 +141,9 @@ class GisRepository:
         result = await self.db.execute(statement, {"limit": limit})
         return [dict(row) for row in result.mappings()]
 
-    async def route_between_locations(self, *, origen_id: str, destino_id: str) -> dict[str, Any] | None:
+    async def route_between_locations(
+        self, *, origen_id: str, destino_id: str
+    ) -> dict[str, Any] | None:
         statement = text(
             """
             SELECT

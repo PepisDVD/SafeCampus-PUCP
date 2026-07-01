@@ -26,7 +26,7 @@ async def consultar_proximidad(
     limit: int = Query(default=50, ge=1, le=100),
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: GisService = Depends(get_service),
-):
+) -> GisNearbyResponse:
     return await service.proximidad(
         latitud=latitud,
         longitud=longitud,
@@ -42,7 +42,7 @@ async def consultar_heatmap(
     limit: int = Query(default=500, ge=1, le=1000),
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: GisService = Depends(get_service),
-):
+) -> GisHeatmapResponse:
     return await service.heatmap(tipo=tipo, limit=limit, actor_id=current_user.id)
 
 
@@ -52,7 +52,7 @@ async def calcular_ruta(
     destino_id: str,
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: GisService = Depends(get_service),
-):
+) -> GisRouteResponse:
     return await service.ruta(
         origen_id=origen_id,
         destino_id=destino_id,

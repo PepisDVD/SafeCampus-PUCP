@@ -18,27 +18,41 @@ class PlantillaNotificacion(Base):
     __tablename__ = "plantilla_notificacion"
     __table_args__ = {"schema": "sc_notificaciones"}
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
     tipo_evento: Mapped[str] = mapped_column(String(100), nullable=False)
     canal: Mapped[str] = mapped_column(CanalNotificacionEnum, nullable=False)
     asunto: Mapped[str | None] = mapped_column(String(255))
     cuerpo_template: Mapped[str] = mapped_column(Text, nullable=False)
     variables: Mapped[list[Any] | None] = mapped_column(JSONB, server_default="[]")
     activa: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Notificacion(Base):
     __tablename__ = "notificacion"
     __table_args__ = {"schema": "sc_notificaciones"}
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    incidente_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_incidentes.incidente.id"))
-    destinatario_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    incidente_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sc_incidentes.incidente.id")
+    )
+    destinatario_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"), nullable=False
+    )
     tipo_evento: Mapped[str] = mapped_column(String(100), nullable=False)
     canal: Mapped[str] = mapped_column(CanalNotificacionEnum, nullable=False)
-    estado: Mapped[str] = mapped_column(EstadoNotificacionEnum, nullable=False, server_default="PENDIENTE")
+    estado: Mapped[str] = mapped_column(
+        EstadoNotificacionEnum, nullable=False, server_default="PENDIENTE"
+    )
     asunto: Mapped[str | None] = mapped_column(String(255))
     contenido: Mapped[str] = mapped_column(Text, nullable=False)
     reintentos: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
@@ -46,17 +60,29 @@ class Notificacion(Base):
     error_detalle: Mapped[str | None] = mapped_column(Text)
     fecha_envio: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fecha_lectura: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class PreferenciaNotificacion(Base):
     __tablename__ = "preferencia_notificacion"
     __table_args__ = {"schema": "sc_notificaciones"}
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    usuario_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id", ondelete="CASCADE"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    usuario_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sc_users.usuario.id", ondelete="CASCADE"), nullable=False
+    )
     canal: Mapped[str] = mapped_column(CanalNotificacionEnum, nullable=False)
     habilitado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )

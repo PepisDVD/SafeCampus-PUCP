@@ -84,8 +84,14 @@ class GisService:
             destino_nombre=row["destino_nombre"],
             distancia_metros=round(float(row["distancia_metros"]), 1),
             puntos=[
-                {"latitud": float(row["origen_latitud"]), "longitud": float(row["origen_longitud"])},
-                {"latitud": float(row["destino_latitud"]), "longitud": float(row["destino_longitud"])},
+                {
+                    "latitud": float(row["origen_latitud"]),
+                    "longitud": float(row["origen_longitud"]),
+                },
+                {
+                    "latitud": float(row["destino_latitud"]),
+                    "longitud": float(row["destino_longitud"]),
+                },
             ],
         )
 
@@ -94,4 +100,6 @@ class GisService:
         try:
             UUID(value)
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ID invalido.") from exc
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="ID invalido."
+            ) from exc

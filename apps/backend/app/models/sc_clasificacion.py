@@ -19,7 +19,9 @@ class ReglaClasificacion(Base):
     __tablename__ = "regla_clasificacion"
     __table_args__ = {"schema": "sc_clasificacion"}
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
     nombre: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     descripcion: Mapped[str | None] = mapped_column(Text)
     condicion: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -27,16 +29,27 @@ class ReglaClasificacion(Base):
     severidad_resultado: Mapped[str] = mapped_column(NivelSeveridadEnum, nullable=False)
     prioridad: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     activa: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class ClasificacionIa(Base):
     __tablename__ = "clasificacion_ia"
     __table_args__ = {"schema": "sc_clasificacion"}
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    incidente_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_incidentes.incidente.id", ondelete="CASCADE"), nullable=False, unique=True)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    incidente_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sc_incidentes.incidente.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
     categoria_sugerida: Mapped[str | None] = mapped_column(String(100))
     severidad_sugerida: Mapped[str | None] = mapped_column(NivelSeveridadEnum)
     confianza: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
@@ -46,10 +59,18 @@ class ClasificacionIa(Base):
     tokens_consumidos: Mapped[int | None] = mapped_column(Integer)
     tiempo_respuesta_ms: Mapped[int | None] = mapped_column(Integer)
     respuesta_raw: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    regla_clasificacion_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_clasificacion.regla_clasificacion.id"))
+    regla_clasificacion_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sc_clasificacion.regla_clasificacion.id")
+    )
     categoria_final: Mapped[str | None] = mapped_column(String(100))
     severidad_final: Mapped[str | None] = mapped_column(NivelSeveridadEnum)
-    confirmado_por_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sc_users.usuario.id"))
+    confirmado_por_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sc_users.usuario.id")
+    )
     fecha_confirmacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )

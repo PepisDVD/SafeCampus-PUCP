@@ -72,7 +72,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS trg_proteger_codigo_motivo_cierre_lf ON sc_lost_found.motivo_cierre_lf")
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_proteger_codigo_motivo_cierre_lf ON sc_lost_found.motivo_cierre_lf"
+    )
     op.execute("DROP FUNCTION IF EXISTS sc_lost_found.proteger_codigo_motivo_cierre_lf()")
     op.execute("ALTER TABLE sc_lost_found.caso_lost_found DROP COLUMN IF EXISTS motivo_cierre_id")
     op.execute("DROP TABLE IF EXISTS sc_lost_found.motivo_cierre_lf")

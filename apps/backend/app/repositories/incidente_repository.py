@@ -4,12 +4,12 @@
 📦 Capa: Repositorios
 """
 
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, desc, func, or_, select, update
+from sqlalchemy import Select, and_, desc, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -37,7 +37,7 @@ class IncidenteRepository:
     # Lectura
     # ------------------------------------------------------------------
 
-    def _base_select(self):
+    def _base_select(self) -> Select[Any]:
         operador_nombre = func.nullif(
             func.trim(
                 func.concat(
@@ -97,9 +97,7 @@ class IncidenteRepository:
         if estado:
             statement = statement.where(Incidente.estado == estado)
         if asignado_a:
-            statement = statement.where(
-                Incidente.operador_asignado_id == UUID(asignado_a)
-            )
+            statement = statement.where(Incidente.operador_asignado_id == UUID(asignado_a))
 
         statement = statement.order_by(Incidente.created_at.desc()).limit(limit)
         result = await self.db.execute(statement)
@@ -110,9 +108,9 @@ class IncidenteRepository:
         incidente_id: str,
     ) -> dict[str, Any] | None:
         """Detalle completo de un incidente con joins a reportante / operador / supervisor."""
-        Reportante = aliased(Usuario, name="reportante")
-        Operador = aliased(Usuario, name="operador")
-        Supervisor = aliased(Usuario, name="supervisor")
+        reportante = aliased(Usuario, name="reportante")
+        operador = aliased(Usuario, name="operador")
+        supervisor = aliased(Usuario, name="supervisor")
 
         statement = (
             select(
@@ -135,24 +133,24 @@ class IncidenteRepository:
                 Incidente.created_at,
                 Incidente.updated_at,
                 Incidente.reportante_id,
-                Reportante.nombre.label("reportante_nombre"),
-                Reportante.apellido.label("reportante_apellido"),
-                Reportante.email.label("reportante_email"),
-                Reportante.avatar_url.label("reportante_avatar_url"),
+                reportante.nombre.label("reportante_nombre"),
+                reportante.apellido.label("reportante_apellido"),
+                reportante.email.label("reportante_email"),
+                reportante.avatar_url.label("reportante_avatar_url"),
                 Incidente.operador_asignado_id,
-                Operador.nombre.label("operador_nombre"),
-                Operador.apellido.label("operador_apellido"),
-                Operador.email.label("operador_email"),
-                Operador.avatar_url.label("operador_avatar_url"),
+                operador.nombre.label("operador_nombre"),
+                operador.apellido.label("operador_apellido"),
+                operador.email.label("operador_email"),
+                operador.avatar_url.label("operador_avatar_url"),
                 Incidente.supervisor_id,
-                Supervisor.nombre.label("supervisor_nombre"),
-                Supervisor.apellido.label("supervisor_apellido"),
-                Supervisor.email.label("supervisor_email"),
-                Supervisor.avatar_url.label("supervisor_avatar_url"),
+                supervisor.nombre.label("supervisor_nombre"),
+                supervisor.apellido.label("supervisor_apellido"),
+                supervisor.email.label("supervisor_email"),
+                supervisor.avatar_url.label("supervisor_avatar_url"),
             )
-            .outerjoin(Reportante, Reportante.id == Incidente.reportante_id)
-            .outerjoin(Operador, Operador.id == Incidente.operador_asignado_id)
-            .outerjoin(Supervisor, Supervisor.id == Incidente.supervisor_id)
+            .outerjoin(reportante, reportante.id == Incidente.reportante_id)
+            .outerjoin(operador, operador.id == Incidente.operador_asignado_id)
+            .outerjoin(supervisor, supervisor.id == Incidente.supervisor_id)
             .where(
                 Incidente.id == UUID(incidente_id),
                 Incidente.deleted_at.is_(None),
@@ -169,9 +167,9 @@ class IncidenteRepository:
         reportante_id: str,
     ) -> dict[str, Any] | None:
         """Detalle de un incidente propio de comunidad, por codigo o UUID."""
-        Reportante = aliased(Usuario, name="reportante")
-        Operador = aliased(Usuario, name="operador")
-        Supervisor = aliased(Usuario, name="supervisor")
+        reportante = aliased(Usuario, name="reportante")
+        operador = aliased(Usuario, name="operador")
+        supervisor = aliased(Usuario, name="supervisor")
 
         filters = [
             Incidente.reportante_id == UUID(reportante_id),
@@ -203,24 +201,24 @@ class IncidenteRepository:
                 Incidente.created_at,
                 Incidente.updated_at,
                 Incidente.reportante_id,
-                Reportante.nombre.label("reportante_nombre"),
-                Reportante.apellido.label("reportante_apellido"),
-                Reportante.email.label("reportante_email"),
-                Reportante.avatar_url.label("reportante_avatar_url"),
+                reportante.nombre.label("reportante_nombre"),
+                reportante.apellido.label("reportante_apellido"),
+                reportante.email.label("reportante_email"),
+                reportante.avatar_url.label("reportante_avatar_url"),
                 Incidente.operador_asignado_id,
-                Operador.nombre.label("operador_nombre"),
-                Operador.apellido.label("operador_apellido"),
-                Operador.email.label("operador_email"),
-                Operador.avatar_url.label("operador_avatar_url"),
+                operador.nombre.label("operador_nombre"),
+                operador.apellido.label("operador_apellido"),
+                operador.email.label("operador_email"),
+                operador.avatar_url.label("operador_avatar_url"),
                 Incidente.supervisor_id,
-                Supervisor.nombre.label("supervisor_nombre"),
-                Supervisor.apellido.label("supervisor_apellido"),
-                Supervisor.email.label("supervisor_email"),
-                Supervisor.avatar_url.label("supervisor_avatar_url"),
+                supervisor.nombre.label("supervisor_nombre"),
+                supervisor.apellido.label("supervisor_apellido"),
+                supervisor.email.label("supervisor_email"),
+                supervisor.avatar_url.label("supervisor_avatar_url"),
             )
-            .outerjoin(Reportante, Reportante.id == Incidente.reportante_id)
-            .outerjoin(Operador, Operador.id == Incidente.operador_asignado_id)
-            .outerjoin(Supervisor, Supervisor.id == Incidente.supervisor_id)
+            .outerjoin(reportante, reportante.id == Incidente.reportante_id)
+            .outerjoin(operador, operador.id == Incidente.operador_asignado_id)
+            .outerjoin(supervisor, supervisor.id == Incidente.supervisor_id)
             .where(*filters)
             .limit(1)
         )
@@ -286,9 +284,7 @@ class IncidenteRepository:
         if estado:
             statement = statement.where(Incidente.estado == estado)
         if activos_only:
-            statement = statement.where(
-                Incidente.estado.notin_(("RESUELTO", "CERRADO"))
-            )
+            statement = statement.where(Incidente.estado.notin_(("RESUELTO", "CERRADO")))
 
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
@@ -515,18 +511,12 @@ class IncidenteRepository:
 
         Con `asignado_a` se restringe a los incidentes del operador indicado.
         """
-        cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+        cutoff_24h = datetime.now(UTC) - timedelta(hours=24)
         statement = select(
             func.count().label("total"),
-            func.count()
-            .filter(Incidente.estado.notin_(("RESUELTO", "CERRADO")))
-            .label("activos"),
-            func.count()
-            .filter(Incidente.severidad == "CRITICO")
-            .label("criticos"),
-            func.count()
-            .filter(Incidente.estado == "EN_ATENCION")
-            .label("en_atencion"),
+            func.count().filter(Incidente.estado.notin_(("RESUELTO", "CERRADO"))).label("activos"),
+            func.count().filter(Incidente.severidad == "CRITICO").label("criticos"),
+            func.count().filter(Incidente.estado == "EN_ATENCION").label("en_atencion"),
             func.count()
             .filter(
                 and_(
@@ -538,9 +528,7 @@ class IncidenteRepository:
         ).where(Incidente.deleted_at.is_(None))
 
         if asignado_a:
-            statement = statement.where(
-                Incidente.operador_asignado_id == UUID(asignado_a)
-            )
+            statement = statement.where(Incidente.operador_asignado_id == UUID(asignado_a))
 
         result = await self.db.execute(statement)
         row = result.mappings().one()
@@ -573,17 +561,15 @@ class IncidenteRepository:
 
         statement = select(
             func.count().label("total"),
-            func.count()
-            .filter(Incidente.estado.in_(("RESUELTO", "CERRADO")))
-            .label("resueltos"),
-            func.count()
-            .filter(Incidente.severidad == "CRITICO")
-            .label("criticos"),
+            func.count().filter(Incidente.estado.in_(("RESUELTO", "CERRADO"))).label("resueltos"),
+            func.count().filter(Incidente.severidad == "CRITICO").label("criticos"),
             func.count().filter(Incidente.estado == "ESCALADO").label("escalados"),
-            (func.avg(epoch_frt).filter(Incidente.fecha_primera_respuesta.is_not(None)) / 60.0)
-            .label("frt_min"),
-            (func.avg(epoch_tmr).filter(Incidente.fecha_resolucion.is_not(None)) / 60.0)
-            .label("tmr_min"),
+            (
+                func.avg(epoch_frt).filter(Incidente.fecha_primera_respuesta.is_not(None)) / 60.0
+            ).label("frt_min"),
+            (func.avg(epoch_tmr).filter(Incidente.fecha_resolucion.is_not(None)) / 60.0).label(
+                "tmr_min"
+            ),
             func.count()
             .filter(
                 Incidente.fecha_primera_respuesta.is_not(None),
@@ -629,9 +615,7 @@ class IncidenteRepository:
                 func.count()
                 .filter(Incidente.estado.in_(("RESUELTO", "CERRADO")))
                 .label("resueltos"),
-                func.count()
-                .filter(Incidente.severidad == "CRITICO")
-                .label("criticos"),
+                func.count().filter(Incidente.severidad == "CRITICO").label("criticos"),
             )
             .where(
                 Incidente.deleted_at.is_(None),
@@ -736,8 +720,8 @@ class IncidenteRepository:
         concurrentes podría producir colisiones; el constraint UNIQUE en
         `codigo` garantiza integridad y el llamador puede reintentar.
         """
-        inicio_dia = datetime.combine(ahora.date(), time.min, tzinfo=timezone.utc)
-        fin_dia = datetime.combine(ahora.date(), time.max, tzinfo=timezone.utc)
+        inicio_dia = datetime.combine(ahora.date(), time.min, tzinfo=UTC)
+        fin_dia = datetime.combine(ahora.date(), time.max, tzinfo=UTC)
         statement = select(func.count(Incidente.id)).where(
             and_(
                 Incidente.created_at >= inicio_dia,
@@ -749,7 +733,7 @@ class IncidenteRepository:
         return f"{INCIDENT_CODE_PREFIX}-{ahora.strftime('%Y%m%d')}-{secuencia:04d}"
 
     async def get_estado_actual(self, incidente_id: str) -> dict[str, Any] | None:
-        """Devuelve el estado, fecha_primera_respuesta y supervisor_id actuales (para el flow de updates)."""
+        """Estado, fecha_primera_respuesta y supervisor_id actuales (para el flow de updates)."""
         statement = (
             select(
                 Incidente.id,
@@ -782,15 +766,12 @@ class IncidenteRepository:
         if actual is None:
             return None
 
-        ahora = datetime.now(timezone.utc)
+        ahora = datetime.now(UTC)
         estado_anterior: str = str(actual["estado"])
 
         values: dict[str, Any] = {"estado": new_estado, "updated_at": ahora}
         # FRT: setear si aún no se había seteado y se sale de RECIBIDO.
-        if (
-            actual["fecha_primera_respuesta"] is None
-            and new_estado != "RECIBIDO"
-        ):
+        if actual["fecha_primera_respuesta"] is None and new_estado != "RECIBIDO":
             values["fecha_primera_respuesta"] = ahora
         # TMR: setear cuando se resuelve o se cierra directamente.
         if new_estado in {"RESUELTO", "CERRADO"} and actual["fecha_resolucion"] is None:
@@ -807,7 +788,7 @@ class IncidenteRepository:
             return None
 
         await self.db.execute(
-            HistorialIncidente.__table__.insert().values(
+            HistorialIncidente.__table__.insert().values(  # type: ignore[attr-defined]
                 incidente_id=UUID(incidente_id),
                 estado_anterior=estado_anterior,
                 estado_nuevo=new_estado,
@@ -835,7 +816,7 @@ class IncidenteRepository:
         precision_metros: float | None = None,
         expires_at: datetime | None = None,
     ) -> dict[str, Any] | None:
-        ahora = datetime.now(timezone.utc)
+        ahora = datetime.now(UTC)
         values: dict[str, Any] = {
             "live_location_enabled": activo,
             "live_location_updated_at": ahora if activo else None,
@@ -875,9 +856,7 @@ class IncidenteRepository:
                     geom=func.ST_SetSRID(func.ST_MakePoint(longitud, latitud), 4326),
                     fuente="GPS_LIVE",
                     precision_metros=(
-                        Decimal(str(precision_metros))
-                        if precision_metros is not None
-                        else None
+                        Decimal(str(precision_metros)) if precision_metros is not None else None
                     ),
                     descripcion="Actualizacion de ubicacion en vivo desde PWA Comunidad",
                 )
@@ -898,7 +877,7 @@ class IncidenteRepository:
         if actual is None:
             return None
 
-        ahora = datetime.now(timezone.utc)
+        ahora = datetime.now(UTC)
         estado_actual: str = str(actual["estado"])
 
         values: dict[str, Any] = {
@@ -923,7 +902,7 @@ class IncidenteRepository:
             return None
 
         await self.db.execute(
-            HistorialIncidente.__table__.insert().values(
+            HistorialIncidente.__table__.insert().values(  # type: ignore[attr-defined]
                 incidente_id=UUID(incidente_id),
                 estado_anterior=estado_actual,
                 estado_nuevo=estado_actual,
@@ -937,9 +916,7 @@ class IncidenteRepository:
             "codigo": actual["codigo"],
             "estado": estado_actual,
             "operador_anterior_id": (
-                str(actual["operador_asignado_id"])
-                if actual["operador_asignado_id"]
-                else None
+                str(actual["operador_asignado_id"]) if actual["operador_asignado_id"] else None
             ),
             "operador_nuevo_id": operador_id,
             "supervisor_id": str(values.get("supervisor_id") or actual["supervisor_id"])
@@ -976,7 +953,7 @@ class IncidenteRepository:
         reportante_id: str,
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        ahora = datetime.now(timezone.utc)
+        ahora = datetime.now(UTC)
         codigo = await self._next_codigo(ahora)
 
         nuevo = Incidente(

@@ -1,9 +1,23 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from geoalchemy2 import Geography
-from sqlalchemy import and_, case, cast, delete, desc, exists, func, literal, or_, select, update
+from sqlalchemy import (
+    ColumnElement,
+    Select,
+    and_,
+    case,
+    cast,
+    delete,
+    desc,
+    exists,
+    func,
+    literal,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -31,7 +45,7 @@ class LostFoundRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    def _base_select(self):
+    def _base_select(self) -> Select[Any]:
         ultimo_comentario = (
             select(ComentarioCasoLf.contenido)
             .where(ComentarioCasoLf.caso_id == CasoLostFound.id)
@@ -119,7 +133,9 @@ class LostFoundRepository:
         await self.db.refresh(categoria)
         return self._categoria_dict(categoria)
 
-    async def update_categoria(self, categoria_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    async def update_categoria(
+        self, categoria_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
         statement = (
             update(CategoriaObjeto)
             .where(CategoriaObjeto.id == UUID(categoria_id))
@@ -135,17 +151,28 @@ class LostFoundRepository:
     @staticmethod
     def _motivo_dict(row: MotivoCierreLf, codigo_bloqueado: bool = False) -> dict[str, Any]:
         return {
-            "id": str(row.id), "codigo": row.codigo, "nombre": row.nombre,
-            "descripcion": row.descripcion, "clase_cierre": row.clase_cierre,
+            "id": str(row.id),
+            "codigo": row.codigo,
+            "nombre": row.nombre,
+            "descripcion": row.descripcion,
+            "clase_cierre": row.clase_cierre,
             "requiere_observacion": row.requiere_observacion,
             "requiere_validacion_entrega": row.requiere_validacion_entrega,
-            "activo": row.activo, "orden_visual": row.orden_visual,
+            "activo": row.activo,
+            "orden_visual": row.orden_visual,
             "codigo_bloqueado": codigo_bloqueado,
         }
 
     async def list_motivos_cierre(self, include_inactive: bool = False) -> list[dict[str, Any]]:
-        referencias = select(func.count(CasoLostFound.id)).where(CasoLostFound.motivo_cierre_id == MotivoCierreLf.id).correlate(MotivoCierreLf).scalar_subquery()
-        statement = select(MotivoCierreLf, referencias.label("referencias")).order_by(MotivoCierreLf.orden_visual, MotivoCierreLf.nombre)
+        referencias = (
+            select(func.count(CasoLostFound.id))
+            .where(CasoLostFound.motivo_cierre_id == MotivoCierreLf.id)
+            .correlate(MotivoCierreLf)
+            .scalar_subquery()
+        )
+        statement = select(MotivoCierreLf, referencias.label("referencias")).order_by(
+            MotivoCierreLf.orden_visual, MotivoCierreLf.nombre
+        )
         if not include_inactive:
             statement = statement.where(MotivoCierreLf.activo.is_(True))
         result = await self.db.execute(statement)
@@ -156,7 +183,12 @@ class LostFoundRepository:
             condition = MotivoCierreLf.id == UUID(ref)
         except ValueError:
             condition = MotivoCierreLf.codigo == ref
-        referencias = select(func.count(CasoLostFound.id)).where(CasoLostFound.motivo_cierre_id == MotivoCierreLf.id).correlate(MotivoCierreLf).scalar_subquery()
+        referencias = (
+            select(func.count(CasoLostFound.id))
+            .where(CasoLostFound.motivo_cierre_id == MotivoCierreLf.id)
+            .correlate(MotivoCierreLf)
+            .scalar_subquery()
+        )
         result = await self.db.execute(select(MotivoCierreLf, referencias).where(condition))
         row = result.one_or_none()
         return self._motivo_dict(row[0], bool(row[1])) if row else None
@@ -168,10 +200,23 @@ class LostFoundRepository:
         await self.db.refresh(motivo)
         return self._motivo_dict(motivo)
 
-    async def update_motivo_cierre(self, motivo_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-        result = await self.db.execute(update(MotivoCierreLf).where(MotivoCierreLf.id == UUID(motivo_id)).values(**data).returning(MotivoCierreLf))
+    async def update_motivo_cierre(
+        self, motivo_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        result = await self.db.execute(
+            update(MotivoCierreLf)
+            .where(MotivoCierreLf.id == UUID(motivo_id))
+            .values(**data)
+            .returning(MotivoCierreLf)
+        )
         row = result.scalar_one_or_none()
-        return self._motivo_dict(row, (await self.get_motivo_cierre(motivo_id) or {}).get("codigo_bloqueado", False)) if row else None
+        return (
+            self._motivo_dict(
+                row, (await self.get_motivo_cierre(motivo_id) or {}).get("codigo_bloqueado", False)
+            )
+            if row
+            else None
+        )
 
     async def list_feed(
         self,
@@ -250,7 +295,9 @@ class LostFoundRepository:
                     CasoLostFound.color_principal.ilike(pattern),
                 )
             )
-        result = await self.db.execute(statement.order_by(CasoLostFound.created_at.desc()).limit(limit))
+        result = await self.db.execute(
+            statement.order_by(CasoLostFound.created_at.desc()).limit(limit)
+        )
         return [dict(row) for row in result.mappings()]
 
     async def list_operativo(
@@ -279,33 +326,44 @@ class LostFoundRepository:
             statement = statement.where(CasoLostFound.created_at < cursor)
         if search:
             pattern = f"%{search.strip()}%"
-            statement = statement.where(or_(CasoLostFound.codigo.ilike(pattern), CasoLostFound.titulo.ilike(pattern)))
-        result = await self.db.execute(statement.order_by(CasoLostFound.created_at.desc()).limit(limit))
+            statement = statement.where(
+                or_(CasoLostFound.codigo.ilike(pattern), CasoLostFound.titulo.ilike(pattern))
+            )
+        result = await self.db.execute(
+            statement.order_by(CasoLostFound.created_at.desc()).limit(limit)
+        )
         return [dict(row) for row in result.mappings()]
 
-    async def list_by_reportante(self, usuario_id: str, limit: int, origen: str | None = None) -> list[dict[str, Any]]:
+    async def list_by_reportante(
+        self, usuario_id: str, limit: int, origen: str | None = None
+    ) -> list[dict[str, Any]]:
         statement = self._base_select().where(CasoLostFound.reportante_id == UUID(usuario_id))
         if origen:
             statement = statement.where(CasoLostFound.origen == origen)
-        result = await self.db.execute(statement.order_by(CasoLostFound.created_at.desc()).limit(limit))
+        result = await self.db.execute(
+            statement.order_by(CasoLostFound.created_at.desc()).limit(limit)
+        )
         return [dict(row) for row in result.mappings()]
 
     async def _next_codigo(self, ahora: datetime) -> str:
-        inicio_mes = datetime(ahora.year, ahora.month, 1, tzinfo=timezone.utc)
+        inicio_mes = datetime(ahora.year, ahora.month, 1, tzinfo=UTC)
         if ahora.month == 12:
-            fin_mes = datetime(ahora.year + 1, 1, 1, tzinfo=timezone.utc)
+            fin_mes = datetime(ahora.year + 1, 1, 1, tzinfo=UTC)
         else:
-            fin_mes = datetime(ahora.year, ahora.month + 1, 1, tzinfo=timezone.utc)
-        count = await self.db.scalar(
-            select(func.count(CasoLostFound.id)).where(
-                CasoLostFound.created_at >= inicio_mes,
-                CasoLostFound.created_at < fin_mes,
+            fin_mes = datetime(ahora.year, ahora.month + 1, 1, tzinfo=UTC)
+        count = (
+            await self.db.scalar(
+                select(func.count(CasoLostFound.id)).where(
+                    CasoLostFound.created_at >= inicio_mes,
+                    CasoLostFound.created_at < fin_mes,
+                )
             )
-        ) or 0
+            or 0
+        )
         return f"{LOST_FOUND_CODE_PREFIX}-{ahora.strftime('%Y%m')}-{int(count) + 1:05d}"
 
     async def create_caso(self, reportante_id: str, data: dict[str, Any]) -> dict[str, Any]:
-        ahora = datetime.now(timezone.utc)
+        ahora = datetime.now(UTC)
         latitud = data.pop("latitud", None)
         longitud = data.pop("longitud", None)
         caso = CasoLostFound(
@@ -319,9 +377,16 @@ class LostFoundRepository:
         self.db.add(caso)
         await self.db.flush()
         await self.db.refresh(caso)
-        await self.add_historial(str(caso.id), None, "ABIERTO", "Creacion de caso", reportante_id, None)
+        await self.add_historial(
+            str(caso.id), None, "ABIERTO", "Creacion de caso", reportante_id, None
+        )
         await self.upsert_participacion(str(caso.id), reportante_id, True)
-        return {"id": str(caso.id), "codigo": caso.codigo, "estado": caso.estado, "created_at": caso.created_at}
+        return {
+            "id": str(caso.id),
+            "codigo": caso.codigo,
+            "estado": caso.estado,
+            "created_at": caso.created_at,
+        }
 
     async def update_caso_descriptivo(self, caso_id: str, data: dict[str, Any]) -> None:
         latitud = data.pop("latitud", None)
@@ -340,14 +405,16 @@ class LostFoundRepository:
             "metadatos": data.get("metadatos", {}),
             "contacto_info": data.get("contacto_info"),
             "ts_busqueda": data.get("ts_busqueda"),
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         }
         if latitud is not None and longitud is not None:
             values["geom"] = func.ST_SetSRID(func.ST_MakePoint(longitud, latitud), 4326)
-        await self.db.execute(update(CasoLostFound).where(CasoLostFound.id == UUID(caso_id)).values(**values))
+        await self.db.execute(
+            update(CasoLostFound).where(CasoLostFound.id == UUID(caso_id)).values(**values)
+        )
 
     async def get_detail_by_ref(self, ref: str) -> dict[str, Any] | None:
-        Reportante = aliased(Usuario)
+        reportante = aliased(Usuario)
         filters = []
         try:
             filters.append(CasoLostFound.id == UUID(ref))
@@ -364,14 +431,14 @@ class LostFoundRepository:
                 CustodiaObjeto.ubicacion_custodia.label("custodia_ubicacion"),
                 CustodiaObjeto.fecha_recepcion.label("custodia_fecha_recepcion"),
                 CustodiaObjeto.fecha_vencimiento.label("custodia_fecha_vencimiento"),
-                Reportante.nombre.label("reportante_nombre"),
-                Reportante.apellido.label("reportante_apellido"),
-                Reportante.email.label("reportante_email"),
-                Reportante.avatar_url.label("reportante_avatar_url"),
+                reportante.nombre.label("reportante_nombre"),
+                reportante.apellido.label("reportante_apellido"),
+                reportante.email.label("reportante_email"),
+                reportante.avatar_url.label("reportante_avatar_url"),
             )
             .outerjoin(CategoriaObjeto, CategoriaObjeto.id == CasoLostFound.categoria_id)
             .outerjoin(CustodiaObjeto, CustodiaObjeto.caso_id == CasoLostFound.id)
-            .outerjoin(Reportante, Reportante.id == CasoLostFound.reportante_id)
+            .outerjoin(reportante, reportante.id == CasoLostFound.reportante_id)
             .where(*filters)
             .limit(1)
         )
@@ -381,13 +448,36 @@ class LostFoundRepository:
             return None
         caso = row["CasoLostFound"]
         return {
-            **{k: getattr(caso, k) for k in (
-                "id", "codigo", "tipo", "estado", "titulo", "descripcion", "categoria_id",
-                "subcategoria", "lugar_referencia", "fecha_evento", "foto_url",
-                "color_principal", "marca", "conteo_comentarios", "contacto_info",
-                "foto_adicional_urls", "etiquetas", "metadatos", "motivo_cierre", "motivo_cierre_id", "observaciones_cierre",
-                "oculto", "origen", "created_at", "updated_at",
-            )},
+            **{
+                k: getattr(caso, k)
+                for k in (
+                    "id",
+                    "codigo",
+                    "tipo",
+                    "estado",
+                    "titulo",
+                    "descripcion",
+                    "categoria_id",
+                    "subcategoria",
+                    "lugar_referencia",
+                    "fecha_evento",
+                    "foto_url",
+                    "color_principal",
+                    "marca",
+                    "conteo_comentarios",
+                    "contacto_info",
+                    "foto_adicional_urls",
+                    "etiquetas",
+                    "metadatos",
+                    "motivo_cierre",
+                    "motivo_cierre_id",
+                    "observaciones_cierre",
+                    "oculto",
+                    "origen",
+                    "created_at",
+                    "updated_at",
+                )
+            },
             "categoria_nombre": row["categoria_nombre"],
             "latitud": row["latitud"],
             "longitud": row["longitud"],
@@ -404,7 +494,19 @@ class LostFoundRepository:
         }
 
     async def get_estado(self, caso_id: str) -> dict[str, Any] | None:
-        result = await self.db.execute(select(CasoLostFound.id, CasoLostFound.codigo, CasoLostFound.estado, CasoLostFound.tipo, CasoLostFound.oculto, CasoLostFound.origen, CasoLostFound.reportante_id).where(CasoLostFound.id == UUID(caso_id)).limit(1))
+        result = await self.db.execute(
+            select(
+                CasoLostFound.id,
+                CasoLostFound.codigo,
+                CasoLostFound.estado,
+                CasoLostFound.tipo,
+                CasoLostFound.oculto,
+                CasoLostFound.origen,
+                CasoLostFound.reportante_id,
+            )
+            .where(CasoLostFound.id == UUID(caso_id))
+            .limit(1)
+        )
         row = result.mappings().one_or_none()
         return dict(row) if row else None
 
@@ -412,7 +514,7 @@ class LostFoundRepository:
         await self.db.execute(
             update(CasoLostFound)
             .where(CasoLostFound.id == UUID(caso_id))
-            .values(oculto=oculto, updated_at=datetime.now(timezone.utc))
+            .values(oculto=oculto, updated_at=datetime.now(UTC))
         )
 
     async def update_estado(
@@ -429,7 +531,7 @@ class LostFoundRepository:
         actual = await self.get_estado(caso_id)
         if not actual:
             return None
-        values: dict[str, Any] = {"estado": estado, "updated_at": datetime.now(timezone.utc)}
+        values: dict[str, Any] = {"estado": estado, "updated_at": datetime.now(UTC)}
         if motivo_cierre:
             values["motivo_cierre"] = motivo_cierre
         if motivo_cierre_id:
@@ -438,9 +540,18 @@ class LostFoundRepository:
             values["observaciones_cierre"] = observaciones_cierre
         if estado == "CERRADO":
             values["cerrado_por_id"] = UUID(ejecutor_id)
-        await self.db.execute(update(CasoLostFound).where(CasoLostFound.id == UUID(caso_id)).values(**values))
-        await self.add_historial(caso_id, str(actual["estado"]), estado, "Cambio de estado", ejecutor_id, comentario)
-        return {**actual, "estado_anterior": actual["estado"], "estado_nuevo": estado, "comentario": comentario}
+        await self.db.execute(
+            update(CasoLostFound).where(CasoLostFound.id == UUID(caso_id)).values(**values)
+        )
+        await self.add_historial(
+            caso_id, str(actual["estado"]), estado, "Cambio de estado", ejecutor_id, comentario
+        )
+        return {
+            **actual,
+            "estado_anterior": actual["estado"],
+            "estado_nuevo": estado,
+            "comentario": comentario,
+        }
 
     async def reabrir_caso(
         self,
@@ -463,10 +574,12 @@ class LostFoundRepository:
                 motivo_cierre_id=None,
                 observaciones_cierre=None,
                 cerrado_por_id=None,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
         )
-        await self.add_historial(caso_id, str(actual["estado"]), estado, "Reapertura de caso", ejecutor_id, comentario)
+        await self.add_historial(
+            caso_id, str(actual["estado"]), estado, "Reapertura de caso", ejecutor_id, comentario
+        )
         return {**actual, "estado_anterior": actual["estado"], "estado_nuevo": estado}
 
     async def update_fotos(
@@ -482,18 +595,47 @@ class LostFoundRepository:
             .values(
                 foto_url=foto_url,
                 foto_adicional_urls=foto_adicional_urls,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
             .returning(CasoLostFound.id)
         )
         return result.scalar_one_or_none() is not None
 
-    async def add_historial(self, caso_id: str, estado_anterior: str | None, estado_nuevo: str, accion: str, ejecutor_id: str, comentario: str | None) -> None:
-        self.db.add(HistorialCasoLf(caso_id=UUID(caso_id), estado_anterior=estado_anterior, estado_nuevo=estado_nuevo, accion=accion, comentario=comentario, ejecutado_por_id=UUID(ejecutor_id)))
+    async def add_historial(
+        self,
+        caso_id: str,
+        estado_anterior: str | None,
+        estado_nuevo: str,
+        accion: str,
+        ejecutor_id: str,
+        comentario: str | None,
+    ) -> None:
+        self.db.add(
+            HistorialCasoLf(
+                caso_id=UUID(caso_id),
+                estado_anterior=estado_anterior,
+                estado_nuevo=estado_nuevo,
+                accion=accion,
+                comentario=comentario,
+                ejecutado_por_id=UUID(ejecutor_id),
+            )
+        )
 
     async def list_historial(self, caso_id: str) -> list[dict[str, Any]]:
         statement = (
-            select(HistorialCasoLf.id, HistorialCasoLf.estado_anterior, HistorialCasoLf.estado_nuevo, HistorialCasoLf.accion, HistorialCasoLf.comentario, HistorialCasoLf.created_at, HistorialCasoLf.ejecutado_por_id, Usuario.nombre.label("ejecutor_nombre"), Usuario.apellido.label("ejecutor_apellido"), Usuario.email.label("ejecutor_email"), Usuario.avatar_url.label("ejecutor_avatar_url"))
+            select(
+                HistorialCasoLf.id,
+                HistorialCasoLf.estado_anterior,
+                HistorialCasoLf.estado_nuevo,
+                HistorialCasoLf.accion,
+                HistorialCasoLf.comentario,
+                HistorialCasoLf.created_at,
+                HistorialCasoLf.ejecutado_por_id,
+                Usuario.nombre.label("ejecutor_nombre"),
+                Usuario.apellido.label("ejecutor_apellido"),
+                Usuario.email.label("ejecutor_email"),
+                Usuario.avatar_url.label("ejecutor_avatar_url"),
+            )
             .outerjoin(Usuario, Usuario.id == HistorialCasoLf.ejecutado_por_id)
             .where(HistorialCasoLf.caso_id == UUID(caso_id))
             .order_by(HistorialCasoLf.created_at.asc())
@@ -501,20 +643,48 @@ class LostFoundRepository:
         result = await self.db.execute(statement)
         return [dict(row) for row in result.mappings()]
 
-    async def find_match_candidates(self, caso: dict[str, Any], limit: int = 40) -> list[dict[str, Any]]:
+    async def find_match_candidates(
+        self, caso: dict[str, Any], limit: int = 40
+    ) -> list[dict[str, Any]]:
         opposite = "ENCONTRADO" if caso["tipo"] == "PERDIDO" else "PERDIDO"
         result = await self.db.execute(
-            select(CasoLostFound.id, CasoLostFound.codigo, CasoLostFound.tipo, CasoLostFound.estado, CasoLostFound.titulo, CasoLostFound.descripcion, CasoLostFound.categoria_id, CasoLostFound.lugar_referencia, CasoLostFound.fecha_evento, CasoLostFound.color_principal, CasoLostFound.marca, CasoLostFound.etiquetas, CasoLostFound.metadatos, CasoLostFound.reportante_id)
-            .where(CasoLostFound.tipo == opposite, CasoLostFound.estado.in_(("ABIERTO", "EN_REVISION", "EN_CUSTODIA")))
+            select(
+                CasoLostFound.id,
+                CasoLostFound.codigo,
+                CasoLostFound.tipo,
+                CasoLostFound.estado,
+                CasoLostFound.titulo,
+                CasoLostFound.descripcion,
+                CasoLostFound.categoria_id,
+                CasoLostFound.lugar_referencia,
+                CasoLostFound.fecha_evento,
+                CasoLostFound.color_principal,
+                CasoLostFound.marca,
+                CasoLostFound.etiquetas,
+                CasoLostFound.metadatos,
+                CasoLostFound.reportante_id,
+            )
+            .where(
+                CasoLostFound.tipo == opposite,
+                CasoLostFound.estado.in_(("ABIERTO", "EN_REVISION", "EN_CUSTODIA")),
+            )
             .order_by(desc(CasoLostFound.created_at))
             .limit(limit)
         )
         return [dict(row) for row in result.mappings()]
 
-    async def create_match(self, perdido_id: str, encontrado_id: str, score: float, detalle: dict[str, Any]) -> dict[str, Any] | None:
+    async def create_match(
+        self, perdido_id: str, encontrado_id: str, score: float, detalle: dict[str, Any]
+    ) -> dict[str, Any] | None:
         statement = (
             insert(MatchSugerido)
-            .values(caso_perdido_id=UUID(perdido_id), caso_encontrado_id=UUID(encontrado_id), score_total=score, score_detalle=detalle, estado="SUGERIDO")
+            .values(
+                caso_perdido_id=UUID(perdido_id),
+                caso_encontrado_id=UUID(encontrado_id),
+                score_total=score,
+                score_detalle=detalle,
+                estado="SUGERIDO",
+            )
             .on_conflict_do_nothing(index_elements=["caso_perdido_id", "caso_encontrado_id"])
             .returning(MatchSugerido.id)
         )
@@ -534,7 +704,12 @@ class LostFoundRepository:
     async def list_matches_for_case(self, caso_id: str) -> list[dict[str, Any]]:
         result = await self.db.execute(
             select(MatchSugerido)
-            .where(or_(MatchSugerido.caso_perdido_id == UUID(caso_id), MatchSugerido.caso_encontrado_id == UUID(caso_id)))
+            .where(
+                or_(
+                    MatchSugerido.caso_perdido_id == UUID(caso_id),
+                    MatchSugerido.caso_encontrado_id == UUID(caso_id),
+                )
+            )
             .order_by(MatchSugerido.created_at.desc())
         )
         return [{"match": row} for row in result.scalars()]
@@ -542,10 +717,23 @@ class LostFoundRepository:
     async def get_match(self, match_id: str) -> MatchSugerido | None:
         return await self.db.get(MatchSugerido, UUID(match_id))
 
-    async def update_match_estado(self, match_id: str, estado: str, usuario_id: str, comentario: str | None) -> None:
-        await self.db.execute(update(MatchSugerido).where(MatchSugerido.id == UUID(match_id)).values(estado=estado, respondido_por_id=UUID(usuario_id), respuesta_comentario=comentario, updated_at=datetime.now(timezone.utc)))
+    async def update_match_estado(
+        self, match_id: str, estado: str, usuario_id: str, comentario: str | None
+    ) -> None:
+        await self.db.execute(
+            update(MatchSugerido)
+            .where(MatchSugerido.id == UUID(match_id))
+            .values(
+                estado=estado,
+                respondido_por_id=UUID(usuario_id),
+                respuesta_comentario=comentario,
+                updated_at=datetime.now(UTC),
+            )
+        )
 
-    async def list_comentarios(self, caso_id: str, include_hidden: bool = False, usuario_id: str | None = None) -> list[dict[str, Any]]:
+    async def list_comentarios(
+        self, caso_id: str, include_hidden: bool = False, usuario_id: str | None = None
+    ) -> list[dict[str, Any]]:
         autor_rol = (
             select(Rol.nombre)
             .join(UsuarioRol, UsuarioRol.rol_id == Rol.id)
@@ -558,16 +746,41 @@ class LostFoundRepository:
             .scalar_subquery()
         )
         if usuario_id:
-            reaccionado = exists().where(
-                and_(
-                    ReaccionComentarioLf.comentario_id == ComentarioCasoLf.id,
-                    ReaccionComentarioLf.usuario_id == UUID(usuario_id),
+            reaccionado = (
+                exists()
+                .where(
+                    and_(
+                        ReaccionComentarioLf.comentario_id == ComentarioCasoLf.id,
+                        ReaccionComentarioLf.usuario_id == UUID(usuario_id),
+                    )
                 )
-            ).label("reaccionado")
+                .label("reaccionado")
+            )
         else:
             reaccionado = literal(False).label("reaccionado")
         statement = (
-            select(ComentarioCasoLf.id, ComentarioCasoLf.caso_id, ComentarioCasoLf.parent_id, ComentarioCasoLf.autor_id, ComentarioCasoLf.contenido, ComentarioCasoLf.imagenes, ComentarioCasoLf.tag, ComentarioCasoLf.fijado, ComentarioCasoLf.destacados_count, ComentarioCasoLf.visible, ComentarioCasoLf.motivo_ocultamiento, ComentarioCasoLf.deleted_at, ComentarioCasoLf.created_at, ComentarioCasoLf.updated_at, Usuario.nombre.label("autor_nombre"), Usuario.apellido.label("autor_apellido"), Usuario.email.label("autor_email"), Usuario.avatar_url.label("autor_avatar_url"), autor_rol.label("autor_rol"), reaccionado)
+            select(
+                ComentarioCasoLf.id,
+                ComentarioCasoLf.caso_id,
+                ComentarioCasoLf.parent_id,
+                ComentarioCasoLf.autor_id,
+                ComentarioCasoLf.contenido,
+                ComentarioCasoLf.imagenes,
+                ComentarioCasoLf.tag,
+                ComentarioCasoLf.fijado,
+                ComentarioCasoLf.destacados_count,
+                ComentarioCasoLf.visible,
+                ComentarioCasoLf.motivo_ocultamiento,
+                ComentarioCasoLf.deleted_at,
+                ComentarioCasoLf.created_at,
+                ComentarioCasoLf.updated_at,
+                Usuario.nombre.label("autor_nombre"),
+                Usuario.apellido.label("autor_apellido"),
+                Usuario.email.label("autor_email"),
+                Usuario.avatar_url.label("autor_avatar_url"),
+                autor_rol.label("autor_rol"),
+                reaccionado,
+            )
             .outerjoin(Usuario, Usuario.id == ComentarioCasoLf.autor_id)
             .where(ComentarioCasoLf.caso_id == UUID(caso_id))
             .order_by(ComentarioCasoLf.created_at.asc())
@@ -578,21 +791,81 @@ class LostFoundRepository:
         return [dict(row) for row in result.mappings()]
 
     async def count_root_comentarios(self, caso_id: str) -> int:
-        return int(await self.db.scalar(select(func.count(ComentarioCasoLf.id)).where(ComentarioCasoLf.caso_id == UUID(caso_id), ComentarioCasoLf.parent_id.is_(None), ComentarioCasoLf.visible.is_(True))) or 0)
+        return int(
+            await self.db.scalar(
+                select(func.count(ComentarioCasoLf.id)).where(
+                    ComentarioCasoLf.caso_id == UUID(caso_id),
+                    ComentarioCasoLf.parent_id.is_(None),
+                    ComentarioCasoLf.visible.is_(True),
+                )
+            )
+            or 0
+        )
 
     async def get_comentario_meta(self, comentario_id: str) -> dict[str, Any] | None:
-        result = await self.db.execute(select(ComentarioCasoLf.id, ComentarioCasoLf.caso_id, ComentarioCasoLf.parent_id, ComentarioCasoLf.autor_id, ComentarioCasoLf.created_at, ComentarioCasoLf.visible, ComentarioCasoLf.tag, ComentarioCasoLf.fijado).where(ComentarioCasoLf.id == UUID(comentario_id)).limit(1))
+        result = await self.db.execute(
+            select(
+                ComentarioCasoLf.id,
+                ComentarioCasoLf.caso_id,
+                ComentarioCasoLf.parent_id,
+                ComentarioCasoLf.autor_id,
+                ComentarioCasoLf.created_at,
+                ComentarioCasoLf.visible,
+                ComentarioCasoLf.tag,
+                ComentarioCasoLf.fijado,
+            )
+            .where(ComentarioCasoLf.id == UUID(comentario_id))
+            .limit(1)
+        )
         row = result.mappings().one_or_none()
         return dict(row) if row else None
 
-    async def create_comentario(self, caso_id: str, autor_id: str, contenido: str, parent_id: str | None = None, imagenes: list[str] | None = None, tag: str | None = None) -> dict[str, Any]:
-        comentario = ComentarioCasoLf(caso_id=UUID(caso_id), parent_id=UUID(parent_id) if parent_id else None, autor_id=UUID(autor_id), contenido=contenido, imagenes=imagenes or [], tag=tag)
+    async def create_comentario(
+        self,
+        caso_id: str,
+        autor_id: str,
+        contenido: str,
+        parent_id: str | None = None,
+        imagenes: list[str] | None = None,
+        tag: str | None = None,
+    ) -> dict[str, Any]:
+        comentario = ComentarioCasoLf(
+            caso_id=UUID(caso_id),
+            parent_id=UUID(parent_id) if parent_id else None,
+            autor_id=UUID(autor_id),
+            contenido=contenido,
+            imagenes=imagenes or [],
+            tag=tag,
+        )
         self.db.add(comentario)
-        await self.db.execute(update(CasoLostFound).where(CasoLostFound.id == UUID(caso_id)).values(conteo_comentarios=CasoLostFound.conteo_comentarios + 1, updated_at=datetime.now(timezone.utc)))
+        await self.db.execute(
+            update(CasoLostFound)
+            .where(CasoLostFound.id == UUID(caso_id))
+            .values(
+                conteo_comentarios=CasoLostFound.conteo_comentarios + 1,
+                updated_at=datetime.now(UTC),
+            )
+        )
         await self.upsert_participacion(caso_id, autor_id, True)
         await self.db.flush()
         await self.db.refresh(comentario)
-        return {"id": comentario.id, "caso_id": comentario.caso_id, "parent_id": comentario.parent_id, "autor_id": comentario.autor_id, "contenido": comentario.contenido, "imagenes": comentario.imagenes or [], "tag": comentario.tag, "fijado": comentario.fijado, "destacados_count": comentario.destacados_count, "reaccionado": False, "visible": comentario.visible, "motivo_ocultamiento": comentario.motivo_ocultamiento, "deleted_at": comentario.deleted_at, "created_at": comentario.created_at, "updated_at": comentario.updated_at}
+        return {
+            "id": comentario.id,
+            "caso_id": comentario.caso_id,
+            "parent_id": comentario.parent_id,
+            "autor_id": comentario.autor_id,
+            "contenido": comentario.contenido,
+            "imagenes": comentario.imagenes or [],
+            "tag": comentario.tag,
+            "fijado": comentario.fijado,
+            "destacados_count": comentario.destacados_count,
+            "reaccionado": False,
+            "visible": comentario.visible,
+            "motivo_ocultamiento": comentario.motivo_ocultamiento,
+            "deleted_at": comentario.deleted_at,
+            "created_at": comentario.created_at,
+            "updated_at": comentario.updated_at,
+        }
 
     async def toggle_reaccion(self, comentario_id: str, usuario_id: str) -> tuple[int, bool]:
         existing = await self.db.scalar(
@@ -602,7 +875,9 @@ class LostFoundRepository:
             )
         )
         if existing:
-            await self.db.execute(delete(ReaccionComentarioLf).where(ReaccionComentarioLf.id == existing))
+            await self.db.execute(
+                delete(ReaccionComentarioLf).where(ReaccionComentarioLf.id == existing)
+            )
             await self.db.execute(
                 update(ComentarioCasoLf)
                 .where(ComentarioCasoLf.id == UUID(comentario_id))
@@ -610,18 +885,24 @@ class LostFoundRepository:
             )
             reaccionado = False
         else:
-            self.db.add(ReaccionComentarioLf(comentario_id=UUID(comentario_id), usuario_id=UUID(usuario_id)))
+            self.db.add(
+                ReaccionComentarioLf(comentario_id=UUID(comentario_id), usuario_id=UUID(usuario_id))
+            )
             await self.db.execute(
                 update(ComentarioCasoLf)
                 .where(ComentarioCasoLf.id == UUID(comentario_id))
                 .values(destacados_count=ComentarioCasoLf.destacados_count + 1)
             )
             reaccionado = True
-        count = await self.db.scalar(select(ComentarioCasoLf.destacados_count).where(ComentarioCasoLf.id == UUID(comentario_id)))
+        count = await self.db.scalar(
+            select(ComentarioCasoLf.destacados_count).where(
+                ComentarioCasoLf.id == UUID(comentario_id)
+            )
+        )
         return int(count or 0), reaccionado
 
     async def set_fijado(self, comentario_id: str, fijar: bool, actor_id: str) -> bool:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await self.db.execute(
             update(ComentarioCasoLf)
             .where(ComentarioCasoLf.id == UUID(comentario_id))
@@ -638,7 +919,14 @@ class LostFoundRepository:
     async def listar_supervisores_acceso(self) -> list[dict[str, Any]]:
         asignado = exists().where(AccesoModuloLf.usuario_id == Usuario.id).label("asignado")
         statement = (
-            select(Usuario.id, Usuario.nombre, Usuario.apellido, Usuario.email, func.lower(Rol.nombre).label("rol"), asignado)
+            select(
+                Usuario.id,
+                Usuario.nombre,
+                Usuario.apellido,
+                Usuario.email,
+                func.lower(Rol.nombre).label("rol"),
+                asignado,
+            )
             .join(UsuarioRol, UsuarioRol.usuario_id == Usuario.id)
             .join(Rol, Rol.id == UsuarioRol.rol_id)
             .where(func.lower(Rol.nombre).in_(("operador", "supervisor")))
@@ -673,8 +961,9 @@ class LostFoundRepository:
         )
         padre = aliased(ComentarioCasoLf)
         ancestros = ancestros.union_all(
-            select(padre.id, padre.parent_id, (ancestros.c.depth + 1).label("depth"))
-            .where(padre.id == ancestros.c.parent_id)
+            select(padre.id, padre.parent_id, (ancestros.c.depth + 1).label("depth")).where(
+                padre.id == ancestros.c.parent_id
+            )
         )
         result = await self.db.execute(select(func.max(ancestros.c.depth)))
         return int(result.scalar() or 0)
@@ -683,7 +972,7 @@ class LostFoundRepository:
         result = await self.db.execute(
             update(ComentarioCasoLf)
             .where(ComentarioCasoLf.id == UUID(comentario_id))
-            .values(contenido=contenido, updated_at=datetime.now(timezone.utc))
+            .values(contenido=contenido, updated_at=datetime.now(UTC))
             .returning(ComentarioCasoLf.id)
         )
         return result.scalar_one_or_none() is not None
@@ -692,7 +981,13 @@ class LostFoundRepository:
         result = await self.db.execute(
             update(ComentarioCasoLf)
             .where(ComentarioCasoLf.id == UUID(comentario_id))
-            .values(visible=False, ocultado_por_id=UUID(actor_id), motivo_ocultamiento=motivo, deleted_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
+            .values(
+                visible=False,
+                ocultado_por_id=UUID(actor_id),
+                motivo_ocultamiento=motivo,
+                deleted_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
             .returning(ComentarioCasoLf.id)
         )
         return result.scalar_one_or_none() is not None
@@ -700,26 +995,49 @@ class LostFoundRepository:
     async def delete_own_comentario(self, comentario_id: str, usuario_id: str, motivo: str) -> bool:
         result = await self.db.execute(
             update(ComentarioCasoLf)
-            .where(ComentarioCasoLf.id == UUID(comentario_id), ComentarioCasoLf.autor_id == UUID(usuario_id), ComentarioCasoLf.visible.is_(True))
-            .values(visible=False, motivo_ocultamiento=motivo, deleted_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
+            .where(
+                ComentarioCasoLf.id == UUID(comentario_id),
+                ComentarioCasoLf.autor_id == UUID(usuario_id),
+                ComentarioCasoLf.visible.is_(True),
+            )
+            .values(
+                visible=False,
+                motivo_ocultamiento=motivo,
+                deleted_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
             .returning(ComentarioCasoLf.id)
         )
         return result.scalar_one_or_none() is not None
 
-    async def update_comentario_visibility(self, comentario_id: str, visible: bool, actor_id: str, motivo: str | None) -> bool:
-        result = await self.db.execute(update(ComentarioCasoLf).where(ComentarioCasoLf.id == UUID(comentario_id)).values(visible=visible, ocultado_por_id=UUID(actor_id), motivo_ocultamiento=motivo, updated_at=datetime.now(timezone.utc)).returning(ComentarioCasoLf.id))
+    async def update_comentario_visibility(
+        self, comentario_id: str, visible: bool, actor_id: str, motivo: str | None
+    ) -> bool:
+        result = await self.db.execute(
+            update(ComentarioCasoLf)
+            .where(ComentarioCasoLf.id == UUID(comentario_id))
+            .values(
+                visible=visible,
+                ocultado_por_id=UUID(actor_id),
+                motivo_ocultamiento=motivo,
+                updated_at=datetime.now(UTC),
+            )
+            .returning(ComentarioCasoLf.id)
+        )
         return result.scalar_one_or_none() is not None
 
-    async def upsert_participacion(self, caso_id: str, usuario_id: str, suscrito: bool, *, marcar_leido: bool = False) -> None:
+    async def upsert_participacion(
+        self, caso_id: str, usuario_id: str, suscrito: bool, *, marcar_leido: bool = False
+    ) -> None:
         values = {
             "caso_id": UUID(caso_id),
             "usuario_id": UUID(usuario_id),
             "suscrito": suscrito,
-            "ultima_lectura_at": datetime.now(timezone.utc) if marcar_leido else None,
+            "ultima_lectura_at": datetime.now(UTC) if marcar_leido else None,
         }
-        update_values: dict[str, Any] = {"suscrito": suscrito, "updated_at": datetime.now(timezone.utc)}
+        update_values: dict[str, Any] = {"suscrito": suscrito, "updated_at": datetime.now(UTC)}
         if marcar_leido:
-            update_values["ultima_lectura_at"] = datetime.now(timezone.utc)
+            update_values["ultima_lectura_at"] = datetime.now(UTC)
         await self.db.execute(
             insert(ParticipanteHiloLf)
             .values(**values)
@@ -727,14 +1045,27 @@ class LostFoundRepository:
         )
 
     async def list_participantes(self, caso_id: str) -> list[dict[str, Any]]:
-        result = await self.db.execute(select(ParticipanteHiloLf.usuario_id).where(ParticipanteHiloLf.caso_id == UUID(caso_id), ParticipanteHiloLf.suscrito.is_(True)))
+        result = await self.db.execute(
+            select(ParticipanteHiloLf.usuario_id).where(
+                ParticipanteHiloLf.caso_id == UUID(caso_id), ParticipanteHiloLf.suscrito.is_(True)
+            )
+        )
         return [dict(row) for row in result.mappings()]
 
-    async def create_custodia(self, caso_id: str, actor_id: str, data: dict[str, Any]) -> dict[str, Any]:
-        now = datetime.now(timezone.utc)
+    async def create_custodia(
+        self, caso_id: str, actor_id: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        now = datetime.now(UTC)
         # La fecha de vencimiento la calcula el servicio según la política vigente.
-        vencimiento = data.pop("fecha_vencimiento", None) or now + (timedelta(hours=24) if data.get("es_perecible") else timedelta(days=15))
-        custodia = CustodiaObjeto(caso_id=UUID(caso_id), recibido_por_id=UUID(actor_id), fecha_vencimiento=vencimiento, **data)
+        vencimiento = data.pop("fecha_vencimiento", None) or now + (
+            timedelta(hours=24) if data.get("es_perecible") else timedelta(days=15)
+        )
+        custodia = CustodiaObjeto(
+            caso_id=UUID(caso_id),
+            recibido_por_id=UUID(actor_id),
+            fecha_vencimiento=vencimiento,
+            **data,
+        )
         self.db.add(custodia)
         await self.db.flush()
         await self.db.refresh(custodia)
@@ -751,18 +1082,20 @@ class LostFoundRepository:
         page: int,
         per_page: int,
     ) -> tuple[list[dict[str, Any]], int]:
-        filters = []
+        filters: list[ColumnElement[bool]] = []
         if estados:
             filters.append(CustodiaObjeto.estado.in_(estados))
         if search:
             pattern = f"%{search.strip()}%"
-            filters.append(or_(
-                CasoLostFound.codigo.ilike(pattern),
-                CasoLostFound.titulo.ilike(pattern),
-                CustodiaObjeto.ubicacion_custodia.ilike(pattern),
-                CustodiaObjeto.observaciones.ilike(pattern),
-            ))
-        now = datetime.now(timezone.utc)
+            filters.append(
+                or_(
+                    CasoLostFound.codigo.ilike(pattern),
+                    CasoLostFound.titulo.ilike(pattern),
+                    CustodiaObjeto.ubicacion_custodia.ilike(pattern),
+                    CustodiaObjeto.observaciones.ilike(pattern),
+                )
+            )
+        now = datetime.now(UTC)
         if vencimientos:
             vencimiento_filters = []
             if "proxima" in vencimientos:
@@ -773,11 +1106,13 @@ class LostFoundRepository:
                         or_(
                             and_(
                                 CustodiaObjeto.es_perecible.is_(False),
-                                CustodiaObjeto.fecha_vencimiento <= now + timedelta(days=dias_alerta_vencimiento),
+                                CustodiaObjeto.fecha_vencimiento
+                                <= now + timedelta(days=dias_alerta_vencimiento),
                             ),
                             and_(
                                 CustodiaObjeto.es_perecible.is_(True),
-                                CustodiaObjeto.fecha_vencimiento <= now + timedelta(hours=horas_alerta_perecible),
+                                CustodiaObjeto.fecha_vencimiento
+                                <= now + timedelta(hours=horas_alerta_perecible),
                             ),
                         ),
                     )
@@ -830,27 +1165,34 @@ class LostFoundRepository:
         ]
         return items, int(total)
 
-    async def refresh_custodia_estados(self, *, dias_alerta_vencimiento: int, horas_alerta_perecible: int) -> None:
-        now = datetime.now(timezone.utc)
+    async def refresh_custodia_estados(
+        self, *, dias_alerta_vencimiento: int, horas_alerta_perecible: int
+    ) -> None:
+        now = datetime.now(UTC)
         estados_mutables = ("ACTIVA", "PROXIMA_VENCER", "VENCIDA")
-        estado_calculado = cast(case(
-            (CustodiaObjeto.fecha_vencimiento <= now, "VENCIDA"),
-            (
-                and_(
-                    CustodiaObjeto.es_perecible.is_(False),
-                    CustodiaObjeto.fecha_vencimiento <= now + timedelta(days=dias_alerta_vencimiento),
+        estado_calculado = cast(
+            case(
+                (CustodiaObjeto.fecha_vencimiento <= now, "VENCIDA"),
+                (
+                    and_(
+                        CustodiaObjeto.es_perecible.is_(False),
+                        CustodiaObjeto.fecha_vencimiento
+                        <= now + timedelta(days=dias_alerta_vencimiento),
+                    ),
+                    "PROXIMA_VENCER",
                 ),
-                "PROXIMA_VENCER",
-            ),
-            (
-                and_(
-                    CustodiaObjeto.es_perecible.is_(True),
-                    CustodiaObjeto.fecha_vencimiento <= now + timedelta(hours=horas_alerta_perecible),
+                (
+                    and_(
+                        CustodiaObjeto.es_perecible.is_(True),
+                        CustodiaObjeto.fecha_vencimiento
+                        <= now + timedelta(hours=horas_alerta_perecible),
+                    ),
+                    "PROXIMA_VENCER",
                 ),
-                "PROXIMA_VENCER",
+                else_="ACTIVA",
             ),
-            else_="ACTIVA",
-        ), EstadoCustodiaEnum)
+            EstadoCustodiaEnum,
+        )
         await self.db.execute(
             update(CustodiaObjeto)
             .where(
@@ -863,32 +1205,64 @@ class LostFoundRepository:
     async def get_custodia(self, custodia_id: str) -> CustodiaObjeto | None:
         return await self.db.get(CustodiaObjeto, UUID(custodia_id))
 
-    async def update_custodia(self, custodia_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-        data["updated_at"] = datetime.now(timezone.utc)
-        result = await self.db.execute(update(CustodiaObjeto).where(CustodiaObjeto.id == UUID(custodia_id)).values(**data).returning(CustodiaObjeto))
+    async def update_custodia(
+        self, custodia_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        data["updated_at"] = datetime.now(UTC)
+        result = await self.db.execute(
+            update(CustodiaObjeto)
+            .where(CustodiaObjeto.id == UUID(custodia_id))
+            .values(**data)
+            .returning(CustodiaObjeto)
+        )
         row = result.scalar_one_or_none()
         return self._custodia_dict(row) if row else None
 
     async def get_config(self) -> list[dict[str, Any]]:
         result = await self.db.execute(select(ConfiguracionLf).order_by(ConfiguracionLf.key.asc()))
-        return [{"key": r.key, "value": r.value, "descripcion": r.descripcion, "updated_at": r.updated_at} for r in result.scalars()]
+        return [
+            {
+                "key": r.key,
+                "value": r.value,
+                "descripcion": r.descripcion,
+                "updated_at": r.updated_at,
+            }
+            for r in result.scalars()
+        ]
 
     async def get_config_value(self, key: str) -> dict[str, Any] | None:
         row = await self.db.get(ConfiguracionLf, key)
         return row.value if row else None
 
-    async def update_config(self, key: str, value: dict[str, Any], descripcion: str | None, actor_id: str) -> dict[str, Any]:
+    async def update_config(
+        self, key: str, value: dict[str, Any], descripcion: str | None, actor_id: str
+    ) -> dict[str, Any]:
         statement = (
             insert(ConfiguracionLf)
             .values(key=key, value=value, descripcion=descripcion, updated_by_id=UUID(actor_id))
-            .on_conflict_do_update(index_elements=["key"], set_={"value": value, "descripcion": descripcion, "updated_by_id": UUID(actor_id), "updated_at": datetime.now(timezone.utc)})
+            .on_conflict_do_update(
+                index_elements=["key"],
+                set_={
+                    "value": value,
+                    "descripcion": descripcion,
+                    "updated_by_id": UUID(actor_id),
+                    "updated_at": datetime.now(UTC),
+                },
+            )
             .returning(ConfiguracionLf)
         )
         result = await self.db.execute(statement)
         row = result.scalar_one()
-        return {"key": row.key, "value": row.value, "descripcion": row.descripcion, "updated_at": row.updated_at}
+        return {
+            "key": row.key,
+            "value": row.value,
+            "descripcion": row.descripcion,
+            "updated_at": row.updated_at,
+        }
 
-    async def custodias_para_recordatorio(self, caso_estados_excluidos: list[str]) -> list[dict[str, Any]]:
+    async def custodias_para_recordatorio(
+        self, caso_estados_excluidos: list[str]
+    ) -> list[dict[str, Any]]:
         """Custodias ACTIVA cuyo caso no esté devuelto/descartado/cerrado."""
         result = await self.db.execute(
             select(
@@ -906,11 +1280,15 @@ class LostFoundRepository:
         )
         return [dict(row) for row in result.mappings()]
 
-    async def registrar_recordatorio(self, custodia_id: str, tipo: str, fecha_referencia: datetime) -> bool:
+    async def registrar_recordatorio(
+        self, custodia_id: str, tipo: str, fecha_referencia: datetime
+    ) -> bool:
         """Inserta un recordatorio; devuelve True sólo si era nuevo (dedupe por UNIQUE)."""
         statement = (
             insert(RecordatorioCustodiaLf)
-            .values(custodia_id=UUID(str(custodia_id)), tipo=tipo, fecha_referencia=fecha_referencia)
+            .values(
+                custodia_id=UUID(str(custodia_id)), tipo=tipo, fecha_referencia=fecha_referencia
+            )
             .on_conflict_do_nothing(constraint="uq_recordatorio_custodia")
             .returning(RecordatorioCustodiaLf.id)
         )
@@ -926,17 +1304,45 @@ class LostFoundRepository:
             func.count().filter(CasoLostFound.motivo_cierre == "DEVUELTO").label("devueltos"),
         )
         row = (await self.db.execute(statement)).mappings().one()
-        match_row = (await self.db.execute(select(func.count(MatchSugerido.id).label("sugeridos"), func.count().filter(MatchSugerido.estado == "CONFIRMADO").label("confirmados")))).mappings().one()
-        cutoff = datetime.now(timezone.utc) + timedelta(days=2)
-        por_vencer = await self.db.scalar(select(func.count(CustodiaObjeto.id)).where(CustodiaObjeto.estado == "ACTIVA", CustodiaObjeto.fecha_vencimiento <= cutoff)) or 0
-        zonas = await self.db.execute(select(CasoLostFound.lugar_referencia.label("zona"), func.count().label("total")).where(CasoLostFound.lugar_referencia.is_not(None)).group_by(CasoLostFound.lugar_referencia).order_by(desc("total")).limit(8))
+        match_row = (
+            (
+                await self.db.execute(
+                    select(
+                        func.count(MatchSugerido.id).label("sugeridos"),
+                        func.count()
+                        .filter(MatchSugerido.estado == "CONFIRMADO")
+                        .label("confirmados"),
+                    )
+                )
+            )
+            .mappings()
+            .one()
+        )
+        cutoff = datetime.now(UTC) + timedelta(days=2)
+        por_vencer = (
+            await self.db.scalar(
+                select(func.count(CustodiaObjeto.id)).where(
+                    CustodiaObjeto.estado == "ACTIVA", CustodiaObjeto.fecha_vencimiento <= cutoff
+                )
+            )
+            or 0
+        )
+        zonas = await self.db.execute(
+            select(CasoLostFound.lugar_referencia.label("zona"), func.count().label("total"))
+            .where(CasoLostFound.lugar_referencia.is_not(None))
+            .group_by(CasoLostFound.lugar_referencia)
+            .order_by(desc("total"))
+            .limit(8)
+        )
         total = int(row["total_casos"] or 0)
         return {
             "total_casos": total,
             "abiertos": int(row["abiertos"] or 0),
             "en_custodia": int(row["en_custodia"] or 0),
             "cerrados": int(row["cerrados"] or 0),
-            "tasa_recuperacion": round((int(row["devueltos"] or 0) / total) * 100, 1) if total else 0,
+            "tasa_recuperacion": round((int(row["devueltos"] or 0) / total) * 100, 1)
+            if total
+            else 0,
             "matches_sugeridos": int(match_row["sugeridos"] or 0),
             "matches_confirmados": int(match_row["confirmados"] or 0),
             "custodias_por_vencer": int(por_vencer),
@@ -983,14 +1389,22 @@ class LostFoundRepository:
         case_ids = select(CasoLostFound.id).where(*filters)
         match_count = (
             select(func.count(MatchSugerido.id))
-            .where(or_(MatchSugerido.caso_perdido_id == CasoLostFound.id, MatchSugerido.caso_encontrado_id == CasoLostFound.id))
+            .where(
+                or_(
+                    MatchSugerido.caso_perdido_id == CasoLostFound.id,
+                    MatchSugerido.caso_encontrado_id == CasoLostFound.id,
+                )
+            )
             .correlate(CasoLostFound)
             .scalar_subquery()
         )
         match_confirmed = (
             select(func.count(MatchSugerido.id))
             .where(
-                or_(MatchSugerido.caso_perdido_id == CasoLostFound.id, MatchSugerido.caso_encontrado_id == CasoLostFound.id),
+                or_(
+                    MatchSugerido.caso_perdido_id == CasoLostFound.id,
+                    MatchSugerido.caso_encontrado_id == CasoLostFound.id,
+                ),
                 MatchSugerido.estado == "CONFIRMADO",
             )
             .correlate(CasoLostFound)

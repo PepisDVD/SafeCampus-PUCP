@@ -190,9 +190,14 @@ export default async function IncidenteDetallePage({
 }) {
   const { id } = await params;
 
+  // Ambas peticiones son independientes: se lanzan en paralelo para no
+  // encadenar dos round-trips al backend (evita el waterfall en el render).
+  const detallePromise = obtenerDetalleIncidente(id);
+  const operadoresPromise = listarOperadores().catch(() => []);
+
   let detalle;
   try {
-    detalle = await obtenerDetalleIncidente(id);
+    detalle = await detallePromise;
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("404") || /no encontrado/i.test(message)) {
@@ -201,7 +206,7 @@ export default async function IncidenteDetallePage({
     throw error;
   }
 
-  const operadores = await listarOperadores().catch(() => []);
+  const operadores = await operadoresPromise;
 
   const estadoStyle = ESTADO_STYLE[detalle.estado];
   const severidadColor = detalle.severidad

@@ -1,6 +1,7 @@
 import json
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -13,11 +14,11 @@ from app.schemas.lost_found import (
     AccesoLfMiResult,
     AccesoLfUpdateInput,
     CancelarCasoLfInput,
+    CasoCierreInput,
     CasoLfCreated,
     CasoLfCreateInput,
     CasoLfDetail,
     CasoLfEstadoUpdate,
-    CasoCierreInput,
     CasoLfFotosInput,
     CasoLfListResponse,
     CasoLfUpdateInput,
@@ -38,9 +39,9 @@ from app.schemas.lost_found import (
     CustodiaLfUpdateInput,
     CustodiaPoliticaItem,
     CustodiaPoliticaUpdateInput,
+    DashboardLfResponse,
     DescarteLfInput,
     DevolucionLfInput,
-    DashboardLfResponse,
     KpisLfResponse,
     MatchingConfigItem,
     MatchingConfigUpdateInput,
@@ -101,9 +102,13 @@ async def require_lost_found_access(
 ) -> AuthUserResponse:
     """Exige rol operativo + acceso al módulo (administrador siempre pasa)."""
     if not OPERATIVO_ROLES.intersection(current_user.roles):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos sobre el módulo.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos sobre el módulo."
+        )
     if not await service.tiene_acceso_lf(current_user.id, current_user.roles):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes acceso al módulo Lost & Found.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="No tienes acceso al módulo Lost & Found."
+        )
     return current_user
 
 
@@ -111,7 +116,7 @@ async def require_lost_found_access(
 async def listar_categorias(
     include_inactive: bool = Query(default=False),
     service: LostFoundService = Depends(get_service),
-):
+) -> list[CategoriaLfItem]:
     return await service.listar_categorias(include_inactive=include_inactive)
 
 
@@ -120,7 +125,7 @@ async def crear_categoria(
     body: CategoriaLfCreate,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> CategoriaLfItem:
     return await service.crear_categoria(body, current_user.id)
 
 
@@ -130,7 +135,7 @@ async def actualizar_categoria(
     body: CategoriaLfCreate,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> CategoriaLfItem:
     return await service.actualizar_categoria(categoria_id, body, current_user.id)
 
 
@@ -139,16 +144,18 @@ async def listar_motivos_cierre(
     include_inactive: bool = Query(default=False),
     _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> list[MotivoCierreLfItem]:
     return await service.listar_motivos_cierre(include_inactive)
 
 
-@router.post("/motivos-cierre", response_model=MotivoCierreLfItem, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/motivos-cierre", response_model=MotivoCierreLfItem, status_code=status.HTTP_201_CREATED
+)
 async def crear_motivo_cierre(
     body: MotivoCierreLfCreate,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> MotivoCierreLfItem:
     return await service.crear_motivo_cierre(body, current_user.id)
 
 
@@ -158,7 +165,7 @@ async def actualizar_motivo_cierre(
     body: MotivoCierreLfCreate,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> MotivoCierreLfItem:
     return await service.actualizar_motivo_cierre(motivo_id, body, current_user.id)
 
 
@@ -167,7 +174,7 @@ async def crear_caso(
     body: CasoLfCreateInput,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfCreated:
     return await service.crear_caso(current_user.id, body)
 
 
@@ -185,24 +192,32 @@ async def listar_feed(
     lat: float | None = Query(default=None, ge=-90, le=90),
     lng: float | None = Query(default=None, ge=-180, le=180),
     radio_km: float | None = Query(default=None, gt=0, le=10),
-    metadatos: str | None = Query(default=None, description="Filtros de metadatos como objeto JSON."),
+    metadatos: str | None = Query(
+        default=None, description="Filtros de metadatos como objeto JSON."
+    ),
     origen: str | None = Query(default=None, pattern="^(COMUNIDAD|OPERADOR_MOVIL)$"),
     cursor: datetime | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfListResponse:
     page_limit = max(1, min(limit, 100))
     geo_args = [lat, lng, radio_km]
     if any(arg is not None for arg in geo_args) and any(arg is None for arg in geo_args):
-        raise HTTPException(status_code=422, detail="El filtro por ubicación requiere lat, lng y radio_km.")
-    metadatos_filtro: dict | None = None
+        raise HTTPException(
+            status_code=422, detail="El filtro por ubicación requiere lat, lng y radio_km."
+        )
+    metadatos_filtro: dict[str, Any] | None = None
     if metadatos:
         try:
             parsed = json.loads(metadatos)
         except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=422, detail="El filtro de metadatos no es un JSON válido.") from exc
+            raise HTTPException(
+                status_code=422, detail="El filtro de metadatos no es un JSON válido."
+            ) from exc
         if not isinstance(parsed, dict):
-            raise HTTPException(status_code=422, detail="El filtro de metadatos debe ser un objeto.")
+            raise HTTPException(
+                status_code=422, detail="El filtro de metadatos debe ser un objeto."
+            )
         metadatos_filtro = {str(k): v for k, v in parsed.items() if v not in (None, "")}
         metadatos_filtro = metadatos_filtro or None
     items = await service.listar_feed(
@@ -224,7 +239,9 @@ async def listar_feed(
         limit=min(page_limit + 1, 100),
     )
     next_cursor = items[page_limit - 1].created_at if len(items) > page_limit else None
-    return CasoLfListResponse(items=items[:page_limit], total=len(items[:page_limit]), next_cursor=next_cursor)
+    return CasoLfListResponse(
+        items=items[:page_limit], total=len(items[:page_limit]), next_cursor=next_cursor
+    )
 
 
 @router.get("/casos/mis", response_model=CasoLfListResponse)
@@ -233,7 +250,7 @@ async def listar_mis_casos(
     origen: str | None = Query(default=None, pattern="^(COMUNIDAD|OPERADOR_MOVIL)$"),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfListResponse:
     items = await service.listar_mis_casos(current_user.id, limit, origen=origen)
     return CasoLfListResponse(items=items, total=len(items))
 
@@ -249,7 +266,7 @@ async def listar_casos_operativo(
     limit: int = Query(default=50, ge=1, le=200),
     _user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfListResponse:
     page_limit = max(1, min(limit, 200))
     items = await service.listar_operativo(
         search=search,
@@ -261,15 +278,21 @@ async def listar_casos_operativo(
         limit=min(page_limit + 1, 200),
     )
     next_cursor = items[page_limit - 1].created_at if len(items) > page_limit else None
-    return CasoLfListResponse(items=items[:page_limit], total=len(items[:page_limit]), next_cursor=next_cursor)
+    return CasoLfListResponse(
+        items=items[:page_limit], total=len(items[:page_limit]), next_cursor=next_cursor
+    )
 
 
-@router.post("/mobile/recepciones", response_model=RecepcionLfMobileResult, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/mobile/recepciones",
+    response_model=RecepcionLfMobileResult,
+    status_code=status.HTTP_201_CREATED,
+)
 async def registrar_recepcion_mobile(
     body: RecepcionLfMobileInput,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> RecepcionLfMobileResult:
     return await service.registrar_recepcion_mobile(current_user.id, body)
 
 
@@ -278,8 +301,26 @@ async def obtener_caso(
     ref: str,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfDetail:
     return await service.obtener_detalle(ref, current_user.id, current_user.roles)
+
+
+@router.api_route(
+    "/casos/{caso_id}/historial/{historial_id}",
+    methods=["PATCH", "DELETE"],
+    status_code=status.HTTP_403_FORBIDDEN,
+)
+async def rechazar_mutacion_historial_caso(
+    caso_id: str,
+    historial_id: str,
+    current_user: AuthUserResponse = Depends(get_current_user),
+) -> None:
+    """El historial de un caso es append-only; no se modifica ni elimina por API."""
+    _ = (caso_id, historial_id, current_user)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="El historial del caso es inmutable.",
+    )
 
 
 @router.patch("/casos/{caso_id}", response_model=CasoLfDetail)
@@ -288,7 +329,7 @@ async def actualizar_caso(
     body: CasoLfUpdateInput,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfDetail:
     """Edita los datos descriptivos del hilo. Solo el dueño o un administrador."""
     return await service.actualizar_caso(caso_id, current_user.id, current_user.roles, body)
 
@@ -299,7 +340,7 @@ async def cerrar_reabrir_caso(
     body: CasoCierreInput,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfDetail:
     """Cierra o reabre un hilo (habilita/deshabilita la interacción). Solo administrador."""
     return await service.cerrar_reabrir_caso(caso_id, current_user.id, body)
 
@@ -310,7 +351,7 @@ async def ocultar_mostrar_caso(
     body: CasoVisibilidadInput,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfDetail:
     """Oculta o muestra un hilo para la comunidad. Solo administrador."""
     return await service.ocultar_mostrar_caso(caso_id, current_user.id, body)
 
@@ -321,7 +362,7 @@ async def cambiar_estado(
     body: CasoLfEstadoUpdate,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfDetail:
     return await service.cambiar_estado(caso_id, current_user.id, body)
 
 
@@ -331,7 +372,7 @@ async def cancelar_caso(
     body: CancelarCasoLfInput,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfDetail:
     return await service.cancelar_caso(caso_id, current_user.id, body)
 
 
@@ -341,18 +382,22 @@ async def actualizar_fotos(
     body: CasoLfFotosInput,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> CasoLfDetail:
     return await service.actualizar_fotos(caso_id, current_user.id, current_user.roles, body)
 
 
 @router.post("/casos/{caso_id}/fotos/upload", response_model=CasoLfDetail)
 async def subir_fotos_archivo(
     caso_id: str,
-    archivos: list[UploadFile] = File(..., description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo."),
+    archivos: list[UploadFile] = File(
+        ..., description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo."
+    ),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
-    return await service.subir_fotos_archivos(caso_id, current_user.id, current_user.roles, archivos)
+) -> CasoLfDetail:
+    return await service.subir_fotos_archivos(
+        caso_id, current_user.id, current_user.roles, archivos
+    )
 
 
 @router.get("/casos/{caso_id}/matches", response_model=list[MatchLfItem])
@@ -360,7 +405,7 @@ async def listar_matches(
     caso_id: str,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> list[MatchLfItem]:
     return await service.listar_matches(caso_id, current_user.id, current_user.roles)
 
 
@@ -370,7 +415,7 @@ async def responder_match(
     body: MatchLfResponderInput,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> None:
     await service.responder_match(match_id, current_user.id, current_user.roles, body)
 
 
@@ -379,21 +424,30 @@ async def listar_comentarios(
     caso_id: str,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> list[ComentarioLfItem]:
     return await service.listar_comentarios(caso_id, current_user.roles, current_user.id)
 
 
-@router.post("/casos/{caso_id}/comentarios", response_model=ComentarioLfItem, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/casos/{caso_id}/comentarios",
+    response_model=ComentarioLfItem,
+    status_code=status.HTTP_201_CREATED,
+)
 async def crear_comentario(
     caso_id: str,
     contenido: str = Form(..., min_length=2, max_length=2000),
     parent_id: str | None = Form(default=None),
     tag: str | None = Form(default=None),
-    archivos: list[UploadFile] = File(default=[], description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo."),
+    archivos: list[UploadFile] = File(
+        default=[],
+        description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo.",
+    ),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
-    body = ComentarioLfCreateInput(contenido=contenido, parent_id=parent_id or None, tag=tag or None)
+) -> ComentarioLfItem:
+    body = ComentarioLfCreateInput(
+        contenido=contenido, parent_id=parent_id or None, tag=tag or None
+    )
     # FastAPI entrega un UploadFile vacío cuando no se adjunta nada; lo filtramos.
     imagenes = [a for a in archivos if a and a.filename]
     return await service.crear_comentario(caso_id, current_user.id, body, imagenes)
@@ -402,10 +456,12 @@ async def crear_comentario(
 @router.post("/casos/{caso_id}/media", response_model=list[str])
 async def subir_media_caso(
     caso_id: str,
-    archivos: list[UploadFile] = File(..., description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo."),
+    archivos: list[UploadFile] = File(
+        ..., description="Hasta 3 imagenes (jpg, png, webp, heic, gif). Max. 10MB por archivo."
+    ),
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> list[str]:
     """Sube imágenes y devuelve sus URLs sin mutar el caso (para la edición del hilo)."""
     return await service.subir_media_caso(caso_id, current_user.id, current_user.roles, archivos)
 
@@ -416,7 +472,7 @@ async def editar_comentario(
     body: ComentarioLfEditInput,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> None:
     """Edita el texto de un comentario (gestión operativa)."""
     await service.editar_comentario(comentario_id, current_user.id, current_user.roles, body)
 
@@ -426,7 +482,7 @@ async def eliminar_comentario_propio(
     comentario_id: str,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> None:
     await service.eliminar_comentario_propio(comentario_id, current_user.id)
 
 
@@ -435,7 +491,7 @@ async def eliminar_comentario_gestion(
     comentario_id: str,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> None:
     """Elimina (soft-delete) un comentario preservando el hilo. Gestión operativa."""
     await service.eliminar_comentario_admin(comentario_id, current_user.id, current_user.roles)
 
@@ -446,17 +502,19 @@ async def actualizar_participacion(
     body: ParticipacionLfInput,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> None:
     await service.actualizar_participacion(caso_id, current_user.id, body)
 
 
-@router.post("/casos/{caso_id}/custodia", response_model=CustodiaLfItem, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/casos/{caso_id}/custodia", response_model=CustodiaLfItem, status_code=status.HTTP_201_CREATED
+)
 async def crear_custodia(
     caso_id: str,
     body: CustodiaLfCreateInput,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> CustodiaLfItem:
     return await service.crear_custodia(caso_id, current_user.id, body)
 
 
@@ -469,7 +527,7 @@ async def listar_custodias(
     per_page: int = Query(default=20, ge=1, le=100),
     _user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> CustodiaLfListResponse:
     return await service.listar_custodias(
         estados=_parse_enum_csv(estado, EstadoCustodia),
         search=search,
@@ -485,7 +543,7 @@ async def actualizar_custodia(
     body: CustodiaLfUpdateInput,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> CustodiaLfItem:
     return await service.actualizar_custodia(custodia_id, current_user.id, body)
 
 
@@ -495,7 +553,7 @@ async def registrar_devolucion(
     body: DevolucionLfInput,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> None:
     await service.registrar_devolucion(custodia_id, current_user.id, body)
 
 
@@ -505,7 +563,7 @@ async def registrar_descarte(
     body: DescarteLfInput,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> None:
     await service.registrar_descarte(custodia_id, current_user.id, body)
 
 
@@ -514,7 +572,7 @@ async def revertir_devolucion(
     custodia_id: str,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> CustodiaLfItem:
     """Revierte la devolución de una custodia y reabre el caso asociado."""
     return await service.revertir_devolucion(custodia_id, current_user.id)
 
@@ -524,7 +582,7 @@ async def reactivar_descarte(
     custodia_id: str,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> CustodiaLfItem:
     """Reactiva una custodia descartada recalculando su estado por vencimiento."""
     return await service.reactivar_descarte(custodia_id, current_user.id)
 
@@ -535,7 +593,7 @@ async def moderar_comentario(
     body: ComentarioVisibilidadInput,
     current_user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> None:
     await service.moderar_comentario(comentario_id, current_user.id, body)
 
 
@@ -544,7 +602,7 @@ async def reaccionar_comentario(
     comentario_id: str,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> ComentarioReaccionResult:
     """Alterna la reacción "Destacar" del usuario (una por comentario, no al propio)."""
     return await service.reaccionar_comentario(comentario_id, current_user.id)
 
@@ -555,7 +613,7 @@ async def fijar_comentario(
     body: ComentarioFijarInput,
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> None:
     """Fija/desfija un comentario principal (operativo/admin o dueño del hilo)."""
     await service.fijar_comentario(comentario_id, current_user.id, current_user.roles, body)
 
@@ -564,7 +622,7 @@ async def fijar_comentario(
 async def obtener_acceso_mi(
     current_user: AuthUserResponse = Depends(get_current_user),
     service: LostFoundService = Depends(get_service),
-):
+) -> AccesoLfMiResult:
     """Indica si el usuario actual tiene acceso al módulo operativo de Lost & Found."""
     return await service.obtener_acceso_mi(current_user.id, current_user.roles)
 
@@ -573,7 +631,7 @@ async def obtener_acceso_mi(
 async def listar_supervisores_acceso(
     _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> list[SupervisorLfItem]:
     """Lista los supervisores del sistema y su asignación al módulo (solo administrador)."""
     return await service.listar_supervisores_acceso()
 
@@ -583,7 +641,7 @@ async def actualizar_supervisores_acceso(
     body: AccesoLfUpdateInput,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> list[SupervisorLfItem]:
     """Reemplaza el conjunto de supervisores con acceso al módulo (solo administrador)."""
     return await service.set_acceso_supervisores(body.usuario_ids, current_user.id)
 
@@ -592,7 +650,7 @@ async def actualizar_supervisores_acceso(
 async def obtener_kpis(
     _user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> KpisLfResponse:
     return await service.obtener_kpis()
 
 
@@ -605,14 +663,16 @@ async def obtener_dashboard(
     tipo: TipoCasoLF | None = Query(default=None),
     _user: AuthUserResponse = Depends(require_lost_found_access),
     service: LostFoundService = Depends(get_service),
-):
+) -> DashboardLfResponse:
     if fecha_hasta < fecha_desde:
-        raise HTTPException(status_code=422, detail="La fecha final debe ser posterior a la fecha inicial.")
+        raise HTTPException(
+            status_code=422, detail="La fecha final debe ser posterior a la fecha inicial."
+        )
     if (fecha_hasta - fecha_desde).days > 730:
         raise HTTPException(status_code=422, detail="El rango máximo permitido es de 730 días.")
     return await service.obtener_dashboard(
-        fecha_desde=datetime.combine(fecha_desde, time.min, tzinfo=timezone.utc),
-        fecha_hasta=datetime.combine(fecha_hasta + timedelta(days=1), time.min, tzinfo=timezone.utc),
+        fecha_desde=datetime.combine(fecha_desde, time.min, tzinfo=UTC),
+        fecha_hasta=datetime.combine(fecha_hasta + timedelta(days=1), time.min, tzinfo=UTC),
         categorias=_parse_uuid_csv(categoria),
         estados=_parse_enum_csv(estado, EstadoCasoLF),
         tipo=tipo.value if tipo else None,
@@ -623,7 +683,7 @@ async def obtener_dashboard(
 async def listar_configuracion(
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> list[ConfiguracionLfItem]:
     return await service.listar_configuracion()
 
 
@@ -633,7 +693,7 @@ async def actualizar_configuracion(
     body: ConfiguracionLfUpdateInput,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> ConfiguracionLfItem:
     return await service.actualizar_configuracion(key, current_user.id, body)
 
 
@@ -641,7 +701,7 @@ async def actualizar_configuracion(
 async def obtener_config_matching(
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> MatchingConfigItem:
     """Lee el umbral de sugerencia de matching (valor por defecto si no existe)."""
     return await service.obtener_config_matching()
 
@@ -651,7 +711,7 @@ async def actualizar_config_matching(
     body: MatchingConfigUpdateInput,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> MatchingConfigItem:
     """Actualiza el umbral de sugerencia (0.00 a 1.00). Solo administrador."""
     return await service.actualizar_config_matching(current_user.id, body)
 
@@ -660,7 +720,7 @@ async def actualizar_config_matching(
 async def obtener_politica_custodia(
     _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> CustodiaPoliticaItem:
     """Lee la política de custodia y recordatorios (valores por defecto si no existe)."""
     return await service.obtener_politica_custodia()
 
@@ -670,6 +730,6 @@ async def actualizar_politica_custodia(
     body: CustodiaPoliticaUpdateInput,
     current_user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
-):
+) -> CustodiaPoliticaItem:
     """Actualiza la política de custodia y recordatorios. Solo administrador."""
     return await service.actualizar_politica_custodia(current_user.id, body)

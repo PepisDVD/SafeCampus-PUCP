@@ -52,7 +52,7 @@ def _button(text: str, url: str) -> str:
         f'style="margin:24px 0;"><tr><td>'
         f'<a href="{escape(url, quote=True)}" '
         f'style="background-color:{BRAND_PRIMARY};color:#ffffff;text-decoration:none;'
-        f'display:inline-block;padding:12px 24px;border-radius:10px;font-weight:600;'
+        f"display:inline-block;padding:12px 24px;border-radius:10px;font-weight:600;"
         f'font-size:14px;font-family:Arial,Helvetica,sans-serif;">{escape(text)}</a>'
         f"</td></tr></table>"
     )
@@ -124,6 +124,7 @@ Este es un mensaje automático, por favor no respondas a este correo.
 # Usuarios / Auth — alta de cuenta provisionada por el administrador
 # ---------------------------------------------------------------------------
 
+
 def account_welcome(
     *,
     to: str | Iterable[str],
@@ -152,8 +153,7 @@ def account_welcome(
     if temporary_password:
         content.append(
             _paragraph(
-                "Usa esta contraseña temporal para tu primer ingreso "
-                "(cámbiala apenas accedas):"
+                "Usa esta contraseña temporal para tu primer ingreso (cámbiala apenas accedas):"
             )
         )
         content.append(_highlight("Contraseña temporal", temporary_password))
@@ -179,6 +179,7 @@ def account_welcome(
 # Incidentes — cambio de estado / actualización
 # ---------------------------------------------------------------------------
 
+
 def incident_status_update(
     *,
     to: str | Iterable[str],
@@ -192,9 +193,7 @@ def incident_status_update(
     saludo = f"Hola {nombre}," if nombre else "Hola,"
     content = [
         _paragraph(saludo),
-        _paragraph(
-            f"Tu incidente {codigo} cambió de estado a: {estado}."
-        ),
+        _paragraph(f"Tu incidente {codigo} cambió de estado a: {estado}."),
     ]
     text_lines = [saludo, f"Incidente {codigo} — nuevo estado: {estado}."]
 
@@ -221,6 +220,7 @@ def incident_status_update(
 # ---------------------------------------------------------------------------
 # Alertas — alerta de seguridad
 # ---------------------------------------------------------------------------
+
 
 def security_alert(
     *,
@@ -260,6 +260,7 @@ def security_alert(
 # Lost & Found — actualización de objeto
 # ---------------------------------------------------------------------------
 
+
 def lost_found_update(
     *,
     to: str | Iterable[str],
@@ -296,6 +297,7 @@ def lost_found_update(
 # ---------------------------------------------------------------------------
 # Genérica — para módulos sin plantilla dedicada todavía
 # ---------------------------------------------------------------------------
+
 
 def generic_notification(
     *,

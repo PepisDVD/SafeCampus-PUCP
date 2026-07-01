@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 from app.llm.exceptions import MissingPromptVariableError, PromptNotFoundError
 from app.llm.schemas import PromptTemplate
@@ -41,7 +42,8 @@ class PromptFactory:
             )
         return template.user_message_template.format(**variables)
 
-    def _load_registry(self) -> dict[str, object]:
+    def _load_registry(self) -> dict[str, Any]:
         if not self._registry_path.exists():
             raise PromptNotFoundError("Prompt registry.json was not found.")
-        return json.loads(self._registry_path.read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(self._registry_path.read_text(encoding="utf-8"))
+        return data

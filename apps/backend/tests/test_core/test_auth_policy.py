@@ -55,8 +55,6 @@ def test_combinacion_anomala_permite_por_su_canal_y_se_marca():
 
 def test_roles_del_otro_canal_no_aplican():
     # Un usuario web con varios roles solo opera con los válidos del canal web.
-    result = evaluate_channel_access(
-        ["operador", "comunidad", "administrador"], AuthChannel.WEB
-    )
+    result = evaluate_channel_access(["operador", "comunidad", "administrador"], AuthChannel.WEB)
     assert result.allowed
     assert result.effective_roles == ["comunidad", "administrador"]

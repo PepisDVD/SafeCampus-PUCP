@@ -76,5 +76,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS sc_lost_found.idx_match_sugerido_estado_score;")
-    op.execute("ALTER TABLE sc_lost_found.match_sugerido DROP CONSTRAINT IF EXISTS uq_match_sugerido_par;")
+    op.execute(
+        "ALTER TABLE sc_lost_found.match_sugerido DROP CONSTRAINT IF EXISTS uq_match_sugerido_par;"
+    )
     op.execute("DELETE FROM sc_lost_found.configuracion_lf WHERE key = 'matching.sugerencia';")

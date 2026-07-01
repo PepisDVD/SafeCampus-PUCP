@@ -5,7 +5,6 @@ from app.models.sc_acompanamiento import (
     EventoAcompanamiento,
     UbicacionTrayecto,
 )
-from app.models.sc_auditoria import RegistroAuditoria
 from app.models.sc_alertas import (
     AlertaCampus,
     AlertaEntrega,
@@ -17,9 +16,9 @@ from app.models.sc_alertas import (
     ReglaAlerta,
     ZonaGeografica,
 )
+from app.models.sc_auditoria import RegistroAuditoria
 from app.models.sc_clasificacion import ClasificacionIa, ReglaClasificacion
-from app.models.sc_dashboard import EstadoIntegracion
-from app.models.sc_dashboard import KpiOperativo, ReporteExportado
+from app.models.sc_dashboard import EstadoIntegracion, KpiOperativo, ReporteExportado
 from app.models.sc_incidentes import (
     AsignacionRecurso,
     ComentarioIncidente,
@@ -29,7 +28,7 @@ from app.models.sc_incidentes import (
     Incidente,
     UbicacionIncidente,
 )
-from app.models.sc_lost_found import CategoriaObjeto, CasoLostFound, HistorialCasoLf, MotivoCierreLf
+from app.models.sc_lost_found import CasoLostFound, CategoriaObjeto, HistorialCasoLf, MotivoCierreLf
 from app.models.sc_maestros import UbicacionMaestra
 from app.models.sc_notificaciones import (
     Notificacion,

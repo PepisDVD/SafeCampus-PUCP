@@ -34,6 +34,7 @@ from app.services.llm_audit_service import LlmAuditService
 
 require_admin = require_roles({"administrador"})
 router = APIRouter(dependencies=[Depends(require_admin)])
+USUARIOS_SEARCH_MAX_LENGTH = 120
 
 
 def _split_csv(value: str | None) -> list[str] | None:
@@ -51,12 +52,13 @@ def get_service(db: AsyncSession = Depends(get_session)) -> AdminService:
 # Usuarios
 # ---------------------------------------------------------------------------
 
+
 @router.get("/usuarios", response_model=UsuariosListResponse, tags=["Admin - Usuarios"])
 async def listar_usuarios(
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=USUARIOS_SEARCH_MAX_LENGTH),
     estado: str | None = Query(default=None),
     service: AdminService = Depends(get_service),
-):
+) -> UsuariosListResponse:
     return await service.listar_usuarios(search=search, estado=estado)
 
 
@@ -70,7 +72,7 @@ async def crear_usuario(
     body: UsuarioCreateInput,
     service: AdminService = Depends(get_service),
     current_user: AuthUserResponse = Depends(require_admin),
-):
+) -> UsuarioCreateResponse:
     return await service.crear_usuario(body, actor_id=current_user.id)
 
 
@@ -80,7 +82,7 @@ async def actualizar_usuario(
     body: UsuarioUpdateInput,
     service: AdminService = Depends(get_service),
     current_user: AuthUserResponse = Depends(require_admin),
-):
+) -> UsuarioOut:
     return await service.actualizar_usuario(usuario_id, body, actor_id=current_user.id)
 
 
@@ -94,10 +96,8 @@ async def actualizar_perfil_usuario(
     body: UsuarioProfileUpdateInput,
     service: AdminService = Depends(get_service),
     current_user: AuthUserResponse = Depends(require_admin),
-):
-    return await service.actualizar_perfil_usuario(
-        usuario_id, body, actor_id=current_user.id
-    )
+) -> UsuarioOut:
+    return await service.actualizar_perfil_usuario(usuario_id, body, actor_id=current_user.id)
 
 
 @router.patch(
@@ -110,7 +110,7 @@ async def cambiar_estado_usuario(
     body: CambiarEstadoInput,
     service: AdminService = Depends(get_service),
     current_user: AuthUserResponse = Depends(require_admin),
-):
+) -> MessageResponse:
     result = await service.cambiar_estado(usuario_id, body, actor_id=current_user.id)
     return MessageResponse(message=result["message"])
 
@@ -119,13 +119,14 @@ async def cambiar_estado_usuario(
 # Roles & Permisos
 # ---------------------------------------------------------------------------
 
+
 @router.get("/roles", response_model=RolesListResponse, tags=["Admin - Roles"])
-async def listar_roles(service: AdminService = Depends(get_service)):
+async def listar_roles(service: AdminService = Depends(get_service)) -> RolesListResponse:
     return await service.listar_roles()
 
 
 @router.get("/roles/permisos", response_model=PermisosListResponse, tags=["Admin - Roles"])
-async def listar_permisos(service: AdminService = Depends(get_service)):
+async def listar_permisos(service: AdminService = Depends(get_service)) -> PermisosListResponse:
     return await service.listar_permisos()
 
 
@@ -139,16 +140,15 @@ async def actualizar_permisos_rol(
     body: ActualizarPermisosInput,
     service: AdminService = Depends(get_service),
     current_user: AuthUserResponse = Depends(require_admin),
-):
-    result = await service.actualizar_permisos_rol(
-        rol_id, body, actor_id=current_user.id
-    )
+) -> MessageResponse:
+    result = await service.actualizar_permisos_rol(rol_id, body, actor_id=current_user.id)
     return MessageResponse(message=result["message"])
 
 
 # ---------------------------------------------------------------------------
 # Auditoría
 # ---------------------------------------------------------------------------
+
 
 @router.get("/auditoria", response_model=AuditoriaListResponse, tags=["Admin - Auditoría"])
 async def listar_auditoria(
@@ -163,7 +163,7 @@ async def listar_auditoria(
     cursor: str | None = Query(default=None),
     page_size: int = Query(default=25, ge=1, le=100),
     service: AdminService = Depends(get_service),
-):
+) -> AuditoriaListResponse:
     return await service.listar_auditoria(
         search=search,
         modulos=_split_csv(modulo),
@@ -183,7 +183,7 @@ async def listar_auditoria(
     response_model=ModulosResponse,
     tags=["Admin - Auditoría"],
 )
-async def obtener_modulos(service: AdminService = Depends(get_service)):
+async def obtener_modulos(service: AdminService = Depends(get_service)) -> ModulosResponse:
     return await service.obtener_modulos_distintos()
 
 
@@ -192,7 +192,9 @@ async def obtener_modulos(service: AdminService = Depends(get_service)):
     response_model=AuditoriaAccionesResponse,
     tags=["Admin - Auditoría"],
 )
-async def obtener_acciones(service: AdminService = Depends(get_service)):
+async def obtener_acciones(
+    service: AdminService = Depends(get_service),
+) -> AuditoriaAccionesResponse:
     return await service.obtener_acciones_distintas()
 
 
@@ -201,7 +203,9 @@ async def obtener_acciones(service: AdminService = Depends(get_service)):
     response_model=AuditoriaUsuariosResponse,
     tags=["Admin - Auditoría"],
 )
-async def obtener_usuarios_auditoria(service: AdminService = Depends(get_service)):
+async def obtener_usuarios_auditoria(
+    service: AdminService = Depends(get_service),
+) -> AuditoriaUsuariosResponse:
     return await service.obtener_usuarios_auditoria()
 
 
@@ -209,12 +213,15 @@ async def obtener_usuarios_auditoria(service: AdminService = Depends(get_service
 # Integraciones
 # ---------------------------------------------------------------------------
 
+
 @router.get(
     "/integraciones",
     response_model=IntegracionesListResponse,
     tags=["Admin - Integraciones"],
 )
-async def listar_integraciones(service: AdminService = Depends(get_service)):
+async def listar_integraciones(
+    service: AdminService = Depends(get_service),
+) -> IntegracionesListResponse:
     return await service.listar_integraciones()
 
 
@@ -226,7 +233,7 @@ async def listar_integraciones(service: AdminService = Depends(get_service)):
 async def verificar_integracion(
     integracion_id: str,
     service: AdminService = Depends(get_service),
-):
+) -> MessageResponse:
     result = await service.verificar_integracion(integracion_id)
     return MessageResponse(message=result["message"])
 
@@ -234,6 +241,7 @@ async def verificar_integracion(
 # ---------------------------------------------------------------------------
 # LLM Audit
 # ---------------------------------------------------------------------------
+
 
 def get_llm_audit_service(db: AsyncSession = Depends(get_session)) -> LlmAuditService:
     return LlmAuditService(db)
@@ -252,7 +260,7 @@ async def listar_llm_usage(
     desde: str | None = Query(default=None),
     hasta: str | None = Query(default=None),
     service: LlmAuditService = Depends(get_llm_audit_service),
-):
+) -> LlmUsageListResponse:
     return await service.listar_uso(
         page=page,
         page_size=page_size,
@@ -274,7 +282,7 @@ async def obtener_llm_stats(
     desde: str | None = Query(default=None),
     hasta: str | None = Query(default=None),
     service: LlmAuditService = Depends(get_llm_audit_service),
-):
+) -> LlmUsageStatsResponse:
     return await service.obtener_stats(desde=desde, hasta=hasta)
 
 
@@ -285,5 +293,5 @@ async def obtener_llm_stats(
 )
 async def listar_providers(
     service: LlmAuditService = Depends(get_llm_audit_service),
-):
+) -> list[str]:
     return await service.listar_providers()

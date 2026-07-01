@@ -40,9 +40,7 @@ async def test_resend_client_send_success():
         default_from="no-reply@pucp.edu.pe",
         transport=httpx.MockTransport(handler),
     )
-    result = await client.send(
-        EmailMessage(to=["a@pucp.edu.pe"], subject="Hi", text="hola")
-    )
+    result = await client.send(EmailMessage(to=["a@pucp.edu.pe"], subject="Hi", text="hola"))
     assert result.id == "email-123"
     assert result.provider == "resend"
 
@@ -51,9 +49,7 @@ async def test_resend_client_send_error_raises():
     transport = httpx.MockTransport(
         lambda _req: httpx.Response(422, json={"message": "Dominio no verificado"})
     )
-    client = ResendClient(
-        api_key="re_x", default_from="no-reply@pucp.edu.pe", transport=transport
-    )
+    client = ResendClient(api_key="re_x", default_from="no-reply@pucp.edu.pe", transport=transport)
     with pytest.raises(EmailDeliveryError) as exc:
         await client.send(EmailMessage(to=["a@pucp.edu.pe"], subject="Hi", text="hola"))
     assert exc.value.status_code == 422
@@ -69,13 +65,9 @@ async def test_email_service_send_disabled_raises(monkeypatch):
 async def test_email_service_send_uses_injected_client(monkeypatch):
     monkeypatch.setattr(settings, "EMAIL_ENABLED", True)
     transport = httpx.MockTransport(lambda _req: httpx.Response(200, json={"id": "ok-1"}))
-    client = ResendClient(
-        api_key="re_x", default_from="no-reply@pucp.edu.pe", transport=transport
-    )
+    client = ResendClient(api_key="re_x", default_from="no-reply@pucp.edu.pe", transport=transport)
     service = EmailService(client=client)
-    result = await service.send(
-        EmailMessage(to=["a@pucp.edu.pe"], subject="Hi", text="hola")
-    )
+    result = await service.send(EmailMessage(to=["a@pucp.edu.pe"], subject="Hi", text="hola"))
     assert result.id == "ok-1"
 
 

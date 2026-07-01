@@ -5,8 +5,17 @@ on:
   push:
     branches: [main, develop]
 
+# Cancela ejecuciones previas del mismo branch/PR cuando llega un push nuevo.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  monorepo-js:
+  frontend:
+    name: Frontend (lint · test · typecheck · build)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,7 +45,8 @@ jobs:
       - name: Build
         run: pnpm build
 
-  backend-tests:
+  backend:
+    name: Backend (ruff · mypy · pytest)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -49,12 +59,27 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/pyproject.toml
 
       - name: Install backend deps
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # --- Calidad de código (gates obligatorios) ---
+      # El backend está limpio de ruff (check + format) y mypy (strict), por lo
+      # que estos pasos bloquean el merge ante cualquier regresión de estilo/tipos.
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+
+      - name: Mypy type check
+        run: mypy app
+
+      # --- Tests ---
       - name: Run pytest
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/postgres?ssl=require

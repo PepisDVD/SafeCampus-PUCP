@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState, useTransition } from "react";
 import {
   Button,
   Dialog,
@@ -67,6 +67,8 @@ type UsuariosClientProps = {
 };
 
 const PER_PAGE = 10;
+const SEARCH_MAX_LENGTH = 120;
+const SEARCH_LIMIT_MESSAGE = `La búsqueda permite máximo ${SEARCH_MAX_LENGTH} caracteres.`;
 
 export function UsuariosClient({
   initialUsuarios,
@@ -75,6 +77,7 @@ export function UsuariosClient({
 }: UsuariosClientProps) {
   const [usuarios, setUsuarios] = useState(initialUsuarios);
   const [search, setSearch] = useState("");
+  const [searchLimitReached, setSearchLimitReached] = useState(false);
   const [estadoFilters, setEstadoFilters] = useState<string[]>([]);
   const [rolFilters, setRolFilters] = useState<string[]>([]);
   const [page, setPage] = useState(1);
@@ -91,6 +94,17 @@ export function UsuariosClient({
   const [pendingRowId, setPendingRowId] = useState<string | null>(null);
 
   const [isPending, startTransition] = useTransition();
+
+  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextValue = event.target.value;
+    const isOverLimit = nextValue.length > SEARCH_MAX_LENGTH;
+    const normalizedValue = isOverLimit
+      ? nextValue.slice(0, SEARCH_MAX_LENGTH)
+      : nextValue;
+
+    setSearch(normalizedValue);
+    setSearchLimitReached(isOverLimit || normalizedValue.length === SEARCH_MAX_LENGTH);
+  };
 
   useEffect(() => {
     setUsuarios(initialUsuarios);
@@ -263,12 +277,21 @@ export function UsuariosClient({
 
       {/* Filters */}
       <FilterBar className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <SearchInput
-          containerClassName="flex-1"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nombre, apellido o correo..."
-        />
+        <div className="flex-1 space-y-1">
+          <SearchInput
+            value={search}
+            onChange={handleSearchChange}
+            maxLength={SEARCH_MAX_LENGTH}
+            aria-invalid={searchLimitReached}
+            aria-describedby={searchLimitReached ? "usuarios-search-limit" : undefined}
+            placeholder="Buscar por nombre, apellido o correo..."
+          />
+          {searchLimitReached ? (
+            <p id="usuarios-search-limit" className="px-3 text-xs text-destructive">
+              {SEARCH_LIMIT_MESSAGE}
+            </p>
+          ) : null}
+        </div>
         <MultiSelectFilter
           className="w-full sm:w-44"
           placeholder="Todos los estados"

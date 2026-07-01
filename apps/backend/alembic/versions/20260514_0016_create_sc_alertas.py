@@ -2,11 +2,12 @@
 Create sc_alertas schema for campus alert lifecycle and delivery tracking.
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "20260514_0016"
 down_revision: str | None = "20260530_0016"
@@ -94,7 +95,12 @@ def upgrade() -> None:
         sa.Column("contenido", sa.Text(), nullable=False),
         sa.Column("severidad", nivel_severidad, nullable=False),
         sa.Column("estado", estado_alerta, server_default="BORRADOR", nullable=False),
-        sa.Column("canales", postgresql.JSONB(), server_default=sa.text("'[\"INAPP\"]'::jsonb"), nullable=False),
+        sa.Column(
+            "canales",
+            postgresql.JSONB(),
+            server_default=sa.text("'[\"INAPP\"]'::jsonb"),
+            nullable=False,
+        ),
         sa.Column("zona_id", sa.UUID(), nullable=True),
         sa.Column("geom", sa.Text(), nullable=True),
         sa.Column("radio_metros", sa.Integer(), nullable=True),
@@ -103,9 +109,21 @@ def upgrade() -> None:
         sa.Column("fecha_fin", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_by_id", sa.UUID(), nullable=False),
         sa.Column("published_by_id", sa.UUID(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.CheckConstraint("radio_metros IS NULL OR radio_metros > 0", name="ck_alerta_radio_metros"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "radio_metros IS NULL OR radio_metros > 0", name="ck_alerta_radio_metros"
+        ),
         sa.ForeignKeyConstraint(["zona_id"], ["sc_maestros.ubicacion_maestra.id"]),
         sa.ForeignKeyConstraint(["created_by_id"], ["sc_users.usuario.id"]),
         sa.ForeignKeyConstraint(["published_by_id"], ["sc_users.usuario.id"]),
@@ -122,7 +140,9 @@ def upgrade() -> None:
     )
     op.create_index("idx_alerta_estado", "alerta", ["estado"], schema="sc_alertas")
     op.create_index("idx_alerta_created", "alerta", ["created_at"], schema="sc_alertas")
-    op.create_index("idx_alerta_geom", "alerta", ["geom"], schema="sc_alertas", postgresql_using="gist")
+    op.create_index(
+        "idx_alerta_geom", "alerta", ["geom"], schema="sc_alertas", postgresql_using="gist"
+    )
 
     op.create_table(
         "alerta_segmento",
@@ -133,15 +153,24 @@ def upgrade() -> None:
         sa.Column("usuario_id", sa.UUID(), nullable=True),
         sa.Column("ubicacion_id", sa.UUID(), nullable=True),
         sa.Column("radio_metros", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.CheckConstraint("radio_metros IS NULL OR radio_metros > 0", name="ck_alerta_segmento_radio"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "radio_metros IS NULL OR radio_metros > 0", name="ck_alerta_segmento_radio"
+        ),
         sa.ForeignKeyConstraint(["alerta_id"], ["sc_alertas.alerta.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["usuario_id"], ["sc_users.usuario.id"]),
         sa.ForeignKeyConstraint(["ubicacion_id"], ["sc_maestros.ubicacion_maestra.id"]),
         sa.PrimaryKeyConstraint("id"),
         schema="sc_alertas",
     )
-    op.create_index("idx_alerta_segmento_alerta", "alerta_segmento", ["alerta_id"], schema="sc_alertas")
+    op.create_index(
+        "idx_alerta_segmento_alerta", "alerta_segmento", ["alerta_id"], schema="sc_alertas"
+    )
     op.create_index("idx_alerta_segmento_tipo", "alerta_segmento", ["tipo"], schema="sc_alertas")
 
     op.create_table(
@@ -155,15 +184,27 @@ def upgrade() -> None:
         sa.Column("external_message_id", sa.String(length=160), nullable=True),
         sa.Column("error_detalle", sa.Text(), nullable=True),
         sa.Column("fecha_envio", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["alerta_id"], ["sc_alertas.alerta.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["destinatario_id"], ["sc_users.usuario.id"]),
         sa.ForeignKeyConstraint(["notificacion_id"], ["sc_notificaciones.notificacion.id"]),
         sa.PrimaryKeyConstraint("id"),
         schema="sc_alertas",
     )
-    op.create_index("idx_alerta_entrega_alerta", "alerta_entrega", ["alerta_id"], schema="sc_alertas")
+    op.create_index(
+        "idx_alerta_entrega_alerta", "alerta_entrega", ["alerta_id"], schema="sc_alertas"
+    )
     op.create_index("idx_alerta_entrega_estado", "alerta_entrega", ["estado"], schema="sc_alertas")
 
     op.create_table(
@@ -172,8 +213,15 @@ def upgrade() -> None:
         sa.Column("alerta_id", sa.UUID(), nullable=False),
         sa.Column("tipo_evento", sa.String(length=80), nullable=False),
         sa.Column("actor_usuario_id", sa.UUID(), nullable=True),
-        sa.Column("detalle", postgresql.JSONB(), server_default=sa.text("'{}'::jsonb"), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "detalle", postgresql.JSONB(), server_default=sa.text("'{}'::jsonb"), nullable=False
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["alerta_id"], ["sc_alertas.alerta.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["actor_usuario_id"], ["sc_users.usuario.id"]),
         sa.PrimaryKeyConstraint("id"),

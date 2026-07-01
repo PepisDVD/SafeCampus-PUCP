@@ -8,8 +8,9 @@ Create Date: 2026-06-27
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "20260627_0033"
 down_revision: str | None = "20260627_0032"
@@ -27,16 +28,31 @@ def upgrade() -> None:
 
     op.create_table(
         "conversacion_incidente_historial",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("conversacion_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("incidente_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("actor_usuario_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("actor_tipo", sa.String(length=16), nullable=False, server_default="SISTEMA"),
         sa.Column("tipo_asociacion", sa.String(length=32), nullable=False),
-        sa.Column("asociado_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "asociado_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.Column("finalizado_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("motivo_finalizacion", sa.String(length=64), nullable=True),
-        sa.Column("metadatos", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'{}'::jsonb")),
+        sa.Column(
+            "metadatos",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
         sa.ForeignKeyConstraint(
             ["conversacion_id"],
             ["sc_omnicanal.conversacion.id"],

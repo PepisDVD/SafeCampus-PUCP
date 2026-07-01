@@ -20,7 +20,6 @@ from app.core.database import AsyncSessionLocal, engine
 from app.core.security import get_password_hash
 from app.models.sc_users import Rol, Usuario, UsuarioRol
 
-
 DEV_EMAIL = os.getenv("DEV_COMMUNITY_EMAIL", "safecampus.comunidad.dev@gmail.com")
 DEV_PASSWORD = os.getenv("DEV_COMMUNITY_PASSWORD", "SafeCampusDev123!")
 DEV_FIRST_NAME = os.getenv("DEV_COMMUNITY_FIRST_NAME", "Comunidad")
@@ -39,9 +38,7 @@ async def main() -> None:
             role_id = settings.DEFAULT_COMMUNITY_ROLE_ID
 
         user_result = await session.execute(
-            select(Usuario.id)
-            .where(func.lower(Usuario.email) == DEV_EMAIL.lower())
-            .limit(1)
+            select(Usuario.id).where(func.lower(Usuario.email) == DEV_EMAIL.lower()).limit(1)
         )
         user_id = user_result.scalar_one_or_none()
 
@@ -85,9 +82,7 @@ async def main() -> None:
         await session.execute(
             insert(UsuarioRol)
             .values(usuario_id=user_id, rol_id=role_id)
-            .on_conflict_do_nothing(
-                index_elements=[UsuarioRol.usuario_id, UsuarioRol.rol_id]
-            )
+            .on_conflict_do_nothing(index_elements=[UsuarioRol.usuario_id, UsuarioRol.rol_id])
         )
         await session.commit()
 

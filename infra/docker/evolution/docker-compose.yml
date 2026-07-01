@@ -31,8 +31,10 @@ services:
       - .env.example
       - path: .env
         required: false
+    # Host 8082 → contenedor 8081 (nginx). Se usa 8082 en el host para no chocar
+    # con el bundler Metro/Expo de la app mobile, que ocupa 8081.
     ports:
-      - "8081:8081"
+      - "8082:8081"
     volumes:
       - ./nginx-manager-proxy.conf.template:/etc/nginx/templates/default.conf.template:ro
     networks:

@@ -7,10 +7,10 @@ Create Date: 2026-06-27 00:34:00.000000
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision: str = "20260627_0034"
 down_revision: str | None = "20260627_0033"
@@ -30,7 +30,9 @@ def upgrade() -> None:
         sa.Column("conversacion_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("operador_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("asignado_por_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(
             ["asignado_por_id"],
             ["sc_users.usuario.id"],

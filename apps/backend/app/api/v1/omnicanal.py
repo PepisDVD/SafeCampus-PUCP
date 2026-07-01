@@ -4,6 +4,7 @@ from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -23,12 +24,15 @@ from app.core.database import AsyncSessionLocal
 from app.schemas.auth import AuthUserResponse
 from app.schemas.omnicanal import (
     AsignarConversacionInput,
-    ChatbotBorradorUpdateInput,
     CerrarConversacionInput,
+    ChatbotBorradorUpdateInput,
+    ConversacionCicloDetail,
+    ConversacionCiclosDetail,
+    ConversacionCiclosListResponse,
     ConversacionDetail,
+    ConversacionesHistorialResponse,
     ConversacionHistorialDetail,
     ConversacionListResponse,
-    ConversacionesHistorialResponse,
     CrearIncidenteConversacionInput,
     EnviarMensajeInput,
     EventosConversacionResponse,
@@ -53,10 +57,11 @@ def get_service(db: Annotated[AsyncSession, Depends(get_session)]) -> OmnicanalS
 @router.post("/webhooks/whatsapp", response_model=WhatsAppWebhookResponse)
 async def recibir_webhook_whatsapp(
     request: Request,
+    background_tasks: BackgroundTasks,
     service: Annotated[OmnicanalService, Depends(get_service)],
     x_safecampus_provider: Annotated[str | None, Header()] = None,
     x_safecampus_webhook_secret: Annotated[str | None, Header()] = None,
-):
+) -> WhatsAppWebhookResponse:
     """Receives WhatsApp provider webhooks and stores them as inbound reports."""
     try:
         payload: dict[str, Any] = await request.json()
@@ -79,6 +84,7 @@ async def recibir_webhook_whatsapp(
         webhook_secret=x_safecampus_webhook_secret,
         ip_origen=client_host,
         user_agent=request.headers.get("user-agent"),
+        background_tasks=background_tasks,
     )
 
 
@@ -89,7 +95,7 @@ async def recibir_webhook_whatsapp(
 )
 async def obtener_stats_conversaciones(
     service: Annotated[OmnicanalService, Depends(get_service)],
-):
+) -> OmnicanalStats:
     """Conteo de conversaciones activas agrupadas por estado."""
     return await service.obtener_stats()
 
@@ -104,7 +110,7 @@ async def listar_conversaciones(
     search: str | None = None,
     estado: str | None = None,
     limit: int = 50,
-):
+) -> ConversacionListResponse:
     return await service.listar_conversaciones(search=search, estado=estado, limit=limit)
 
 
@@ -119,7 +125,7 @@ async def listar_historial_conversaciones(
     desde: str | None = None,
     hasta: str | None = None,
     limit: int = 80,
-):
+) -> ConversacionesHistorialResponse:
     return await service.listar_historial_conversaciones(
         search=search,
         desde=desde,
@@ -136,8 +142,61 @@ async def listar_historial_conversaciones(
 async def obtener_historial_conversacion(
     conversacion_id: str,
     service: Annotated[OmnicanalService, Depends(get_service)],
-):
+) -> ConversacionHistorialDetail:
     return await service.obtener_historial_conversacion(conversacion_id)
+
+
+@router.get(
+    "/ciclos/conversaciones",
+    response_model=ConversacionCiclosListResponse,
+    dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
+)
+async def listar_conversaciones_ciclos(
+    service: Annotated[OmnicanalService, Depends(get_service)],
+    search: str | None = None,
+    desde: str | None = None,
+    hasta: str | None = None,
+    limit: int = 80,
+) -> ConversacionCiclosListResponse:
+    return await service.listar_conversaciones_ciclos(
+        search=search,
+        desde=desde,
+        hasta=hasta,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/ciclos/conversaciones/{conversacion_id}",
+    response_model=ConversacionCiclosDetail,
+    dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
+)
+async def obtener_ciclos_conversacion(
+    conversacion_id: str,
+    service: Annotated[OmnicanalService, Depends(get_service)],
+) -> ConversacionCiclosDetail:
+    return await service.obtener_ciclos_conversacion(conversacion_id)
+
+
+@router.get(
+    "/ciclos/{ciclo_id}",
+    response_model=ConversacionCicloDetail,
+    dependencies=[Depends(require_roles(OPERATIVE_ROLES))],
+)
+async def obtener_ciclo(
+    ciclo_id: str,
+    service: Annotated[OmnicanalService, Depends(get_service)],
+) -> ConversacionCicloDetail:
+    return await service.obtener_ciclo(ciclo_id)
+
+
+@router.post("/ciclos/{ciclo_id}/reabrir", response_model=ConversacionDetail)
+async def reabrir_ciclo(
+    ciclo_id: str,
+    service: Annotated[OmnicanalService, Depends(get_service)],
+    current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
+) -> ConversacionDetail:
+    return await service.reabrir_ciclo(ciclo_id, current_user.id)
 
 
 @router.get(
@@ -149,7 +208,7 @@ async def listar_mensajes(
     conversacion_id: str,
     service: Annotated[OmnicanalService, Depends(get_service)],
     limit: int = 200,
-):
+) -> MensajesConversacionResponse:
     return await service.listar_mensajes(conversacion_id, limit=limit)
 
 
@@ -162,7 +221,7 @@ async def listar_eventos(
     conversacion_id: str,
     service: Annotated[OmnicanalService, Depends(get_service)],
     limit: int = 100,
-):
+) -> EventosConversacionResponse:
     return await service.listar_eventos(conversacion_id, limit=limit)
 
 
@@ -175,7 +234,7 @@ async def enviar_mensaje(
     body: EnviarMensajeInput,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> MensajeConversacionOut:
     return await service.enviar_mensaje(
         conversacion_id,
         body.contenido,
@@ -193,7 +252,7 @@ async def enviar_imagenes(
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
     archivos: list[UploadFile] = File(...),
     caption: str | None = Form(default=None),
-):
+) -> MensajesConversacionResponse:
     return await service.enviar_imagenes(
         conversacion_id,
         archivos,
@@ -207,7 +266,7 @@ async def tomar_conversacion(
     conversacion_id: str,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> ConversacionDetail:
     return await service.tomar_conversacion(conversacion_id, current_user.id)
 
 
@@ -217,7 +276,7 @@ async def asignar_conversacion(
     body: AsignarConversacionInput,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> ConversacionDetail:
     return await service.asignar_conversacion(conversacion_id, body, current_user.id)
 
 
@@ -227,7 +286,7 @@ async def cerrar_conversacion(
     body: CerrarConversacionInput,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> ConversacionDetail:
     return await service.cerrar_conversacion(conversacion_id, body, current_user.id)
 
 
@@ -236,7 +295,7 @@ async def reabrir_conversacion(
     conversacion_id: str,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> ConversacionDetail:
     return await service.reabrir_conversacion(conversacion_id, current_user.id)
 
 
@@ -245,7 +304,7 @@ async def activar_bot(
     conversacion_id: str,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> ConversacionDetail:
     return await service.set_modo(conversacion_id, "BOT", current_user.id)
 
 
@@ -254,7 +313,7 @@ async def activar_humano(
     conversacion_id: str,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> ConversacionDetail:
     return await service.set_modo(conversacion_id, "HUMANO", current_user.id)
 
 
@@ -267,7 +326,7 @@ async def vincular_incidente(
     body: VincularIncidenteInput,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> ConversacionDetail:
     return await service.vincular_incidente(conversacion_id, body, current_user.id)
 
 
@@ -280,7 +339,7 @@ async def crear_incidente(
     body: CrearIncidenteConversacionInput,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> ConversacionDetail:
     return await service.crear_incidente_desde_conversacion(
         conversacion_id,
         body,
@@ -297,7 +356,7 @@ async def actualizar_borrador_chatbot(
     body: ChatbotBorradorUpdateInput,
     service: Annotated[OmnicanalService, Depends(get_service)],
     current_user: Annotated[AuthUserResponse, Depends(require_roles(OPERATIVE_ROLES))],
-):
+) -> ConversacionDetail:
     return await service.actualizar_borrador_chatbot(
         conversacion_id,
         body,
@@ -306,7 +365,7 @@ async def actualizar_borrador_chatbot(
 
 
 @router.websocket("/ws")
-async def websocket_omnicanal(websocket: WebSocket):
+async def websocket_omnicanal(websocket: WebSocket) -> None:
     session_token = websocket.cookies.get(settings.SESSION_COOKIE_NAME)
     async with AsyncSessionLocal() as db:
         try:

@@ -117,8 +117,7 @@ class FakeIncidenteService:
         assert ejecutor_id == "00000000-0000-0000-0000-000000000001"
         return ExpedienteCierreAiDraft(
             resumen_cierre=(
-                "El incidente fue atendido con el contexto disponible "
-                "y queda listo para cierre."
+                "El incidente fue atendido con el contexto disponible y queda listo para cierre."
             ),
             resultado_cierre="Cierre operativo sugerido.",
         )

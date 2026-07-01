@@ -52,9 +52,7 @@ def is_anomalous_combination(roles: Iterable[str]) -> bool:
     return has_web and has_mobile
 
 
-def evaluate_channel_access(
-    roles: Iterable[str], channel: AuthChannel
-) -> ChannelAccessResult:
+def evaluate_channel_access(roles: Iterable[str], channel: AuthChannel) -> ChannelAccessResult:
     """Evalúa el acceso de una cuenta a un canal concreto.
 
     - Si tiene al menos un rol válido para el canal → permitido, operando con

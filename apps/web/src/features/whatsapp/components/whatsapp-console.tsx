@@ -15,6 +15,12 @@ import {
   AlertDialogTitle,
   Badge,
   Button,
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
   Input,
   MultiSelectFilter,
   Popover,
@@ -27,6 +33,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Skeleton,
   Tabs,
   TabsContent,
   TabsList,
@@ -37,7 +44,9 @@ import {
 import {
   Bot,
   BrainCircuit,
+  Check,
   CheckCircle2,
+  ChevronsUpDown,
   ExternalLink,
   Filter,
   History,
@@ -345,12 +354,19 @@ export function WhatsAppConsole() {
   const [operators, setOperators] = useState<OperatorOption[]>([]);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const messagesRequestRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  // Cache de mensajes por conversación: permite mostrar al instante al cambiar
+  // de chat mientras se revalida en segundo plano (evita el blanco + espera).
+  const messagesCacheRef = useRef<Map<string, ConversationMessage[]>>(new Map());
+  // Timer para coalescer refrescos de la lista disparados por el WebSocket.
+  const wsRefreshTimerRef = useRef<number | null>(null);
 
   const counts = useMemo(() => {
     return {
@@ -400,6 +416,7 @@ export function WhatsAppConsole() {
       null,
     [filteredConversations, selectedId],
   );
+  const selectedConversationId = selectedConversation?.id ?? null;
 
   const loadConversations = useCallback(async () => {
     const params: Record<string, string> = { limit: "100" };
@@ -417,13 +434,31 @@ export function WhatsAppConsole() {
     return response.items;
   }, [search]);
 
-  const loadMessages = useCallback(async (conversationId: string) => {
-    const response = await api.get<ConversationMessagesResponse>(
-      `/omnicanal/conversaciones/${conversationId}/mensajes`,
-      { params: { limit: "300" } },
-    );
-    setErrorMessage(null);
-    setMessages(response.items);
+  const loadMessages = useCallback(async (
+    conversationId: string,
+    options: { clearBeforeLoad?: boolean; showLoader?: boolean } = {},
+  ) => {
+    const requestId = messagesRequestRef.current + 1;
+    messagesRequestRef.current = requestId;
+    const showLoader = options.showLoader ?? true;
+
+    if (options.clearBeforeLoad) setMessages([]);
+    if (showLoader) setLoadingMessages(true);
+
+    try {
+      const response = await api.get<ConversationMessagesResponse>(
+        `/omnicanal/conversaciones/${conversationId}/mensajes`,
+        { params: { limit: "100" } },
+      );
+      messagesCacheRef.current.set(conversationId, response.items);
+      if (messagesRequestRef.current !== requestId) return;
+      setErrorMessage(null);
+      setMessages(response.items);
+    } finally {
+      if (messagesRequestRef.current === requestId && showLoader) {
+        setLoadingMessages(false);
+      }
+    }
   }, []);
 
   const refreshSelectedConversation = useCallback(async () => {
@@ -438,6 +473,21 @@ export function WhatsAppConsole() {
     setOperators(response.map((operator, index) => ({ ...operator, online: index % 3 !== 2 })));
   }, []);
 
+  // Coalesce ráfagas de eventos del WebSocket en un solo refresco de la lista
+  // (el chatbot emite varios eventos por mensaje; sin esto se recargaría la
+  // lista de 100 conversaciones en cada uno).
+  const scheduleConversationsRefresh = useCallback(() => {
+    if (wsRefreshTimerRef.current !== null) return;
+    wsRefreshTimerRef.current = window.setTimeout(() => {
+      wsRefreshTimerRef.current = null;
+      loadConversations().catch((error) => {
+        setErrorMessage(
+          error instanceof Error ? error.message : "No se pudo refrescar la bandeja.",
+        );
+      });
+    }, 500);
+  }, [loadConversations]);
+
   useEffect(() => {
     selectedIdRef.current = selectedConversation?.id ?? null;
     setOperatorIds(
@@ -451,20 +501,14 @@ export function WhatsAppConsole() {
 
   useEffect(() => {
     setLoading(true);
+    // Solo carga la lista; el effect de selectedConversationId se encarga de los
+    // mensajes (evita el doble fetch inicial de la conversación seleccionada).
     loadConversations()
-      .then((items) => {
-        const current = selectedIdRef.current;
-        const nextId = current && items.some((item) => item.id === current)
-          ? current
-          : items[0]?.id;
-        if (nextId) return loadMessages(nextId);
-        return undefined;
-      })
       .catch((error) => {
         setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar la bandeja.");
       })
       .finally(() => setLoading(false));
-  }, [loadConversations, loadMessages]);
+  }, [loadConversations]);
 
   useEffect(() => {
     loadOperators().catch((error) => {
@@ -473,14 +517,27 @@ export function WhatsAppConsole() {
   }, [loadOperators]);
 
   useEffect(() => {
-    if (!selectedConversation) {
+    if (!selectedConversationId) {
+      messagesRequestRef.current += 1;
       setMessages([]);
+      setLoadingMessages(false);
       return;
     }
-    loadMessages(selectedConversation.id).catch((error) => {
+    const cached = messagesCacheRef.current.get(selectedConversationId);
+    if (cached) {
+      // Muestra al instante lo cacheado y revalida en segundo plano (sin blanco).
+      messagesRequestRef.current += 1;
+      setMessages(cached);
+      setLoadingMessages(false);
+      loadMessages(selectedConversationId, { showLoader: false }).catch((error) => {
+        setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar mensajes.");
+      });
+      return;
+    }
+    loadMessages(selectedConversationId, { clearBeforeLoad: true }).catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar mensajes.");
     });
-  }, [loadMessages, selectedConversation]);
+  }, [loadMessages, selectedConversationId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -514,13 +571,9 @@ export function WhatsAppConsole() {
         } catch {
           return;
         }
-        loadConversations().catch((error) => {
-          setErrorMessage(
-            error instanceof Error ? error.message : "No se pudo refrescar la bandeja.",
-          );
-        });
+        scheduleConversationsRefresh();
         if (data.conversacion_id && data.conversacion_id === selectedIdRef.current) {
-          loadMessages(data.conversacion_id).catch((error) => {
+          loadMessages(data.conversacion_id, { showLoader: false }).catch((error) => {
             setErrorMessage(
               error instanceof Error ? error.message : "No se pudo refrescar mensajes.",
             );
@@ -533,9 +586,10 @@ export function WhatsAppConsole() {
     return () => {
       disposed = true;
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (wsRefreshTimerRef.current) window.clearTimeout(wsRefreshTimerRef.current);
       socket?.close();
     };
-  }, [loadConversations, loadMessages]);
+  }, [scheduleConversationsRefresh, loadMessages]);
 
   async function runConversationAction(action: () => Promise<unknown>) {
     try {
@@ -554,7 +608,30 @@ export function WhatsAppConsole() {
       return;
     }
     const content = draft.trim();
+    const optimisticId =
+      content && attachments.length === 0
+        ? `optimistic-${selectedConversation.id}-${Date.now()}`
+        : null;
     setSending(true);
+    if (optimisticId) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: optimisticId,
+          conversacion_id: selectedConversation.id,
+          external_message_id: null,
+          direccion: "OUTBOUND",
+          autor_tipo: "OPERADOR",
+          autor_usuario: null,
+          contenido: content,
+          tipo_contenido: "text",
+          estado_entrega: "sending",
+          media: null,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      setDraft("");
+    }
     try {
       if (attachments.length > 0) {
         const formData = new FormData();
@@ -565,17 +642,30 @@ export function WhatsAppConsole() {
           formData,
         );
       } else {
-        await api.post(
+        const sentMessage = await api.post<ConversationMessage>(
           `/omnicanal/conversaciones/${selectedConversation.id}/mensajes`,
           { contenido: content },
         );
+        if (optimisticId) {
+          setMessages((current) =>
+            current.map((message) => (message.id === optimisticId ? sentMessage : message)),
+          );
+        }
       }
       setDraft("");
       setAttachments([]);
       if (imageInputRef.current) imageInputRef.current.value = "";
       await loadConversations();
-      await loadMessages(selectedConversation.id);
+      await loadMessages(selectedConversation.id, { showLoader: false });
     } catch (error) {
+      if (optimisticId) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === optimisticId ? { ...message, estado_entrega: "error" } : message,
+          ),
+        );
+        setDraft(content);
+      }
       setErrorMessage(error instanceof Error ? error.message : "No se pudo enviar el mensaje.");
     } finally {
       setSending(false);
@@ -679,12 +769,16 @@ export function WhatsAppConsole() {
               />
 
               <ScrollArea className="min-h-0 flex-1 p-5">
-                <div className="mx-auto flex max-w-4xl flex-col gap-3">
-                  {messages.map((message) => (
-                    <MessageBubble key={message.id} message={message} />
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
+                {loadingMessages ? (
+                  <MessageListSkeleton />
+                ) : (
+                  <div className="mx-auto flex max-w-4xl flex-col gap-3">
+                    {messages.map((message) => (
+                      <MessageBubble key={message.id} message={message} />
+                    ))}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
               </ScrollArea>
 
               <div className="border-t bg-white p-4">
@@ -875,9 +969,9 @@ export function WhatsAppConsole() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cerrar chat</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Confirmas que deseas cerrar esta conversación? Se limpiarán la
-              prioridad, el modo de atención y los operadores asignados para
-              dejarla lista para un nuevo ciclo.
+              ¿Confirmas que deseas cerrar esta conversación? Se archivará el ciclo
+              como evidencia, se enviará un mensaje final al contacto y la bandeja
+              quedará limpia para un nuevo caso.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1253,10 +1347,42 @@ function ChatHeader({
   );
 }
 
+function MessageListSkeleton() {
+  const rows = [
+    { align: "justify-start", width: "w-[68%]" },
+    { align: "justify-end", width: "w-[58%]" },
+    { align: "justify-start", width: "w-[72%]" },
+    { align: "justify-end", width: "w-[46%]" },
+  ];
+
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-3">
+      {rows.map((row, index) => (
+        <div key={index} className={cn("flex", row.align)}>
+          <div className={cn("rounded-xl border bg-white px-3 py-3 shadow-sm", row.width)}>
+            <div className="mb-3 flex items-center gap-2">
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="mt-2 h-3 w-5/6" />
+            <div className="mt-3 flex justify-end">
+              <Skeleton className="h-3 w-12" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const outgoing = message.direccion === "OUTBOUND";
   const isBot = message.autor_tipo === "BOT";
   const isOperator = message.autor_tipo === "OPERADOR";
+  const mediaSrc = message.media?.data_url || message.media?.url || message.media?.thumbnail_data_url;
+  const isSending = message.estado_entrega === "sending";
+  const hasFailed = message.estado_entrega === "error";
 
   return (
     <div className={cn("flex", outgoing ? "justify-end" : "justify-start")}>
@@ -1275,12 +1401,26 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
             {authorLabel(message.autor_tipo)}
           </Badge>
         </div>
+        {mediaSrc ? (
+          <img
+            src={mediaSrc}
+            alt={message.media?.filename || message.contenido || "Imagen de WhatsApp"}
+            className="mb-2 max-h-64 w-full rounded-lg border object-contain"
+          />
+        ) : null}
         <p className="whitespace-pre-wrap leading-6">
           {message.contenido || `[${message.tipo_contenido}]`}
         </p>
         <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-slate-500">
           <span>{formatTime(message.created_at)}</span>
-          {outgoing ? <CheckCircle2 className="h-3 w-3" /> : null}
+          {outgoing && isSending ? (
+            <>
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              <span>Enviando</span>
+            </>
+          ) : null}
+          {outgoing && hasFailed ? <span className="font-medium text-red-600">Error</span> : null}
+          {outgoing && !isSending && !hasFailed ? <CheckCircle2 className="h-3 w-3" /> : null}
         </div>
       </div>
     </div>
@@ -1355,6 +1495,69 @@ function AiClassificationPanel({
   );
 }
 
+type MasterLocation = { id: string; nombre: string };
+
+function LocationCombobox({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: MasterLocation[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between bg-white font-normal"
+        >
+          <span className={cn("truncate", !value && "text-muted-foreground")}>
+            {value || "Selecciona una ubicación"}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-(--radix-popover-trigger-width) p-0"
+        align="start"
+      >
+        <Command>
+          <CommandInput placeholder="Buscar ubicación registrada..." />
+          <CommandList>
+            <CommandEmpty>Sin coincidencias en el maestro.</CommandEmpty>
+            <CommandGroup>
+              {options.map((loc) => (
+                <CommandItem
+                  key={loc.id}
+                  value={loc.nombre}
+                  onSelect={() => {
+                    onChange(loc.nombre);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === loc.nombre ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  {loc.nombre}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ChatbotPanel({
   conversation,
   onUpdated,
@@ -1367,11 +1570,27 @@ function ChatbotPanel({
   const [draftForm, setDraftForm] = useState<IncidentDraftForm>(() => buildDraftForm(conversation));
   const [saving, setSaving] = useState(false);
   const [creatingIncident, setCreatingIncident] = useState(false);
+  const [locations, setLocations] = useState<MasterLocation[]>([]);
 
   useEffect(() => {
     setAiSummary(conversation.chatbot?.ai_summary || "");
     setDraftForm(buildDraftForm(conversation));
   }, [conversation]);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get<MasterLocation[]>("/maestros/ubicaciones")
+      .then((rows) => {
+        if (active) setLocations(rows);
+      })
+      .catch(() => {
+        // El combobox queda vacío; el supervisor aún puede registrar el incidente.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (!chatbot || conversation.estado === "CERRADA") return null;
 
@@ -1483,13 +1702,12 @@ function ChatbotPanel({
                 </SelectContent>
               </Select>
             </div>
-            <Input
+            <LocationCombobox
               value={draftForm.lugar_referencia}
-              onChange={(event) =>
-                setDraftForm((prev) => ({ ...prev, lugar_referencia: event.target.value }))
+              options={locations}
+              onChange={(value) =>
+                setDraftForm((prev) => ({ ...prev, lugar_referencia: value }))
               }
-              placeholder="Ubicación o referencia"
-              className="bg-white"
             />
             <div className="grid grid-cols-2 gap-2">
               <Button type="button" variant="outline" disabled={saving} onClick={() => void saveDraft()}>

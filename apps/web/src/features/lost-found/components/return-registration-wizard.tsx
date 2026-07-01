@@ -330,9 +330,9 @@ export function ReturnRegistrationWizard({
       <Dialog open={open} onOpenChange={requestClose}>
         <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-5xl">
           <DialogHeader className="border-b px-6 py-5 text-left">
-            <DialogTitle>Registrar devolucion</DialogTitle>
+            <DialogTitle>Registrar devolución</DialogTitle>
             <DialogDescription>
-              Completa la informacion necesaria para devolver el objeto a su legitimo propietario.
+              Completa la información necesaria para devolver el objeto a su legítimo propietario.
             </DialogDescription>
             <div className="space-y-3 pt-3">
               <div className="flex items-center justify-between gap-3">
