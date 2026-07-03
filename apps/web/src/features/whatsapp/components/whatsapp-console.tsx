@@ -34,12 +34,14 @@ import {
   SelectTrigger,
   SelectValue,
   Skeleton,
+  Spinner,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
   Textarea,
   cn,
+  toast,
 } from "@safecampus/ui-kit";
 import {
   Bot,
@@ -96,6 +98,26 @@ function buildOmnicanalWsUrl() {
 }
 
 const OMNICANAL_WS_URL = buildOmnicanalWsUrl();
+
+// Los errores de red nativos de fetch llegan como "Failed to fetch" (o un
+// TypeError), un mensaje técnico que no aporta nada al operador. Los traducimos
+// a un texto amigable y dejamos pasar los mensajes de negocio del backend.
+function isNetworkError(error: unknown): boolean {
+  return (
+    error instanceof TypeError ||
+    (error instanceof Error && /failed to fetch|networkerror|load failed/i.test(error.message))
+  );
+}
+
+function resolveErrorMessage(error: unknown, fallback: string): string {
+  if (isNetworkError(error)) {
+    return "No pudimos conectar con el servidor. Revisa tu conexión e inténtalo nuevamente.";
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return fallback;
+}
 
 const STATE_LABEL: Record<ConversationState, string> = {
   ABIERTA: "Abierta",
@@ -218,6 +240,8 @@ function authorLabel(author: MessageAuthor) {
 
 function WhatsAppIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
+    // SVG decorativo estático; next/image no aporta optimización para un ícono inline.
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src="/icon-whatsapp.svg"
       alt=""
@@ -357,7 +381,9 @@ export function WhatsAppConsole() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Identifica la acción de conversación en curso (tomar, asignar, cerrar…)
+  // para mostrar el Spinner en el botón correspondiente y evitar dobles clics.
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   const messagesRequestRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -425,7 +451,6 @@ export function WhatsAppConsole() {
       "/omnicanal/conversaciones",
       { params },
     );
-    setErrorMessage(null);
     setConversations(response.items);
     setSelectedId((current) => {
       if (current && response.items.some((item) => item.id === current)) return current;
@@ -452,7 +477,6 @@ export function WhatsAppConsole() {
       );
       messagesCacheRef.current.set(conversationId, response.items);
       if (messagesRequestRef.current !== requestId) return;
-      setErrorMessage(null);
       setMessages(response.items);
     } finally {
       if (messagesRequestRef.current === requestId && showLoader) {
@@ -481,9 +505,7 @@ export function WhatsAppConsole() {
     wsRefreshTimerRef.current = window.setTimeout(() => {
       wsRefreshTimerRef.current = null;
       loadConversations().catch((error) => {
-        setErrorMessage(
-          error instanceof Error ? error.message : "No se pudo refrescar la bandeja.",
-        );
+        toast.error(resolveErrorMessage(error, "No se pudo refrescar la bandeja."));
       });
     }, 500);
   }, [loadConversations]);
@@ -505,14 +527,14 @@ export function WhatsAppConsole() {
     // mensajes (evita el doble fetch inicial de la conversación seleccionada).
     loadConversations()
       .catch((error) => {
-        setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar la bandeja.");
+        toast.error(resolveErrorMessage(error, "No se pudo cargar la bandeja."));
       })
       .finally(() => setLoading(false));
   }, [loadConversations]);
 
   useEffect(() => {
     loadOperators().catch((error) => {
-      setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar operadores.");
+      toast.error(resolveErrorMessage(error, "No se pudo cargar operadores."));
     });
   }, [loadOperators]);
 
@@ -530,12 +552,12 @@ export function WhatsAppConsole() {
       setMessages(cached);
       setLoadingMessages(false);
       loadMessages(selectedConversationId, { showLoader: false }).catch((error) => {
-        setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar mensajes.");
+        toast.error(resolveErrorMessage(error, "No se pudo cargar mensajes."));
       });
       return;
     }
     loadMessages(selectedConversationId, { clearBeforeLoad: true }).catch((error) => {
-      setErrorMessage(error instanceof Error ? error.message : "No se pudo cargar mensajes.");
+      toast.error(resolveErrorMessage(error, "No se pudo cargar mensajes."));
     });
   }, [loadMessages, selectedConversationId]);
 
@@ -574,9 +596,7 @@ export function WhatsAppConsole() {
         scheduleConversationsRefresh();
         if (data.conversacion_id && data.conversacion_id === selectedIdRef.current) {
           loadMessages(data.conversacion_id, { showLoader: false }).catch((error) => {
-            setErrorMessage(
-              error instanceof Error ? error.message : "No se pudo refrescar mensajes.",
-            );
+            toast.error(resolveErrorMessage(error, "No se pudo refrescar mensajes."));
           });
         }
       };
@@ -591,20 +611,30 @@ export function WhatsAppConsole() {
     };
   }, [scheduleConversationsRefresh, loadMessages]);
 
-  async function runConversationAction(action: () => Promise<unknown>) {
+  async function runConversationAction(
+    action: () => Promise<unknown>,
+    options: { key?: string; successMessage?: string } = {},
+  ) {
+    const { key, successMessage: success } = options;
+    if (key) setPendingAction(key);
     try {
       await action();
       await loadConversations();
       if (selectedConversation) await loadMessages(selectedConversation.id);
+      if (success) {
+        toast.success(success);
+      }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "No se pudo ejecutar la accion.");
+      toast.error(resolveErrorMessage(error, "No se pudo ejecutar la acción."));
+    } finally {
+      if (key) setPendingAction(null);
     }
   }
 
   async function handleSend() {
     if (!selectedConversation || (!draft.trim() && attachments.length === 0) || sending) return;
     if (selectedConversation.modo_atencion !== "HUMANO") {
-      setErrorMessage("Toma el chat antes de enviar respuestas manuales.");
+      toast.error("Toma el chat antes de enviar respuestas manuales.");
       return;
     }
     const content = draft.trim();
@@ -666,7 +696,7 @@ export function WhatsAppConsole() {
         );
         setDraft(content);
       }
-      setErrorMessage(error instanceof Error ? error.message : "No se pudo enviar el mensaje.");
+      toast.error(resolveErrorMessage(error, "No se pudo enviar el mensaje."));
     } finally {
       setSending(false);
     }
@@ -674,10 +704,12 @@ export function WhatsAppConsole() {
 
   async function closeConversation() {
     if (!selectedConversation) return;
-    await runConversationAction(() =>
-      api.post(`/omnicanal/conversaciones/${selectedConversation.id}/cerrar`, {
-        motivo: "Cierre operativo desde bandeja.",
-      }),
+    await runConversationAction(
+      () =>
+        api.post(`/omnicanal/conversaciones/${selectedConversation.id}/cerrar`, {
+          motivo: "Cierre operativo desde bandeja.",
+        }),
+      { key: "cerrar", successMessage: "Chat cerrado correctamente." },
     );
     setCloseConfirmOpen(false);
   }
@@ -687,7 +719,7 @@ export function WhatsAppConsole() {
 
   return (
     <div className="flex h-[calc(100vh-5rem)] min-h-180 flex-col bg-slate-50 p-6">
-      <header className="space-y-4">
+      <header>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Bandeja operativa WhatsApp</h1>
@@ -696,11 +728,6 @@ export function WhatsAppConsole() {
             <RealtimeBadge connected={wsConnected} />
           </div>
         </div>
-        {errorMessage ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            {errorMessage}
-          </div>
-        ) : null}
       </header>
 
       <main className="mt-5 grid min-h-0 flex-1 grid-cols-[390px_minmax(0,1fr)_360px] overflow-hidden rounded-xl border bg-white">
@@ -759,11 +786,10 @@ export function WhatsAppConsole() {
             <>
               <ChatHeader
                 conversation={selectedConversation}
+                refreshing={loadingMessages}
                 onRefresh={() =>
                   loadMessages(selectedConversation.id).catch((error) => {
-                    setErrorMessage(
-                      error instanceof Error ? error.message : "No se pudo actualizar mensajes.",
-                    );
+                    toast.error(resolveErrorMessage(error, "No se pudo actualizar mensajes."));
                   })
                 }
               />
@@ -794,13 +820,22 @@ export function WhatsAppConsole() {
                     <Button
                       type="button"
                       variant="outline"
+                      disabled={pendingAction === "reabrir"}
                       onClick={() =>
-                        void runConversationAction(() =>
-                          api.post(`/omnicanal/conversaciones/${selectedConversation.id}/reabrir`),
+                        void runConversationAction(
+                          () =>
+                            api.post(
+                              `/omnicanal/conversaciones/${selectedConversation.id}/reabrir`,
+                            ),
+                          { key: "reabrir", successMessage: "Chat reabierto correctamente." },
                         )
                       }
                     >
-                      <RotateCcw className="mr-2 h-4 w-4" />
+                      {pendingAction === "reabrir" ? (
+                        <Spinner className="mr-2 h-4 w-4" />
+                      ) : (
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                      )}
                       Reabrir chat
                     </Button>
                   </div>
@@ -819,6 +854,8 @@ export function WhatsAppConsole() {
                             key={`${preview.file.name}-${index}`}
                             className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border bg-white"
                           >
+                            {/* Previsualización de un blob local (URL.createObjectURL); next/image no optimiza blobs. */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={preview.url}
                               alt={preview.file.name}
@@ -896,7 +933,11 @@ export function WhatsAppConsole() {
                         aria-label="Enviar respuesta"
                         title="Enviar respuesta"
                       >
-                        <Send className="h-4 w-4" />
+                        {sending ? (
+                          <Spinner className="h-4 w-4" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -927,23 +968,32 @@ export function WhatsAppConsole() {
                     selectedIncident={selectedIncident}
                     operatorIds={operatorIds}
                     operators={operators}
+                    pendingAction={pendingAction}
                     onOperatorChange={setOperatorIds}
                     onTake={() =>
-                      void runConversationAction(() =>
-                        api.post(`/omnicanal/conversaciones/${selectedConversation.id}/tomar`),
+                      void runConversationAction(
+                        () =>
+                          api.post(`/omnicanal/conversaciones/${selectedConversation.id}/tomar`),
+                        { key: "tomar", successMessage: "Tomaste el chat. Ya puedes responder." },
                       )
                     }
                     onAssign={() =>
-                      void runConversationAction(() =>
-                        api.post(
-                          `/omnicanal/conversaciones/${selectedConversation.id}/asignar`,
-                          { operador_ids: operatorIds },
-                        ),
+                      void runConversationAction(
+                        () =>
+                          api.post(
+                            `/omnicanal/conversaciones/${selectedConversation.id}/asignar`,
+                            { operador_ids: operatorIds },
+                          ),
+                        { key: "asignar", successMessage: "Asignación actualizada." },
                       )
                     }
                     onActivateBot={() =>
-                      void runConversationAction(() =>
-                        api.post(`/omnicanal/conversaciones/${selectedConversation.id}/modo-bot`),
+                      void runConversationAction(
+                        () =>
+                          api.post(
+                            `/omnicanal/conversaciones/${selectedConversation.id}/modo-bot`,
+                          ),
+                        { key: "modo-bot", successMessage: "Bot activado para esta conversación." },
                       )
                     }
                     onClose={() => setCloseConfirmOpen(true)}
@@ -978,8 +1028,15 @@ export function WhatsAppConsole() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 text-white hover:bg-red-700"
-              onClick={() => void closeConversation()}
+              disabled={pendingAction === "cerrar"}
+              onClick={(event) => {
+                // Evita que el diálogo se cierre antes de terminar la petición;
+                // lo cerramos manualmente en closeConversation al finalizar.
+                event.preventDefault();
+                void closeConversation();
+              }}
             >
+              {pendingAction === "cerrar" ? <Spinner className="mr-2 h-4 w-4" /> : null}
               Cerrar chat
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1076,6 +1133,7 @@ function OperationPanel({
   selectedIncident,
   operatorIds,
   operators,
+  pendingAction,
   onOperatorChange,
   onTake,
   onAssign,
@@ -1086,6 +1144,7 @@ function OperationPanel({
   selectedIncident: Conversation["incidente"];
   operatorIds: string[];
   operators: OperatorOption[];
+  pendingAction: string | null;
   onOperatorChange: (value: string[]) => void;
   onTake: () => void;
   onAssign: () => void;
@@ -1145,9 +1204,16 @@ function OperationPanel({
           type="button"
           className="bg-[#001C55]"
           onClick={isBotMode ? onTake : onActivateBot}
-          disabled={isClosed}
+          disabled={isClosed || pendingAction === "tomar" || pendingAction === "modo-bot"}
         >
-          {isBotMode ? <UserCheck className="mr-2 h-4 w-4" /> : <Bot className="mr-2 h-4 w-4" />}
+          {(isBotMode && pendingAction === "tomar") ||
+          (!isBotMode && pendingAction === "modo-bot") ? (
+            <Spinner className="mr-2 h-4 w-4" />
+          ) : isBotMode ? (
+            <UserCheck className="mr-2 h-4 w-4" />
+          ) : (
+            <Bot className="mr-2 h-4 w-4" />
+          )}
           {isBotMode ? "Tomar chat" : "Activar bot"}
         </Button>
         <div className="grid gap-2">
@@ -1160,11 +1226,15 @@ function OperationPanel({
           <Button
             type="button"
             variant="outline"
-            disabled={!operatorIds.length || isClosed}
+            disabled={!operatorIds.length || isClosed || pendingAction === "asignar"}
             onClick={onAssign}
             className="w-full justify-center"
           >
-            <UserPlus className="mr-2 h-4 w-4" />
+            {pendingAction === "asignar" ? (
+              <Spinner className="mr-2 h-4 w-4" />
+            ) : (
+              <UserPlus className="mr-2 h-4 w-4" />
+            )}
             Actualizar asignación
           </Button>
         </div>
@@ -1317,9 +1387,11 @@ function ConversationCard({
 function ChatHeader({
   conversation,
   onRefresh,
+  refreshing,
 }: {
   conversation: Conversation;
   onRefresh: () => void;
+  refreshing: boolean;
 }) {
   return (
     <div className="border-b bg-white px-5 py-3">
@@ -1338,8 +1410,12 @@ function ChatHeader({
             </div>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={onRefresh}>
-          <RefreshCw className="mr-2 h-4 w-4" />
+        <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing}>
+          {refreshing ? (
+            <Spinner className="mr-2 h-4 w-4" />
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+          )}
           Actualizar
         </Button>
       </div>
@@ -1402,11 +1478,15 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
           </Badge>
         </div>
         {mediaSrc ? (
-          <img
-            src={mediaSrc}
-            alt={message.media?.filename || message.contenido || "Imagen de WhatsApp"}
-            className="mb-2 max-h-64 w-full rounded-lg border object-contain"
-          />
+          <>
+            {/* Media de WhatsApp: data URI o URL del backend fuera del allowlist de next/image. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={mediaSrc}
+              alt={message.media?.filename || message.contenido || "Imagen de WhatsApp"}
+              className="mb-2 max-h-64 w-full rounded-lg border object-contain"
+            />
+          </>
         ) : null}
         <p className="whitespace-pre-wrap leading-6">
           {message.contenido || `[${message.tipo_contenido}]`}
@@ -1606,6 +1686,8 @@ function ChatbotPanel({
         lugar_referencia: draftForm.lugar_referencia,
       });
       onUpdated();
+    } catch (error) {
+      toast.error(resolveErrorMessage(error, "No se pudo guardar el borrador."));
     } finally {
       setSaving(false);
     }
@@ -1622,6 +1704,8 @@ function ChatbotPanel({
         lugar_referencia: draftForm.lugar_referencia || null,
       });
       onUpdated();
+    } catch (error) {
+      toast.error(resolveErrorMessage(error, "No se pudo registrar el incidente."));
     } finally {
       setCreatingIncident(false);
     }
@@ -1711,7 +1795,14 @@ function ChatbotPanel({
             />
             <div className="grid grid-cols-2 gap-2">
               <Button type="button" variant="outline" disabled={saving} onClick={() => void saveDraft()}>
-                {saving ? "Guardando..." : "Guardar borrador"}
+                {saving ? (
+                  <>
+                    <Spinner className="mr-2 h-4 w-4" />
+                    Guardando...
+                  </>
+                ) : (
+                  "Guardar borrador"
+                )}
               </Button>
               <Button
                 type="button"
@@ -1719,11 +1810,16 @@ function ChatbotPanel({
                 disabled={creatingIncident || Boolean(conversation.incidente)}
                 onClick={() => void createIncidentFromDraft()}
               >
-                {conversation.incidente
-                  ? "Incidente ya vinculado"
-                  : creatingIncident
-                    ? "Registrando..."
-                    : "Registrar incidente"}
+                {conversation.incidente ? (
+                  "Incidente ya vinculado"
+                ) : creatingIncident ? (
+                  <>
+                    <Spinner className="mr-2 h-4 w-4" />
+                    Registrando...
+                  </>
+                ) : (
+                  "Registrar incidente"
+                )}
               </Button>
             </div>
           </div>

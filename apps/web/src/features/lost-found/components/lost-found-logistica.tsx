@@ -49,10 +49,11 @@ import {
   TablePaginationBar,
   Textarea,
 } from "@safecampus/ui-kit";
-import { CalendarDays, CheckCircle2, Clock3, Edit3, Eye, MoreHorizontal, PackageCheck, Plus, RefreshCw, RotateCcw, Trash2, Undo2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock3, Download, Edit3, Eye, MoreHorizontal, PackageCheck, Plus, RefreshCw, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { toast } from "@safecampus/ui-kit";
 import { lostFoundClient } from "../client";
 import { estadoLabel, formatDateTimePe } from "../presentation";
+import { downloadReturnedCustodyPdf } from "../return-pdf";
 import { EstadoLfBadge } from "./estado-lf-badge";
 import { CharCounter, LF_TEXT_LIMITS } from "./text-field-help";
 import { ReturnRegistrationWizard } from "./return-registration-wizard";
@@ -291,10 +292,16 @@ export function LostFoundLogistica({ initialCustodias, initialSearch = "", casos
                         </DropdownMenuItem>
                       )}
                       {custodia.estado === "DEVUELTA" && (
-                        <DropdownMenuItem onSelect={() => setConfirmAction({ type: "revertir", custodia })}>
-                          <Undo2 />
-                          Revertir devolución
-                        </DropdownMenuItem>
+                        <>
+                          <DropdownMenuItem onSelect={() => downloadReturnedCustodyPdf(custodia)}>
+                            <Download />
+                            Exportar PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setConfirmAction({ type: "revertir", custodia })}>
+                            <Undo2 />
+                            Revertir devolución
+                          </DropdownMenuItem>
+                        </>
                       )}
                       {custodia.estado === "DESCARTADA" && (
                         <DropdownMenuItem onSelect={() => setConfirmAction({ type: "reactivar", custodia })}>

@@ -545,7 +545,11 @@ class OmnicanalRepository:
         result = await self.db.execute(statement)
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in result.mappings():
-            grouped.setdefault(str(row["conversacion_id"]), []).append(dict(row))
+            item = {
+                key: (str(value) if isinstance(value, UUID) else value)
+                for key, value in row.items()
+            }
+            grouped.setdefault(str(row["conversacion_id"]), []).append(item)
         return grouped
 
     async def list_conversaciones_historial(
