@@ -181,6 +181,7 @@ export type CustodiaLf = {
   fecha_vencimiento: string;
   reclamante_id?: string | null;
   metodo_verificacion?: string | null;
+  fecha_devolucion?: string | null;
   created_at: string;
   updated_at: string;
 };

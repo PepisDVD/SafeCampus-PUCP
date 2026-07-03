@@ -21,14 +21,14 @@ export const estadoLfTone: Record<string, string> = {
   EN_REVISION: "bg-amber-50 text-amber-700 border-amber-200",
   CONFIRMADO: "bg-orange-50 text-orange-700 border-orange-200",
   EN_CUSTODIA: "bg-sky-50 text-sky-700 border-sky-200",
-  DEVUELTO: "bg-teal-50 text-teal-700 border-teal-200",
+  DEVUELTO: "bg-blue-50 text-blue-700 border-blue-200",
   DESCARTADO: "bg-rose-50 text-rose-700 border-rose-200",
   CERRADO: "bg-slate-100 text-slate-600 border-slate-200",
   // Estados de custodia (logística)
   ACTIVA: "bg-emerald-50 text-emerald-700 border-emerald-200",
   PROXIMA_VENCER: "bg-amber-50 text-amber-700 border-amber-200",
   VENCIDA: "bg-rose-50 text-rose-700 border-rose-200",
-  DEVUELTA: "bg-teal-50 text-teal-700 border-teal-200",
+  DEVUELTA: "bg-blue-50 text-blue-700 border-blue-200",
   DESCARTADA: "bg-slate-100 text-slate-600 border-slate-200",
 };
 
