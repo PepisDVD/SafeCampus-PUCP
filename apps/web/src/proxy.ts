@@ -13,7 +13,9 @@ type AuthCheckResult = "authenticated" | "unauthenticated" | "unknown";
 function isPublicPath(pathname: string): boolean {
   // Toda la zona de login (incluida la pantalla de credenciales) es pública.
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
-  if (pathname === "/auth/callback") return true;
+  if (pathname === "/auth/callback" || pathname.startsWith("/auth/callback/")) {
+    return true;
+  }
   return false;
 }
 
