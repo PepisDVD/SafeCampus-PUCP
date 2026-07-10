@@ -36,6 +36,16 @@ class SupabaseAccessTokenInput(BaseModel):
     access_token: str
 
 
+class FrontendSessionExchangeInput(BaseModel):
+    handoff_token: str
+
+
+class FrontendSessionExchangeResponse(BaseModel):
+    session_token: str
+    token_type: str = "bearer"
+    user: AuthUserResponse
+
+
 class MobileAuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

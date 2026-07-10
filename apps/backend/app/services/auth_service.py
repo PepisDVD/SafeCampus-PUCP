@@ -253,6 +253,46 @@ class AuthService:
         )
         return user, session_token
 
+    def create_frontend_session_handoff_token(self, user: AuthUserResponse) -> str:
+        return create_access_token(
+            {
+                "kind": "frontend_session_handoff",
+                "sub": user.id,
+                "email": user.email,
+                "channel": AuthChannel.WEB.value,
+            },
+            expires_delta=timedelta(seconds=60),
+        )
+
+    async def exchange_frontend_session_handoff(
+        self,
+        handoff_token: str,
+    ) -> tuple[AuthUserResponse, str]:
+        payload = decode_access_token(handoff_token)
+        if not payload or payload.get("kind") != "frontend_session_handoff":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Handoff de sesion invalido.",
+            )
+
+        profile = await self._repo.get_user_profile(str(payload.get("sub") or ""))
+        if not profile or profile.get("estado") != "ACTIVO":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Usuario no autorizado.",
+            )
+
+        roles = await self._repo.list_role_names(str(profile["id"]))
+        effective_roles = self._enforce_channel_access(
+            user_id=str(profile["id"]),
+            email=str(profile["email"]),
+            roles=roles,
+            channel=AuthChannel.WEB,
+        )
+        user = self._build_auth_user_response(profile, effective_roles)
+        session_token = self._create_user_session_token(user, AuthChannel.WEB)
+        return user, session_token
+
     async def _audit_login(
         self,
         *,
