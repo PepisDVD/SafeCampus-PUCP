@@ -24,6 +24,8 @@ from app.schemas.auth import (
     AuthProfileUpdateInput,
     AuthUserResponse,
     CredentialsLoginInput,
+    FrontendSessionExchangeInput,
+    FrontendSessionExchangeResponse,
     MobileAuthResponse,
     SupabaseAccessTokenInput,
 )
@@ -96,6 +98,41 @@ def web_login_error_url(code: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode({"error": code}), ""))
 
 
+def frontend_session_handoff_required(web_origin: str | None) -> bool:
+    if settings.SESSION_COOKIE_DOMAIN:
+        return False
+
+    frontend_parts = urlsplit(web_origin or settings.web_app_url_effective)
+    backend_parts = urlsplit(settings.backend_public_url_effective)
+    return bool(
+        frontend_parts.hostname
+        and backend_parts.hostname
+        and frontend_parts.hostname != backend_parts.hostname
+    )
+
+
+def frontend_session_handoff_url(
+    *,
+    handoff_token: str,
+    next_path: str,
+    web_origin: str | None,
+) -> str:
+    callback_url = urljoin(
+        (web_origin or settings.web_app_url_effective).rstrip("/") + "/",
+        "auth/callback/session",
+    )
+    parts = urlsplit(callback_url)
+    return urlunsplit(
+        (
+            parts.scheme,
+            parts.netloc,
+            parts.path,
+            urlencode({"handoff": handoff_token, "next": next_path}),
+            "",
+        )
+    )
+
+
 @router.get("/google/login", tags=["Auth"])
 async def google_login(
     email: str | None = Query(default=None),
@@ -135,7 +172,7 @@ async def google_callback(
         return response
 
     try:
-        _user, session_token, next_path, web_origin = await service.complete_google_callback(
+        user, session_token, next_path, web_origin = await service.complete_google_callback(
             code,
             effective_oauth_state,
             ip_origen=request_ip(request),
@@ -161,6 +198,16 @@ async def google_callback(
         clear_oauth_state_cookie(response)
         return response
 
+    if frontend_session_handoff_required(web_origin):
+        redirect_url = frontend_session_handoff_url(
+            handoff_token=service.create_frontend_session_handoff_token(user),
+            next_path=next_path,
+            web_origin=web_origin,
+        )
+        response = RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+        clear_oauth_state_cookie(response)
+        return response
+
     redirect_url = urljoin(
         (web_origin or settings.web_app_url_effective).rstrip("/") + "/",
         next_path.lstrip("/"),
@@ -175,6 +222,19 @@ async def google_callback(
     set_session_cookie(response, session_token)
     clear_oauth_state_cookie(response)
     return response
+
+
+@router.post(
+    "/web/session/exchange",
+    response_model=FrontendSessionExchangeResponse,
+    tags=["Auth"],
+)
+async def exchange_frontend_session(
+    body: FrontendSessionExchangeInput,
+    service: AuthService = Depends(get_service),
+) -> FrontendSessionExchangeResponse:
+    user, session_token = await service.exchange_frontend_session_handoff(body.handoff_token)
+    return FrontendSessionExchangeResponse(session_token=session_token, user=user)
 
 
 @router.get("/me", response_model=AuthUserResponse, tags=["Auth"])
