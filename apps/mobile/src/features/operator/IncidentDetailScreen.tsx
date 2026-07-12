@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import MapView, { Marker, type Region } from "react-native-maps";
 import { Badge, Button, Card, Field, Label, SectionHeader, colors, spacing } from "@safecampus/ui-native";
 
 import type { IncidentDetail, IncidentStatus } from "../../shared/types/api";
+import { LeafletMap } from "./LeafletMap";
 import { formatTime, severityLabel, severityTone, statusLabel } from "./operator-format";
 
 export function IncidentDetailScreen({
@@ -21,12 +21,10 @@ export function IncidentDetailScreen({
   const [saving, setSaving] = useState(false);
   const hasCoordinates =
     typeof incident.latitud === "number" && typeof incident.longitud === "number";
-  const incidentRegion: Region | null = hasCoordinates
+  const incidentCenter = hasCoordinates
     ? {
         latitude: incident.latitud as number,
         longitude: incident.longitud as number,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
       }
     : null;
   const liveLocationIsFresh =
@@ -99,28 +97,22 @@ export function IncidentDetailScreen({
       </Card>
 
       <SectionHeader title="Ubicacion del reportante" />
-      {incidentRegion ? (
+      {incidentCenter ? (
         <Card style={styles.mapCard}>
-          <MapView
-            style={StyleSheet.absoluteFill}
-            initialRegion={incidentRegion}
-            region={incidentRegion}
-            scrollEnabled={false}
-            rotateEnabled={false}
-            pitchEnabled={false}
-            zoomEnabled={false}
-            showsCompass={false}
-          >
-            <Marker
-              coordinate={{
-                latitude: incidentRegion.latitude,
-                longitude: incidentRegion.longitude,
-              }}
-              title={incident.titulo}
-              description={incident.lugar_referencia ?? incident.codigo}
-              pinColor={colors.danger}
-            />
-          </MapView>
+          <LeafletMap
+            center={incidentCenter}
+            interactive={false}
+            markers={[
+              {
+                id: incident.id,
+                coordinate: incidentCenter,
+                title: incident.titulo,
+                description: incident.lugar_referencia ?? incident.codigo,
+                color: colors.danger,
+              },
+            ]}
+            zoom={17}
+          />
         </Card>
       ) : (
         <Card style={styles.emptyLocation}>
