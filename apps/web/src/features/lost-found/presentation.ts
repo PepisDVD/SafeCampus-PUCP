@@ -1,7 +1,8 @@
 import type { EstadoCasoLF, TipoCasoLF } from "@safecampus/shared-types";
+import { LIMA_TIME_ZONE } from "@/lib/lima-date";
 
 const PERU_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "America/Lima",
+  timeZone: LIMA_TIME_ZONE,
   year: "2-digit",
   month: "2-digit",
   day: "2-digit",
@@ -81,7 +82,7 @@ export function formatRelativeTime(value?: string | null) {
   if (diffDays === 1) return "ayer";
   if (diffDays < 7) return `hace ${diffDays} d`;
 
-  return date.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+  return date.toLocaleDateString("es-PE", { day: "2-digit", month: "short", timeZone: LIMA_TIME_ZONE });
 }
 
 // ───────────────────────────── Etiquetas de comentarios ─────────────────────────────

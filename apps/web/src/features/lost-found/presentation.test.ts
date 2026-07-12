@@ -3,6 +3,7 @@ import { EstadoCustodia } from "@safecampus/shared-types";
 import { buildReturnedCustodyPdf, buildReturnPdfFilename, buildReturnPdfLines } from "./return-pdf";
 import { estadoLfTone, formatDateTimePe } from "./presentation";
 import type { CustodiaLf } from "./types";
+import { formatLimaDateTime, fromLimaDateTimeInputValue, toLimaDateTimeInputValue } from "@/lib/lima-date";
 
 describe("formatDateTimePe", () => {
   it("formats dates deterministically in the Peru time zone", () => {
@@ -12,6 +13,19 @@ describe("formatDateTimePe", () => {
 
   it("handles invalid dates", () => {
     expect(formatDateTimePe("invalid")).toBe("Fecha no disponible");
+  });
+});
+
+describe("Lima date helpers", () => {
+  it("renders UTC instants and datetime-local values as Lima time", () => {
+    const formatted = formatLimaDateTime("2026-07-12T17:50:00Z", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).replace(/\u00a0/g, " ");
+
+    expect(formatted).toBe("12:50 p. m.");
+    expect(toLimaDateTimeInputValue("2026-07-12T17:50:00Z")).toBe("2026-07-12T12:50");
+    expect(fromLimaDateTimeInputValue("2026-07-12T12:50")).toBe("2026-07-12T17:50:00.000Z");
   });
 });
 

@@ -3,6 +3,7 @@
  * Compartido entre el componente principal, el Drawer de filtros avanzados y
  * el selector de ubicación por mapa.
  */
+import { fromLimaDateInputValue, toLimaDateInputValue } from "@/lib/lima-date";
 
 export type CommunityFilters = {
   search: string;
@@ -52,9 +53,7 @@ export function resolvePublicadoDesde(preset: string): string {
     case "1h":
       return new Date(now.getTime() - 60 * 60 * 1000).toISOString();
     case "today": {
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      return start.toISOString();
+      return fromLimaDateInputValue(toLimaDateInputValue(now), "start");
     }
     case "24h":
       return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -77,8 +76,8 @@ export function toFeedParams(filters: CommunityFilters, cursor?: string | null):
     search: filters.search,
     tipo: filters.tipo,
     categoria_id: filters.categoria_id,
-    fecha_desde: filters.fecha_desde ? new Date(filters.fecha_desde).toISOString() : "",
-    fecha_hasta: filters.fecha_hasta ? new Date(`${filters.fecha_hasta}T23:59:59`).toISOString() : "",
+    fecha_desde: filters.fecha_desde ? fromLimaDateInputValue(filters.fecha_desde, "start") : "",
+    fecha_hasta: filters.fecha_hasta ? fromLimaDateInputValue(filters.fecha_hasta, "end") : "",
     publicado_desde: resolvePublicadoDesde(filters.timePreset),
     lat: hasLocation ? String(filters.lat) : "",
     lng: hasLocation ? String(filters.lng) : "",

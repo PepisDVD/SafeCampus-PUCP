@@ -5,6 +5,7 @@ import {
   NivelSeveridad,
   TipoSegmentoAlerta,
 } from "@safecampus/shared-types";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 export const ALERTA_ESTADO_STYLE: Record<EstadoAlertaCampus, { label: string; className: string }> = {
   [EstadoAlertaCampus.BORRADOR]: { label: "Borrador", className: "bg-slate-100 text-slate-700" },
@@ -56,15 +57,10 @@ export const ENTREGA_ESTADO_STYLE: Record<EstadoNotificacion, { label: string; c
 };
 
 export function formatDateTime(value: string | null): string {
-  if (!value) return "-";
-  try {
-    return new Date(value).toLocaleString("es-PE", {
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return value;
-  }
+  return formatLimaDateTime(value, {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }, "-");
 }

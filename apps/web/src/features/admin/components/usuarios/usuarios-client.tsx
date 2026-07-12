@@ -50,6 +50,7 @@ import {
 import { UsuarioEstadoBadge } from "./usuario-estado-badge";
 import { UsuarioForm } from "./usuario-form";
 import { ProfilePageClient } from "@/features/profile/components/profile-page-client";
+import { formatLimaDateTime } from "@/lib/lima-date";
 import type { UsuarioConRoles } from "../../services/usuario.service";
 import type { RolConPermisos } from "../../services/rol.service";
 
@@ -203,14 +204,14 @@ export function UsuariosClient({
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleString("es-PE", {
+    return formatLimaDateTime(dateStr, {
       day: "2-digit",
       month: "short",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    });
+    }, "--");
   };
 
   return (

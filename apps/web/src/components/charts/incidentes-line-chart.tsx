@@ -40,14 +40,14 @@ type ChartPoint = {
 };
 
 function formatLabel(fecha: string, period: KpisPeriod): string {
-  const date = new Date(fecha + "T00:00:00");
+  const date = new Date(`${fecha}T00:00:00Z`);
   if (period === "semana") {
-    return date.toLocaleDateString("es-PE", { weekday: "short", day: "numeric" });
+    return new Intl.DateTimeFormat("es-PE", { weekday: "short", day: "numeric", timeZone: "UTC" }).format(date);
   }
   if (period === "mes") {
-    return date.toLocaleDateString("es-PE", { day: "numeric", month: "short" });
+    return new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "short", timeZone: "UTC" }).format(date);
   }
-  return date.toLocaleDateString("es-PE", { month: "short" });
+  return new Intl.DateTimeFormat("es-PE", { month: "short", timeZone: "UTC" }).format(date);
 }
 
 function aggregateByMonth(puntos: EvolucionPunto[]): ChartPoint[] {
@@ -55,9 +55,9 @@ function aggregateByMonth(puntos: EvolucionPunto[]): ChartPoint[] {
   for (const p of puntos) {
     const key = p.fecha.slice(0, 7); // YYYY-MM
     if (!byMonth[key]) {
-      const date = new Date(p.fecha + "T00:00:00");
+      const date = new Date(`${p.fecha}T00:00:00Z`);
       byMonth[key] = {
-        label: date.toLocaleDateString("es-PE", { month: "short", year: "2-digit" }),
+        label: new Intl.DateTimeFormat("es-PE", { month: "short", year: "2-digit", timeZone: "UTC" }).format(date),
         total: 0,
         resueltos: 0,
         criticos: 0,

@@ -1,3 +1,5 @@
+import { LIMA_OFFSET_MS } from "@/lib/lima-date";
+
 const MONTHS = [
   "ene",
   "feb",
@@ -12,8 +14,6 @@ const MONTHS = [
   "nov",
   "dic",
 ] as const;
-
-const LIMA_OFFSET_MS = 5 * 60 * 60 * 1000;
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");

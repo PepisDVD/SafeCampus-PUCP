@@ -9,23 +9,20 @@ import type { HistorialEvento } from "@safecampus/shared-types";
 import { Badge, cn } from "@safecampus/ui-kit";
 
 import { ESTADO_STYLE, getInitials } from "@/features/incidentes/presentation";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 type Props = {
   historial: HistorialEvento[];
 };
 
 function formatFecha(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("es-PE", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
+  return formatLimaDateTime(iso, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }, iso);
 }
 
 export function IncidenteHistorial({ historial }: Props) {

@@ -14,20 +14,16 @@ import {
   ESTADO_STYLE,
   formatCategoria,
 } from "@/features/incidentes/presentation";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 function formatFecha(iso: string | null | undefined): string {
-  if (!iso) return "Pendiente";
-  try {
-    return new Date(iso).toLocaleString("es-PE", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return "Pendiente";
-  }
+  return formatLimaDateTime(iso, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }, "Pendiente");
 }
 
 export default async function ComunidadCasoDetallePage({

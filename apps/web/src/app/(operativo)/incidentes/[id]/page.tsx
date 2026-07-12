@@ -38,6 +38,7 @@ import {
   formatCategoria,
   getInitials,
 } from "@/features/incidentes/presentation";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 import { IncidenteAccionesDialogs } from "./_components/incidente-acciones-dialogs";
 import { IncidenteEvidencias } from "./_components/incidente-evidencias";
@@ -46,31 +47,21 @@ import { IncidenteHistorial } from "./_components/incidente-historial";
 import { IncidenteUbicacionCard } from "./_components/incidente-ubicacion-card";
 
 function formatFechaLarga(iso: string | null | undefined): string {
-  if (!iso) return "--";
-  try {
-    return new Date(iso).toLocaleString("es-PE", {
-      year: "numeric",
-      month: "long",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return "--";
-  }
+  return formatLimaDateTime(iso, {
+    year: "numeric",
+    month: "long",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatFechaCorta(iso: string | null | undefined): string {
-  if (!iso) return "--";
-  try {
-    return new Date(iso).toLocaleDateString("es-PE", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-  } catch {
-    return "--";
-  }
+  return formatLimaDateTime(iso, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
 function Chip({

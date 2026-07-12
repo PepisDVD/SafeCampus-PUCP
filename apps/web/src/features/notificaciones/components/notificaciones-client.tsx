@@ -9,6 +9,7 @@ import {
   marcarNotificacionLeida,
   marcarTodasNotificacionesLeidas,
 } from "@/features/notificaciones/client";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 type NotificacionesClientProps = {
   items: NotificacionItem[];
@@ -17,16 +18,12 @@ type NotificacionesClientProps = {
 };
 
 function formatFecha(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("es-PE", {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
+  return formatLimaDateTime(iso, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }, iso);
 }
 
 export function NotificacionesClient({

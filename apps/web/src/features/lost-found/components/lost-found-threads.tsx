@@ -46,6 +46,7 @@ import { tipoLabel } from "../presentation";
 import { EstadoLfBadge } from "./estado-lf-badge";
 import { activeMetadatoCampos, MetadatoFields, validateMetadatos, valuesToMetadatos } from "./metadato-fields";
 import type { CasoLfListItem, CategoriaLf, UbicacionMaestra } from "../types";
+import { fromLimaDateTimeInputValue, toLimaDateTimeInputValue } from "@/lib/lima-date";
 
 type Props = {
   initialCasos: CasoLfListItem[];
@@ -283,7 +284,7 @@ export function LostFoundThreads({ initialCasos, initialNextCursor, categorias, 
       try {
         const created = await lostFoundClient.crearCaso({
           ...form,
-          fecha_evento: new Date(form.fecha_evento).toISOString(),
+          fecha_evento: form.fecha_evento,
           metadatos: valuesToMetadatos(metadatoCampos, metadatos),
         });
         if (fotos.length > 0) {
@@ -694,14 +695,11 @@ function FieldError({ message }: { message?: string }) {
 }
 
 function toDateTimeLocalValue(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+  return toLimaDateTimeInputValue(value);
 }
 
 function fromDateTimeLocalValue(value: string) {
-  return value ? new Date(value).toISOString() : "";
+  return fromLimaDateTimeInputValue(value);
 }
 
 function truncateText(value: string | null | undefined, maxLength: number) {

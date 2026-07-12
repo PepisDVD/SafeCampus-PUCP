@@ -11,6 +11,7 @@ import { Button, Checkbox, Label, Textarea, cn } from "@safecampus/ui-kit";
 
 import { crearComentarioIncidente } from "@/features/incidentes/client";
 import { getInitials } from "@/features/incidentes/presentation";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 type IncidenteComunicacionProps = {
   incidente: IncidenteDetail;
@@ -18,16 +19,12 @@ type IncidenteComunicacionProps = {
 };
 
 function formatFecha(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("es-PE", {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
+  return formatLimaDateTime(iso, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }, iso);
 }
 
 function MessageItem({ item }: { item: ComentarioIncidenteItem }) {

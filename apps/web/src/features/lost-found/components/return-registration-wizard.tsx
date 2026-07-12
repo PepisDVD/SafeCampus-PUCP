@@ -71,6 +71,7 @@ import {
 } from "./image-attachments";
 import type { CasoLfListItem, CustodiaLf, UbicacionMaestra } from "../types";
 import type { UsuarioConRoles } from "@/features/admin/services/usuario.service";
+import { fromLimaDateTimeInputValue, toLimaDateTimeInputValue } from "@/lib/lima-date";
 
 type CurrentUser = {
   id: string;
@@ -967,7 +968,7 @@ function StepConfirmation({
           ["Evidencia manual", form.evidenceOtherDetail || "No aplica"],
         ]} />
         <SummaryBlock title="Entrega" items={[
-          ["Fecha y hora", form.handoffAt ? formatDateTimePe(new Date(form.handoffAt).toISOString()) : "No registrada"],
+          ["Fecha y hora", form.handoffAt ? formatDateTimePe(fromLimaDateTimeInputValue(form.handoffAt)) : "No registrada"],
           ["Lugar", location?.nombre ?? "No registrado"],
           ["Responsable", deliverer ? fullName(deliverer) : "No registrado"],
           ["Evidencia", form.deliveryEvidenceTypes.map(evidenceLabel).join(", ")],
@@ -1309,7 +1310,7 @@ function buildTraceNotes(
     `Metodos de verificacion: ${form.methods.map(methodLabel).join(", ")}`,
     form.evidenceOtherDetail ? `Evidencia manual: ${form.evidenceOtherDetail}` : "",
     `Detalle de verificacion: ${form.verificationDetail}`,
-    `Entrega: ${formatDateTimePe(new Date(form.handoffAt).toISOString())}`,
+    `Entrega: ${formatDateTimePe(fromLimaDateTimeInputValue(form.handoffAt))}`,
     `Responsable: ${context.deliverer ? fullName(context.deliverer) : form.deliveredById}`,
     `Punto de entrega: ${context.location?.nombre ?? form.handoffLocationId}`,
     `Estado al devolver: ${conditionLabel(form.objectCondition)}`,
@@ -1377,6 +1378,5 @@ function daysBetween(from: string, to: string) {
 }
 
 function toDateTimeLocalValue(value: Date) {
-  const offset = value.getTimezoneOffset();
-  return new Date(value.getTime() - offset * 60_000).toISOString().slice(0, 16);
+  return toLimaDateTimeInputValue(value);
 }

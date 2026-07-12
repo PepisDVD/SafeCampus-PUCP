@@ -10,15 +10,16 @@
 import { useState } from "react";
 import { Calendar, Download } from "lucide-react";
 import { Button, Input, Label } from "@safecampus/ui-kit";
+import { toLimaDateInputValue } from "@/lib/lima-date";
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toLimaDateInputValue();
 }
 
 function isoMinusDays(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return toLimaDateInputValue(d);
 }
 
 export function ExportReporte() {

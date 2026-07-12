@@ -25,6 +25,7 @@ import { Badge, Card } from "@safecampus/ui-kit";
 
 import { listarMisIncidentes } from "@/features/incidentes/service";
 import { getCurrentUserProfile } from "@/lib/auth/server";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 const accionesRapidas = [
   {
@@ -56,11 +57,11 @@ const accionesRapidas = [
 function formatHora(iso: string | undefined | null): string {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleTimeString("es-PE", {
+    return formatLimaDateTime(iso, {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    });
+    }, "--");
   } catch {
     return "—";
   }

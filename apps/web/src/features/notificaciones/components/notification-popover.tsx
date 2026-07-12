@@ -18,22 +18,19 @@ import {
   marcarTodasNotificacionesLeidas,
 } from "@/features/notificaciones/client";
 import { NotificationBadge } from "@/features/notificaciones/components/notification-badge";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 type NotificationPopoverProps = {
   incidentBaseHref: string;
 };
 
 function formatFecha(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("es-PE", {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
+  return formatLimaDateTime(iso, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }, iso);
 }
 
 export function NotificationPopover({
