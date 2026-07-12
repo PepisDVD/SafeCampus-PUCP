@@ -30,6 +30,10 @@ async function proxy(request: Request, context: RouteContext) {
   const proxiedPath = incomingUrl.pathname.slice("/api/backend".length) || "/";
   const backendUrl = new URL(`${BACKEND_URL.replace(/\/$/, "")}${proxiedPath}`);
   backendUrl.search = incomingUrl.search;
+  const body =
+    request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : await request.arrayBuffer();
 
   const headers = new Headers();
   request.headers.forEach((value, key) => {
@@ -41,15 +45,27 @@ async function proxy(request: Request, context: RouteContext) {
   const cookie = request.headers.get("cookie");
   if (cookie) headers.set("cookie", cookie);
 
-  const response = await fetch(backendUrl, {
+  let response = await fetch(backendUrl, {
     method: request.method,
     headers,
     cache: "no-store",
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer(),
+    redirect: "manual",
+    body,
   });
+
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    const location = response.headers.get("location");
+    if (location) {
+      const redirectUrl = new URL(location, backendUrl);
+      response = await fetch(redirectUrl, {
+        method: request.method,
+        headers,
+        cache: "no-store",
+        redirect: "manual",
+        body,
+      });
+    }
+  }
 
   const responseHeaders = new Headers();
   response.headers.forEach((value, key) => {
