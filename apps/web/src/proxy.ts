@@ -87,8 +87,13 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Excluye assets estáticos y archivos PWA (manifest.webmanifest, sw.js, etc.)
-    // para que el guard de sesión no los redirija a /login y rompa su parseo.
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest|js|json|txt|woff|woff2|ttf)$).*)",
+    // Excluye:
+    // - `api/`: son llamadas fetch, no navegaciones. Redirigirlas a /login
+    //   devuelve HTML donde el cliente espera JSON, y ademas impedia que el
+    //   login por credenciales (POST /api/backend/auth/web/credentials/login)
+    //   llegara al backend. La autorizacion de la API la hace el backend.
+    // - assets estáticos y archivos PWA (manifest.webmanifest, sw.js, etc.)
+    //   para que el guard de sesión no los redirija a /login y rompa su parseo.
+    "/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest|js|json|txt|woff|woff2|ttf)$).*)",
   ],
 };

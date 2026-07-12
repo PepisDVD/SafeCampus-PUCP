@@ -20,6 +20,9 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECT_HOPS = 5;
+
 type RouteContext = {
   params: Promise<{ path?: string[] }>;
 };
@@ -45,6 +48,11 @@ async function proxy(request: Request, context: RouteContext) {
   const cookie = request.headers.get("cookie");
   if (cookie) headers.set("cookie", cookie);
 
+  // Los redirects del backend (p. ej. el 307 de FastAPI por trailing slash) se
+  // resuelven aqui, en el servidor. Nunca se devuelve un 3xx ni un `location`
+  // al navegador: si lo hicieramos, el navegador seguiria el salto hacia el
+  // dominio del backend (cross-origin) y la cookie de sesion httpOnly, que es
+  // host-only para este dominio y SameSite=Lax, no viajaria -> 401.
   let response = await fetch(backendUrl, {
     method: request.method,
     headers,
@@ -53,24 +61,54 @@ async function proxy(request: Request, context: RouteContext) {
     body,
   });
 
-  if ([301, 302, 303, 307, 308].includes(response.status)) {
+  let currentUrl = backendUrl;
+  for (
+    let hop = 0;
+    hop < MAX_REDIRECT_HOPS && REDIRECT_STATUSES.has(response.status);
+    hop += 1
+  ) {
     const location = response.headers.get("location");
-    if (location) {
-      const redirectUrl = new URL(location, backendUrl);
-      response = await fetch(redirectUrl, {
-        method: request.method,
-        headers,
-        cache: "no-store",
-        redirect: "manual",
-        body,
-      });
+    if (!location) break;
+
+    const redirectUrl = new URL(location, currentUrl);
+    // Railway/Vercel terminan TLS por delante del backend: si este responde con
+    // un `Location` en http://, lo forzamos a https para evitar un salto extra.
+    if (redirectUrl.protocol === "http:" && currentUrl.protocol === "https:") {
+      redirectUrl.protocol = "https:";
     }
+
+    // 303, y 301/302 sobre POST, degradan a GET sin cuerpo (fetch spec).
+    const downgradeToGet =
+      response.status === 303 ||
+      ([301, 302].includes(response.status) && request.method === "POST");
+
+    currentUrl = redirectUrl;
+    response = await fetch(redirectUrl, {
+      method: downgradeToGet ? "GET" : request.method,
+      headers,
+      cache: "no-store",
+      redirect: "manual",
+      body: downgradeToGet ? undefined : body,
+    });
+  }
+
+  if (REDIRECT_STATUSES.has(response.status)) {
+    // Bucle de redirects en el backend: preferimos fallar claro antes que
+    // reenviar el 3xx al navegador y provocar un 401 enganoso.
+    return NextResponse.json(
+      { detail: "El backend no resolvio la peticion (bucle de redirects)." },
+      { status: 502 },
+    );
   }
 
   const responseHeaders = new Headers();
   response.headers.forEach((value, key) => {
     const lowerKey = key.toLowerCase();
-    if (!HOP_BY_HOP_HEADERS.has(lowerKey) && lowerKey !== "set-cookie") {
+    if (
+      !HOP_BY_HOP_HEADERS.has(lowerKey) &&
+      lowerKey !== "set-cookie" &&
+      lowerKey !== "location"
+    ) {
       responseHeaders.set(key, value);
     }
   });
