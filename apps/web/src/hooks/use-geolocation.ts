@@ -24,6 +24,46 @@ type GeolocationState = {
   clearLocation: () => void;
 };
 
+/**
+ * El navegador devuelve PERMISSION_DENIED (codigo 1) tanto si el usuario nego
+ * el permiso AL SITIO como si el sistema operativo se lo niega AL NAVEGADOR
+ * (iOS: Ajustes > Privacidad > Localizacion > Sitios web de Safari = "Nunca").
+ * Son problemas distintos y se arreglan en sitios distintos, asi que
+ * consultamos la Permissions API para saber cual de los dos es: si el sitio
+ * figura como `granted` y aun asi nos deniegan, el bloqueo es del sistema.
+ */
+async function describePermissionDenied(): Promise<string> {
+  const sitePermission = await navigator.permissions
+    ?.query({ name: "geolocation" })
+    .catch(() => null);
+
+  if (sitePermission?.state === "granted") {
+    return "Tu navegador tiene permiso, pero el sistema esta bloqueando la ubicacion. En iPhone: Ajustes > Privacidad y seguridad > Localizacion > Sitios web de Safari.";
+  }
+
+  return "No se otorgo permiso para usar la ubicacion. Habilitalo para este sitio en los ajustes de tu navegador.";
+}
+
+function geolocationErrorMessage(
+  geoError: GeolocationPositionError,
+  fallback: string,
+): Promise<string> {
+  if (geoError.code === geoError.PERMISSION_DENIED) {
+    return describePermissionDenied();
+  }
+  if (geoError.code === geoError.POSITION_UNAVAILABLE) {
+    return Promise.resolve(
+      "No hay senal de GPS en este momento. Si estas en un interior, acercate a una ventana o elige la zona del campus.",
+    );
+  }
+  if (geoError.code === geoError.TIMEOUT) {
+    return Promise.resolve(
+      "El GPS tardo demasiado en responder. Vuelve a intentarlo o elige la zona del campus.",
+    );
+  }
+  return Promise.resolve(fallback);
+}
+
 function toBrowserLocation(position: GeolocationPosition): BrowserLocation {
   return {
     latitud: position.coords.latitude,
@@ -74,12 +114,10 @@ export function useGeolocation(): GeolocationState {
           setLoading(false);
           resolve(nextLocation);
         },
-        (geoError) => {
-          const message =
-            geoError.code === geoError.PERMISSION_DENIED
-              ? "No se otorgo permiso para usar la ubicacion."
-              : "No se pudo obtener tu ubicacion.";
-          setError(message);
+        async (geoError) => {
+          setError(
+            await geolocationErrorMessage(geoError, "No se pudo obtener tu ubicacion."),
+          );
           setLoading(false);
           resolve(null);
         },
@@ -118,12 +156,13 @@ export function useGeolocation(): GeolocationState {
             resolve(nextLocation);
           }
         },
-        (geoError) => {
-          const message =
-            geoError.code === geoError.PERMISSION_DENIED
-              ? "No se otorgo permiso para usar la ubicacion."
-              : "No se pudo mantener tu ubicacion en vivo.";
-          setError(message);
+        async (geoError) => {
+          setError(
+            await geolocationErrorMessage(
+              geoError,
+              "No se pudo mantener tu ubicacion en vivo.",
+            ),
+          );
           stopLiveLocation();
           if (!resolved) {
             resolved = true;
