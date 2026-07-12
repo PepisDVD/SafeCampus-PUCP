@@ -64,6 +64,16 @@ http://localhost:8000/api/v1
 En un celular fisico, `localhost` apunta al telefono, no a la laptop. Por eso
 se recomienda usar `dev:lan:clear` y misma red Wi-Fi.
 
+## Mapa Tactico
+
+El modulo de mapa usa Leaflet dentro de `react-native-webview` con teselas de
+OpenStreetMap. No usa `react-native-maps`, Google Maps SDK ni API key nativa de
+Google Maps, por lo que aceptar el permiso de ubicacion no debe montar el
+componente nativo que cerraba Android de golpe.
+
+El telefono necesita conexion a internet para descargar Leaflet y las teselas
+de OpenStreetMap al abrir el mapa.
+
 ## Forzar IP Manualmente
 
 Si la red no permite deteccion automatica o hay problemas de cache, define la

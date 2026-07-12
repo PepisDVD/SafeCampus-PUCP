@@ -1,21 +1,18 @@
 import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
-import MapView, { Marker, type Region } from "react-native-maps";
 import { Badge, Button, Card, Label, SectionHeader, colors, spacing } from "@safecampus/ui-native";
 
 import { IncidentCard } from "./IncidentCard";
+import { LeafletMap, type LeafletMapHandle, type LeafletMarker } from "./LeafletMap";
 import { severityTone } from "./operator-format";
 import { useOperatorLocation } from "./use-operator-location";
 import type { useOperatorData } from "./use-operator-data";
 
 type OperatorData = ReturnType<typeof useOperatorData>;
 
-/** Centro por defecto (PUCP, Lima) cuando aún no hay lectura de GPS. */
-const FALLBACK_REGION: Region = {
+const FALLBACK_CENTER = {
   latitude: -12.06861,
   longitude: -77.07972,
-  latitudeDelta: 0.02,
-  longitudeDelta: 0.02,
 };
 
 const PIN_COLORS: Record<string, string> = {
@@ -27,48 +24,42 @@ const PIN_COLORS: Record<string, string> = {
 
 export function MapScreen({ data }: { data: OperatorData }) {
   const location = useOperatorLocation();
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<LeafletMapHandle | null>(null);
 
   const geocoded = data.activeIncidents.filter(
     (item) => item.latitud !== null && item.latitud !== undefined && item.longitud !== null && item.longitud !== undefined,
   );
 
-  const initialRegion = useMemo<Region>(() => {
-    if (location.coords) {
-      return {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      };
-    }
-    return FALLBACK_REGION;
-  }, [location.coords]);
+  const mapCenter = useMemo(() => location.coords ?? FALLBACK_CENTER, [location.coords]);
+
+  const markers = useMemo<LeafletMarker[]>(
+    () =>
+      geocoded.map((incident) => ({
+        id: incident.id,
+        coordinate: {
+          latitude: incident.latitud as number,
+          longitude: incident.longitud as number,
+        },
+        title: incident.titulo,
+        description: incident.lugar_referencia ?? incident.codigo,
+        color: PIN_COLORS[severityTone(incident.severidad)] ?? colors.info,
+      })),
+    [geocoded],
+  );
+
+  const openIncidentFromMarker = (markerId: string) => {
+    const incident = geocoded.find((item) => item.id === markerId);
+    if (incident) data.openIncident(incident);
+  };
 
   const centerOnMe = () => {
     if (!location.coords) return;
-    mapRef.current?.animateToRegion(
-      {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      },
-      500,
-    );
+    mapRef.current?.centerOn(location.coords, 17);
   };
 
   useEffect(() => {
     if (!location.coords) return;
-    mapRef.current?.animateToRegion(
-      {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      },
-      500,
-    );
+    mapRef.current?.centerOn(location.coords, 17);
   }, [location.coords]);
 
   return (
@@ -80,25 +71,14 @@ export function MapScreen({ data }: { data: OperatorData }) {
 
       {location.permission === "granted" ? (
         <Card style={styles.map}>
-          <MapView
+          <LeafletMap
             ref={mapRef}
-            style={StyleSheet.absoluteFill}
-            initialRegion={initialRegion}
-            showsUserLocation={Boolean(location.coords)}
-            showsMyLocationButton={false}
-            showsCompass
-          >
-            {geocoded.map((incident) => (
-              <Marker
-                key={incident.id}
-                coordinate={{ latitude: incident.latitud as number, longitude: incident.longitud as number }}
-                title={incident.titulo}
-                description={incident.lugar_referencia ?? incident.codigo}
-                pinColor={PIN_COLORS[severityTone(incident.severidad)] ?? colors.info}
-                onCalloutPress={() => data.openIncident(incident)}
-              />
-            ))}
-          </MapView>
+            center={mapCenter}
+            markers={markers}
+            onMarkerPress={openIncidentFromMarker}
+            operatorLocation={location.coords}
+            zoom={location.coords ? 17 : 15}
+          />
           {location.loading && !location.coords ? (
             <View style={styles.mapLoading}>
               <ActivityIndicator color={colors.primary} />
@@ -187,9 +167,14 @@ const styles = StyleSheet.create({
   },
   mapLoading: {
     alignItems: "center",
-    flex: 1,
+    backgroundColor: colors.surface,
+    bottom: 0,
     gap: spacing.sm,
     justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
   },
   locateButton: {
     minHeight: 36,
