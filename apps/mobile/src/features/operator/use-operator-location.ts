@@ -17,6 +17,8 @@ export type OperatorLocation = {
   permission: PermissionState;
   /** `true` mientras se resuelve el permiso o la primera lectura del GPS. */
   loading: boolean;
+  /** Error recuperable de ubicacion; nunca debe cerrar la app. */
+  error: string | null;
   /** Solicita el permiso al usuario (no-op si ya está concedido). */
   request: () => Promise<PermissionState>;
   /** Abre los ajustes del sistema (para el caso `blocked`). */
@@ -32,6 +34,7 @@ export function useOperatorLocation(): OperatorLocation {
   const { state: permission, request, openSettings, isReady } = useLocationPermission();
   const [coords, setCoords] = useState<OperatorCoords | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const subscription = useRef<LocationSubscription | null>(null);
 
   useEffect(() => {
@@ -39,6 +42,7 @@ export function useOperatorLocation(): OperatorLocation {
 
     if (permission !== "granted") {
       setLoading(false);
+      setError(null);
       return;
     }
 
@@ -51,6 +55,7 @@ export function useOperatorLocation(): OperatorLocation {
           { accuracy: Accuracy.Balanced, distanceInterval: 10, timeInterval: 5000 },
           (position) => {
             if (!active) return;
+            setError(null);
             setCoords({
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
@@ -60,7 +65,10 @@ export function useOperatorLocation(): OperatorLocation {
         );
       } catch (error) {
         logger.error("operator-location/watch", error);
-        if (active) setLoading(false);
+        if (active) {
+          setError("No se pudo activar la ubicacion en este dispositivo.");
+          setLoading(false);
+        }
       }
     })();
 
@@ -73,9 +81,12 @@ export function useOperatorLocation(): OperatorLocation {
 
   const requestAndLoad = useCallback(async () => {
     const next = await request();
-    if (next !== "granted") setLoading(false);
+    if (next !== "granted") {
+      setError(null);
+      setLoading(false);
+    }
     return next;
   }, [request]);
 
-  return { coords, permission, loading, request: requestAndLoad, openSettings };
+  return { coords, permission, loading, error, request: requestAndLoad, openSettings };
 }

@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE_URL = process.env.NEXT_PUBLIC_BROWSER_API_URL || "/api/backend";
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
@@ -18,7 +17,7 @@ class ApiClient {
   ): Promise<T> {
     const { params, headers: customHeaders, ...restOptions } = options;
 
-    let url = `${this.baseUrl}${endpoint}`;
+    let url = `${this.baseUrl.replace(/\/$/, "")}${endpoint}`;
     if (params) {
       const searchParams = new URLSearchParams(
         Object.entries(params).filter(([, value]) => value !== ""),
@@ -94,7 +93,7 @@ class ApiClient {
    * automáticamente con el boundary correcto al recibir un FormData.
    */
   async postMultipart<T>(endpoint: string, formData: FormData): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = `${this.baseUrl.replace(/\/$/, "")}${endpoint}`;
     const response = await fetch(url, {
       method: "POST",
       credentials: "include",

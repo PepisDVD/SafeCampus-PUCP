@@ -681,7 +681,7 @@ async def obtener_dashboard(
 
 @router.get("/configuracion", response_model=list[ConfiguracionLfItem])
 async def listar_configuracion(
-    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
 ) -> list[ConfiguracionLfItem]:
     return await service.listar_configuracion()
@@ -699,7 +699,7 @@ async def actualizar_configuracion(
 
 @router.get("/matching/configuracion", response_model=MatchingConfigItem)
 async def obtener_config_matching(
-    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
 ) -> MatchingConfigItem:
     """Lee el umbral de sugerencia de matching (valor por defecto si no existe)."""
@@ -718,7 +718,7 @@ async def actualizar_config_matching(
 
 @router.get("/custodia/politica", response_model=CustodiaPoliticaItem)
 async def obtener_politica_custodia(
-    _user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
+    _user: AuthUserResponse = Depends(require_roles(ADMIN_ROLES)),
     service: LostFoundService = Depends(get_service),
 ) -> CustodiaPoliticaItem:
     """Lee la política de custodia y recordatorios (valores por defecto si no existe)."""

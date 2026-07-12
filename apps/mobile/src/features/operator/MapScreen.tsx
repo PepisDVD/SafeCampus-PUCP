@@ -1,5 +1,5 @@
 import { useMemo, useRef } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import MapView, { Marker, type Region } from "react-native-maps";
 import { Badge, Button, Card, Label, SectionHeader, colors, spacing } from "@safecampus/ui-native";
 
@@ -67,25 +67,37 @@ export function MapScreen({ data }: { data: OperatorData }) {
 
       {location.permission === "granted" ? (
         <Card style={styles.map}>
-          <MapView
-            ref={mapRef}
-            style={StyleSheet.absoluteFill}
-            initialRegion={initialRegion}
-            showsUserLocation
-            showsMyLocationButton={false}
-            showsCompass
-          >
-            {geocoded.map((incident) => (
-              <Marker
-                key={incident.id}
-                coordinate={{ latitude: incident.latitud as number, longitude: incident.longitud as number }}
-                title={incident.titulo}
-                description={incident.lugar_referencia ?? incident.codigo}
-                pinColor={PIN_COLORS[severityTone(incident.severidad)] ?? colors.info}
-                onCalloutPress={() => data.openIncident(incident)}
-              />
-            ))}
-          </MapView>
+          {location.loading && !location.coords ? (
+            <View style={styles.mapLoading}>
+              <ActivityIndicator color={colors.primary} />
+              <Label tone="muted" size="sm">Obteniendo ubicacion...</Label>
+            </View>
+          ) : (
+            <MapView
+              ref={mapRef}
+              style={StyleSheet.absoluteFill}
+              initialRegion={initialRegion}
+              showsUserLocation={Boolean(location.coords)}
+              showsMyLocationButton={false}
+              showsCompass
+            >
+              {geocoded.map((incident) => (
+                <Marker
+                  key={incident.id}
+                  coordinate={{ latitude: incident.latitud as number, longitude: incident.longitud as number }}
+                  title={incident.titulo}
+                  description={incident.lugar_referencia ?? incident.codigo}
+                  pinColor={PIN_COLORS[severityTone(incident.severidad)] ?? colors.info}
+                  onCalloutPress={() => data.openIncident(incident)}
+                />
+              ))}
+            </MapView>
+          )}
+          {location.error ? (
+            <View style={styles.mapError}>
+              <Label size="xs" tone="danger">{location.error}</Label>
+            </View>
+          ) : null}
           <View style={styles.mapActions}>
             <Button variant="primary" onPress={centerOnMe} style={styles.locateButton}>
               <Label size="xs" weight="800">Mi ubicacion</Label>
@@ -151,6 +163,21 @@ const styles = StyleSheet.create({
     bottom: spacing.sm,
     position: "absolute",
     right: spacing.sm,
+  },
+  mapError: {
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    left: spacing.sm,
+    padding: spacing.sm,
+    position: "absolute",
+    right: spacing.sm,
+    top: spacing.sm,
+  },
+  mapLoading: {
+    alignItems: "center",
+    flex: 1,
+    gap: spacing.sm,
+    justifyContent: "center",
   },
   locateButton: {
     minHeight: 36,

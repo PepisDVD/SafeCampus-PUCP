@@ -37,8 +37,9 @@ export type UpdateCurrentProfileInput = {
   departamento?: string | null;
 };
 
-const API_BASE_URL =
+const OAUTH_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const BROWSER_API_BASE_URL = process.env.NEXT_PUBLIC_BROWSER_API_URL || "/api/backend";
 
 function startGoogleOauth({
   nextPath,
@@ -53,7 +54,7 @@ function startGoogleOauth({
     nextPath.startsWith("/") && !nextPath.startsWith("//")
       ? nextPath
       : "/dashboard";
-  const loginUrl = new URL(`${API_BASE_URL.replace(/\/$/, "")}/auth/google/login`);
+  const loginUrl = new URL(`${OAUTH_API_BASE_URL.replace(/\/$/, "")}/auth/google/login`);
   if (email) {
     loginUrl.searchParams.set("email", email);
   }
@@ -102,7 +103,7 @@ export async function signInWithWebCredentials({
   password,
 }: SignInWithWebCredentialsOptions): Promise<void> {
   const response = await fetch(
-    `${API_BASE_URL.replace(/\/$/, "")}/auth/web/credentials/login`,
+    `${BROWSER_API_BASE_URL.replace(/\/$/, "")}/auth/web/credentials/login`,
     {
       method: "POST",
       credentials: "include",
@@ -123,7 +124,7 @@ export async function signInWithWebCredentials({
 }
 
 export async function signOut(): Promise<void> {
-  await fetch(`${API_BASE_URL.replace(/\/$/, "")}/auth/logout`, {
+  await fetch(`${BROWSER_API_BASE_URL.replace(/\/$/, "")}/auth/logout`, {
     method: "POST",
     credentials: "include",
   });
@@ -132,7 +133,7 @@ export async function signOut(): Promise<void> {
 export async function updateCurrentProfile(
   input: UpdateCurrentProfileInput,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL.replace(/\/$/, "")}/auth/me`, {
+  const response = await fetch(`${BROWSER_API_BASE_URL.replace(/\/$/, "")}/auth/me`, {
     method: "PATCH",
     credentials: "include",
     headers: {

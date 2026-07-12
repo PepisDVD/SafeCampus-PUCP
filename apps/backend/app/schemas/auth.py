@@ -46,6 +46,11 @@ class FrontendSessionExchangeResponse(BaseModel):
     user: AuthUserResponse
 
 
+class WebSessionTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
 class MobileAuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
