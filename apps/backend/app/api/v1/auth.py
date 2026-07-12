@@ -28,6 +28,7 @@ from app.schemas.auth import (
     FrontendSessionExchangeResponse,
     MobileAuthResponse,
     SupabaseAccessTokenInput,
+    WebSessionTokenResponse,
 )
 from app.services.auth_service import AuthService
 
@@ -235,6 +236,16 @@ async def exchange_frontend_session(
 ) -> FrontendSessionExchangeResponse:
     user, session_token = await service.exchange_frontend_session_handoff(body.handoff_token)
     return FrontendSessionExchangeResponse(session_token=session_token, user=user)
+
+
+@router.post("/web/ws-token", response_model=WebSessionTokenResponse, tags=["Auth"])
+async def web_ws_token(
+    current_user: AuthUserResponse = Depends(get_current_user),
+    service: AuthService = Depends(get_service),
+) -> WebSessionTokenResponse:
+    return WebSessionTokenResponse(
+        access_token=service.create_websocket_session_token(current_user),
+    )
 
 
 @router.get("/me", response_model=AuthUserResponse, tags=["Auth"])

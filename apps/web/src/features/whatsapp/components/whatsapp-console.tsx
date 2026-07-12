@@ -99,6 +99,21 @@ function buildOmnicanalWsUrl() {
 
 const OMNICANAL_WS_URL = buildOmnicanalWsUrl();
 
+async function buildAuthenticatedOmnicanalWsUrl() {
+  const response = await fetch("/api/backend/auth/web/ws-token", {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) return OMNICANAL_WS_URL;
+  const payload = (await response.json().catch(() => null)) as {
+    access_token?: string;
+  } | null;
+  if (!payload?.access_token) return OMNICANAL_WS_URL;
+  const url = new URL(OMNICANAL_WS_URL);
+  url.searchParams.set("token", payload.access_token);
+  return url.toString();
+}
+
 // Los errores de red nativos de fetch llegan como "Failed to fetch" (o un
 // TypeError), un mensaje técnico que no aporta nada al operador. Los traducimos
 // a un texto amigable y dejamos pasar los mensajes de negocio del backend.
@@ -580,26 +595,34 @@ export function WhatsAppConsole() {
     let reconnectTimer: number | null = null;
 
     const connect = () => {
-      socket = new WebSocket(OMNICANAL_WS_URL);
-      socket.onopen = () => setWsConnected(true);
-      socket.onclose = () => {
-        setWsConnected(false);
-        if (!disposed) reconnectTimer = window.setTimeout(connect, 2500);
-      };
-      socket.onmessage = (event) => {
-        let data: RealtimeEvent;
-        try {
-          data = JSON.parse(event.data) as RealtimeEvent;
-        } catch {
-          return;
-        }
-        scheduleConversationsRefresh();
-        if (data.conversacion_id && data.conversacion_id === selectedIdRef.current) {
-          loadMessages(data.conversacion_id, { showLoader: false }).catch((error) => {
-            toast.error(resolveErrorMessage(error, "No se pudo refrescar mensajes."));
-          });
-        }
-      };
+      buildAuthenticatedOmnicanalWsUrl()
+        .then((url) => {
+          if (disposed) return;
+          socket = new WebSocket(url);
+          socket.onopen = () => setWsConnected(true);
+          socket.onclose = () => {
+            setWsConnected(false);
+            if (!disposed) reconnectTimer = window.setTimeout(connect, 2500);
+          };
+          socket.onmessage = (event) => {
+            let data: RealtimeEvent;
+            try {
+              data = JSON.parse(event.data) as RealtimeEvent;
+            } catch {
+              return;
+            }
+            scheduleConversationsRefresh();
+            if (data.conversacion_id && data.conversacion_id === selectedIdRef.current) {
+              loadMessages(data.conversacion_id, { showLoader: false }).catch((error) => {
+                toast.error(resolveErrorMessage(error, "No se pudo refrescar mensajes."));
+              });
+            }
+          };
+        })
+        .catch(() => {
+          setWsConnected(false);
+          if (!disposed) reconnectTimer = window.setTimeout(connect, 2500);
+        });
     };
 
     connect();

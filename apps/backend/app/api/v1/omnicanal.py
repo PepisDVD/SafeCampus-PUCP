@@ -366,7 +366,10 @@ async def actualizar_borrador_chatbot(
 
 @router.websocket("/ws")
 async def websocket_omnicanal(websocket: WebSocket) -> None:
-    session_token = websocket.cookies.get(settings.SESSION_COOKIE_NAME)
+    session_token = (
+        websocket.query_params.get("token")
+        or websocket.cookies.get(settings.SESSION_COOKIE_NAME)
+    )
     async with AsyncSessionLocal() as db:
         try:
             current_user = await AuthService(db).get_user_from_session_token(session_token)

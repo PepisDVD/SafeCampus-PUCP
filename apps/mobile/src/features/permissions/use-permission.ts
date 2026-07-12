@@ -1,6 +1,7 @@
 import * as Linking from "expo-linking";
 import { useCallback, useEffect, useState } from "react";
 
+import { logger } from "../../shared/fallback/logger";
 import {
   normalizePermission,
   type PermissionState,
@@ -16,20 +17,33 @@ export function usePermission(getStatus: Probe, requestStatus: Probe): UsePermis
 
   useEffect(() => {
     let active = true;
-    void getStatus().then((response) => {
-      if (!active) return;
-      setState(normalizePermission(response));
-      setReady(true);
-    });
+    void getStatus()
+      .then((response) => {
+        if (!active) return;
+        setState(normalizePermission(response));
+      })
+      .catch((error) => {
+        logger.error("permission/status", error);
+        if (active) setState("denied");
+      })
+      .finally(() => {
+        if (active) setReady(true);
+      });
     return () => {
       active = false;
     };
   }, [getStatus]);
 
   const request = useCallback(async () => {
-    const next = normalizePermission(await requestStatus());
-    setState(next);
-    return next;
+    try {
+      const next = normalizePermission(await requestStatus());
+      setState(next);
+      return next;
+    } catch (error) {
+      logger.error("permission/request", error);
+      setState("denied");
+      return "denied";
+    }
   }, [requestStatus]);
 
   const openSettings = useCallback(() => Linking.openSettings(), []);

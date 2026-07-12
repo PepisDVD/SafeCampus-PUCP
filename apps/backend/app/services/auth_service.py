@@ -264,6 +264,18 @@ class AuthService:
             expires_delta=timedelta(seconds=60),
         )
 
+    def create_websocket_session_token(self, user: AuthUserResponse) -> str:
+        return create_access_token(
+            {
+                "kind": "user_session",
+                "sub": user.id,
+                "email": user.email,
+                "roles": user.roles,
+                "channel": AuthChannel.WEB.value,
+            },
+            expires_delta=timedelta(minutes=5),
+        )
+
     async def exchange_frontend_session_handoff(
         self,
         handoff_token: str,
