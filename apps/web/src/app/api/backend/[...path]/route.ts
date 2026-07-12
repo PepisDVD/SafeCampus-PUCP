@@ -6,7 +6,9 @@ const BACKEND_URL =
   "http://localhost:8000/api/v1";
 
 const HOP_BY_HOP_HEADERS = new Set([
+  "accept-encoding",
   "connection",
+  "content-encoding",
   "content-length",
   "host",
   "keep-alive",
