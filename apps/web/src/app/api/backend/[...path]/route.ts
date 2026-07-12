@@ -25,11 +25,10 @@ type RouteContext = {
 };
 
 async function proxy(request: Request, context: RouteContext) {
-  const { path = [] } = await context.params;
+  await context.params;
   const incomingUrl = new URL(request.url);
-  const backendUrl = new URL(
-    `${BACKEND_URL.replace(/\/$/, "")}/${path.map(encodeURIComponent).join("/")}`,
-  );
+  const proxiedPath = incomingUrl.pathname.slice("/api/backend".length) || "/";
+  const backendUrl = new URL(`${BACKEND_URL.replace(/\/$/, "")}${proxiedPath}`);
   backendUrl.search = incomingUrl.search;
 
   const headers = new Headers();
