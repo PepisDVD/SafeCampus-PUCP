@@ -4,14 +4,6 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Badge,
   Button,
   Card,
@@ -173,8 +165,8 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
   );
   const [ubicacionSeleccionada, setUbicacionSeleccionada] = useState("OTRO");
   const [mapDialogOpen, setMapDialogOpen] = useState(false);
-  const [mapConfirmOpen, setMapConfirmOpen] = useState(false);
   const [mapDraft, setMapDraft] = useState<{ lat: number; lng: number } | null>(null);
+  const [tagInput, setTagInput] = useState(() => etiquetasToInput(form.etiquetas));
   const [photos, setPhotos] = useState<FotoAdjunta[]>([]);
   const [photoPreview, setPhotoPreview] = useState<FotoAdjunta | null>(null);
   const photosRef = useRef<FotoAdjunta[]>([]);
@@ -386,6 +378,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
         setMetadatos({});
         resetPhotos();
         setUbicacionSeleccionada("OTRO");
+        setTagInput("");
         setNewCaseOpen(false);
         window.localStorage.removeItem(DRAFT_KEY);
         toast.success(`Caso ${created.codigo} registrado`);
@@ -432,7 +425,6 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
 
   const applyMapCoordinates = () => {
     if (!mapDraft) {
-      setMapConfirmOpen(false);
       return;
     }
     setForm((current) => ({
@@ -440,7 +432,6 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
       latitud: Number(mapDraft.lat.toFixed(6)),
       longitud: Number(mapDraft.lng.toFixed(6)),
     }));
-    setMapConfirmOpen(false);
     setMapDialogOpen(false);
     toast.success("Ubicacion marcada en el mapa");
   };
@@ -1023,8 +1014,12 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
                 <FieldBlock label="Etiquetas">
                   <Input
                     placeholder="Ej. llaves, azul, biblioteca"
-                    value={Array.isArray(form.etiquetas) ? form.etiquetas.join(", ") : String(form.etiquetas ?? "")}
-                    onChange={(e) => setForm((f) => ({ ...f, etiquetas: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) }))}
+                    value={tagInput}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setTagInput(value);
+                      setForm((f) => ({ ...f, etiquetas: parseEtiquetas(value) }));
+                    }}
                   />
                   <p className="text-[11px] text-slate-500">Separa cada etiqueta con coma.</p>
                 </FieldBlock>
@@ -1047,7 +1042,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
                   <Input
                     className="hidden"
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,image/heic,image/gif"
+                    accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,image/gif"
                     multiple
                     capture="environment"
                     disabled={!canAddPhotos}
@@ -1113,25 +1108,10 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setMapDialogOpen(false)}>Cancelar</Button>
-            <Button type="button" onClick={() => setMapConfirmOpen(true)}>Guardar ubicacion</Button>
+            <Button type="button" onClick={applyMapCoordinates}>Guardar ubicacion</Button>
           </div>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={mapConfirmOpen} onOpenChange={setMapConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar ubicacion</AlertDialogTitle>
-            <AlertDialogDescription>
-              Se aplicaran las coordenadas seleccionadas al caso. Puedes ajustar el lugar de referencia antes de publicar.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={applyMapCoordinates}>Confirmar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <LostFoundFeedFilters
         open={filtersOpen}
@@ -1583,7 +1563,7 @@ function CaseDetail(props: {
                   <input
                     ref={commentFileRef}
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,image/heic,image/gif"
+                    accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,image/gif"
                     multiple
                     hidden
                     onChange={(e) => {
@@ -1963,8 +1943,16 @@ function normalizeCreateForm(form: CasoLfCreatePayload): CasoLfCreatePayload {
   return {
     ...form,
     fecha_evento: new Date(form.fecha_evento).toISOString(),
-    etiquetas: Array.isArray(form.etiquetas) ? form.etiquetas : String(form.etiquetas ?? "").split(",").map((x) => x.trim()).filter(Boolean),
+    etiquetas: Array.isArray(form.etiquetas) ? form.etiquetas : parseEtiquetas(String(form.etiquetas ?? "")),
   };
+}
+
+function parseEtiquetas(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function etiquetasToInput(value: CasoLfCreatePayload["etiquetas"]): string {
+  return Array.isArray(value) ? value.join(", ") : String(value ?? "");
 }
 
 function validateCase(form: CasoLfCreatePayload, photos: FotoAdjunta[]) {
@@ -2003,7 +1991,7 @@ function validatePhotos(files: File[], required = false) {
   if (required && files.length === 0) return "Agrega al menos una foto.";
   if (files.length > 3) return "Solo puedes adjuntar hasta 3 fotos.";
   for (const file of files) {
-    if (!["image/jpeg", "image/png", "image/webp", "image/heic", "image/gif"].includes(file.type)) {
+    if (!["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif"].includes(file.type)) {
       return "Solo se aceptan imagenes JPG, PNG, WEBP, HEIC o GIF.";
     }
     if (file.size < 50 * 1024) return "Cada imagen debe pesar al menos 50 KB.";
