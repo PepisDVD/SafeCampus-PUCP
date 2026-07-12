@@ -39,6 +39,8 @@ async function proxy(request: Request, context: RouteContext) {
       headers.set(key, value);
     }
   });
+  const cookie = request.headers.get("cookie");
+  if (cookie) headers.set("cookie", cookie);
 
   const response = await fetch(backendUrl, {
     method: request.method,

@@ -38,14 +38,7 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ detail: "Error desconocido" }));
-      const detail =
-        typeof error.detail === "string"
-          ? error.detail
-          : JSON.stringify(error.detail ?? error);
-      throw new Error(detail || `Error ${response.status}`);
+      throw new Error(await getErrorMessage(response));
     }
 
     if (response.status === 204) {
@@ -101,10 +94,7 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ detail: "Error desconocido" }));
-      throw new Error(error.detail || `Error ${response.status}`);
+      throw new Error(await getErrorMessage(response));
     }
 
     return response.json();
@@ -112,3 +102,23 @@ class ApiClient {
 }
 
 export const api = new ApiClient(API_BASE_URL);
+
+async function getErrorMessage(response: Response): Promise<string> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const error = await response.json().catch(() => null);
+    const detail =
+      error && typeof error === "object" && "detail" in error
+        ? (error as { detail: unknown }).detail
+        : error;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+      const first = detail[0] as { msg?: unknown };
+      if (typeof first?.msg === "string") return first.msg;
+    }
+    if (detail) return JSON.stringify(detail);
+  }
+
+  const text = await response.text().catch(() => "");
+  return text.trim() || `Error ${response.status}`;
+}

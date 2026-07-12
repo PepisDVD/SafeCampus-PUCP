@@ -132,9 +132,11 @@ TRANSITIONS = {
 class LostFoundService:
     _MIME_PERMITIDOS = {
         "image/jpeg",
+        "image/jpg",
         "image/png",
         "image/webp",
         "image/heic",
+        "image/heif",
         "image/gif",
     }
     _MAX_BYTES = 10 * 1024 * 1024
