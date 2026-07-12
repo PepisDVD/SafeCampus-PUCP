@@ -1,4 +1,12 @@
-import { Accuracy, watchPositionAsync, type LocationSubscription } from "expo-location";
+import {
+  Accuracy,
+  getCurrentPositionAsync,
+  getLastKnownPositionAsync,
+  hasServicesEnabledAsync,
+  watchPositionAsync,
+  type LocationObject,
+  type LocationSubscription,
+} from "expo-location";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useLocationPermission } from "../permissions";
@@ -25,6 +33,25 @@ export type OperatorLocation = {
   openSettings: () => Promise<void>;
 };
 
+const FIRST_FIX_TIMEOUT_MS = 8000;
+
+function toOperatorCoords(position: LocationObject): OperatorCoords {
+  return {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+  };
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    promise
+      .then((value) => resolve(value))
+      .catch(() => resolve(null))
+      .finally(() => clearTimeout(timer));
+  });
+}
+
 /**
  * Provee la ubicación real del operador mediante GPS.
  * Se suscribe a actualizaciones mientras el permiso esté concedido y limpia
@@ -37,8 +64,15 @@ export function useOperatorLocation(): OperatorLocation {
   const [error, setError] = useState<string | null>(null);
   const subscription = useRef<LocationSubscription | null>(null);
 
+  const stopWatching = useCallback(() => {
+    subscription.current?.remove();
+    subscription.current = null;
+  }, []);
+
   useEffect(() => {
     if (!isReady) return;
+
+    stopWatching();
 
     if (permission !== "granted") {
       setLoading(false);
@@ -48,18 +82,54 @@ export function useOperatorLocation(): OperatorLocation {
 
     let active = true;
     setLoading(true);
+    setError(null);
 
     void (async () => {
       try {
+        const servicesEnabled = await hasServicesEnabledAsync();
+        if (!servicesEnabled) {
+          if (active) {
+            setError("Activa la ubicacion del dispositivo para usar tu posicion en el mapa.");
+            setLoading(false);
+          }
+          return;
+        }
+
+        const lastKnown = await getLastKnownPositionAsync({
+          maxAge: 60_000,
+          requiredAccuracy: 250,
+        }).catch((error) => {
+          logger.error("operator-location/last-known", error);
+          return null;
+        });
+        if (active && lastKnown) {
+          setCoords(toOperatorCoords(lastKnown));
+          setLoading(false);
+        }
+
+        const firstFix = await withTimeout(
+          getCurrentPositionAsync({ accuracy: Accuracy.Balanced }),
+          FIRST_FIX_TIMEOUT_MS,
+        );
+        if (active && firstFix) {
+          setCoords(toOperatorCoords(firstFix));
+          setLoading(false);
+        } else if (active && !lastKnown) {
+          setError("No pudimos obtener tu ubicacion aun. Se mostrara el campus mientras el GPS responde.");
+          setLoading(false);
+        }
+
+        if (!active) return;
         subscription.current = await watchPositionAsync(
-          { accuracy: Accuracy.Balanced, distanceInterval: 10, timeInterval: 5000 },
+          {
+            accuracy: Accuracy.Balanced,
+            distanceInterval: 10,
+            timeInterval: 5000,
+          },
           (position) => {
             if (!active) return;
             setError(null);
-            setCoords({
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-            });
+            setCoords(toOperatorCoords(position));
             setLoading(false);
           },
         );
@@ -74,12 +144,13 @@ export function useOperatorLocation(): OperatorLocation {
 
     return () => {
       active = false;
-      subscription.current?.remove();
-      subscription.current = null;
+      stopWatching();
     };
-  }, [isReady, permission]);
+  }, [isReady, permission, stopWatching]);
 
   const requestAndLoad = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     const next = await request();
     if (next !== "granted") {
       setError(null);

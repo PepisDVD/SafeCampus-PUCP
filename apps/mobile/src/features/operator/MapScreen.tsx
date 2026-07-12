@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import MapView, { Marker, type Region } from "react-native-maps";
 import { Badge, Button, Card, Label, SectionHeader, colors, spacing } from "@safecampus/ui-native";
@@ -58,6 +58,19 @@ export function MapScreen({ data }: { data: OperatorData }) {
     );
   };
 
+  useEffect(() => {
+    if (!location.coords) return;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      },
+      500,
+    );
+  }, [location.coords]);
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <View>
@@ -67,32 +80,31 @@ export function MapScreen({ data }: { data: OperatorData }) {
 
       {location.permission === "granted" ? (
         <Card style={styles.map}>
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFill}
+            initialRegion={initialRegion}
+            showsUserLocation={Boolean(location.coords)}
+            showsMyLocationButton={false}
+            showsCompass
+          >
+            {geocoded.map((incident) => (
+              <Marker
+                key={incident.id}
+                coordinate={{ latitude: incident.latitud as number, longitude: incident.longitud as number }}
+                title={incident.titulo}
+                description={incident.lugar_referencia ?? incident.codigo}
+                pinColor={PIN_COLORS[severityTone(incident.severidad)] ?? colors.info}
+                onCalloutPress={() => data.openIncident(incident)}
+              />
+            ))}
+          </MapView>
           {location.loading && !location.coords ? (
             <View style={styles.mapLoading}>
               <ActivityIndicator color={colors.primary} />
               <Label tone="muted" size="sm">Obteniendo ubicacion...</Label>
             </View>
-          ) : (
-            <MapView
-              ref={mapRef}
-              style={StyleSheet.absoluteFill}
-              initialRegion={initialRegion}
-              showsUserLocation={Boolean(location.coords)}
-              showsMyLocationButton={false}
-              showsCompass
-            >
-              {geocoded.map((incident) => (
-                <Marker
-                  key={incident.id}
-                  coordinate={{ latitude: incident.latitud as number, longitude: incident.longitud as number }}
-                  title={incident.titulo}
-                  description={incident.lugar_referencia ?? incident.codigo}
-                  pinColor={PIN_COLORS[severityTone(incident.severidad)] ?? colors.info}
-                  onCalloutPress={() => data.openIncident(incident)}
-                />
-              ))}
-            </MapView>
-          )}
+          ) : null}
           {location.error ? (
             <View style={styles.mapError}>
               <Label size="xs" tone="danger">{location.error}</Label>
