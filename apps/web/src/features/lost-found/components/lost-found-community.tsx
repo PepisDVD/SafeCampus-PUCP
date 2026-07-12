@@ -87,6 +87,7 @@ import {
   type CommunityFilters,
 } from "./feed-filters";
 import type { CasoLfDetail, CasoLfListItem, CategoriaLf, MatchLf, UbicacionMaestra } from "../types";
+import { fromLimaDateTimeInputValue, toLimaDateTimeInputValue, formatLimaDateTime } from "@/lib/lima-date";
 
 type Props = {
   categorias: CategoriaLf[];
@@ -115,7 +116,7 @@ const emptyForm: CasoLfCreatePayload = {
   descripcion: "",
   categoria_id: "",
   lugar_referencia: "",
-  fecha_evento: new Date().toISOString().slice(0, 16),
+  fecha_evento: new Date().toISOString(),
   color_principal: "",
   marca: "",
   etiquetas: [],
@@ -983,7 +984,7 @@ export function LostFoundCommunity({ categorias, initialFeed, initialMine, ubica
                     value={toLocalInput(form.fecha_evento)}
                     aria-invalid={Boolean(visibleFormError(formErrors.fecha_evento, formTouched.fecha_evento, formSubmitted))}
                     onBlur={() => setFormTouched((current) => ({ ...current, fecha_evento: true }))}
-                    onChange={(e) => setForm((f) => ({ ...f, fecha_evento: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, fecha_evento: fromLimaDateTimeInputValue(e.target.value) }))}
                   />
                   <FieldError message={visibleFormError(formErrors.fecha_evento, formTouched.fecha_evento, formSubmitted)} />
                 </FieldBlock>
@@ -1942,7 +1943,7 @@ function Photo({ src, small = false, onClick }: { src: string; small?: boolean; 
 function normalizeCreateForm(form: CasoLfCreatePayload): CasoLfCreatePayload {
   return {
     ...form,
-    fecha_evento: new Date(form.fecha_evento).toISOString(),
+    fecha_evento: fromLimaDateTimeInputValue(toLocalInput(form.fecha_evento)),
     etiquetas: Array.isArray(form.etiquetas) ? form.etiquetas : parseEtiquetas(String(form.etiquetas ?? "")),
   };
 }
@@ -2007,14 +2008,12 @@ function formatBytes(bytes: number) {
 }
 
 function toLocalInput(value: string) {
-  return value.includes("T") ? value.slice(0, 16) : value;
+  return toLimaDateTimeInputValue(value);
 }
 
 function formatDate(value?: string | null) {
   if (!value) return "Sin fecha";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Sin fecha";
-  return date.toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" });
+  return formatLimaDateTime(value, { day: "2-digit", month: "short", year: "numeric" }, "Sin fecha");
 }
 
 function requestNotificationPermission() {

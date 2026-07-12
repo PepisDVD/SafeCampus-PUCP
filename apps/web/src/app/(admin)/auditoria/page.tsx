@@ -7,6 +7,7 @@ import {
   obtenerUsuariosAuditoria,
 } from "@/features/admin/services/auditoria.service";
 import { AuditoriaClient } from "@/features/admin/components/auditoria/auditoria-client";
+import { toLimaDateInputValue } from "@/lib/lima-date";
 
 type SearchParams = {
   search?: string;
@@ -24,7 +25,7 @@ type SearchParams = {
 function defaultDesde(): string {
   const d = new Date();
   d.setDate(d.getDate() - 30);
-  return d.toISOString().slice(0, 10);
+  return toLimaDateInputValue(d);
 }
 
 export default async function AuditoriaPage({

@@ -48,6 +48,7 @@ import { EditCaseModal } from "./edit-case-modal";
 import { CommentComposer, CommentNode, type CommentCallbacks } from "./comment-node";
 import { activeMetadatoCampos } from "./metadato-fields";
 import type { CasoLfDetail, CategoriaLf, ComentarioLf, MatchLf } from "../types";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 const DEFAULT_MAX_DEPTH = 6;
 
@@ -360,7 +361,12 @@ export function LostFoundThreadDetail({
                     <p className="mt-1 text-sm font-medium text-slate-950">{item.accion}</p>
                     {item.comentario && <p className="text-sm text-slate-600">{item.comentario}</p>}
                     <p className="mt-1 text-xs text-slate-500">
-                      {new Date(item.created_at).toLocaleString()} · {item.ejecutado_por?.nombre_completo ?? "Sistema"}
+                      {formatLimaDateTime(item.created_at, {
+                        day: "2-digit",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }, item.created_at)} · {item.ejecutado_por?.nombre_completo ?? "Sistema"}
                     </p>
                   </div>
                 </div>
@@ -711,7 +717,12 @@ function HistoryDrawer({ open, onOpenChange, caso }: { open: boolean; onOpenChan
                     <p className="mt-1 text-sm font-medium text-slate-950">{item.accion}</p>
                     {item.comentario && <p className="text-sm text-slate-600">{item.comentario}</p>}
                     <p className="mt-1 text-xs text-slate-500">
-                      {new Date(item.created_at).toLocaleString()} - {item.ejecutado_por?.nombre_completo ?? "Sistema"}
+                      {formatLimaDateTime(item.created_at, {
+                        day: "2-digit",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }, item.created_at)} - {item.ejecutado_por?.nombre_completo ?? "Sistema"}
                     </p>
                   </div>
                 </div>

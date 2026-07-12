@@ -33,6 +33,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { LlmUsageItem, LlmUsageListResponse } from "../../services/llm-audit.service";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 type LlmAuditTableClientProps = {
   initialData: LlmUsageListResponse;
@@ -40,16 +41,14 @@ type LlmAuditTableClientProps = {
 };
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  const lima = new Date(d.getTime() - 5 * 60 * 60 * 1000);
-  const months = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "set.", "oct.", "nov.", "dic."];
-  const day = String(lima.getUTCDate()).padStart(2, "0");
-  const month = months[lima.getUTCMonth()];
-  const year = lima.getUTCFullYear();
-  const hour = String(lima.getUTCHours()).padStart(2, "0");
-  const min = String(lima.getUTCMinutes()).padStart(2, "0");
-  return `${day} ${month} ${year}, ${hour}:${min}`;
+  return formatLimaDateTime(dateStr, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }, dateStr);
 }
 
 function shortId(id: string): string {

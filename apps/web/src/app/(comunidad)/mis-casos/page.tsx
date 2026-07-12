@@ -13,6 +13,7 @@ import { EstadoIncidente, type IncidenteListItem } from "@safecampus/shared-type
 import { Badge, Card, cn } from "@safecampus/ui-kit";
 
 import { listarMisIncidentes } from "@/features/incidentes/service";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 const ESTADOS_RESUELTOS: ReadonlySet<EstadoIncidente> = new Set([
   EstadoIncidente.RESUELTO,
@@ -22,8 +23,11 @@ const ESTADOS_RESUELTOS: ReadonlySet<EstadoIncidente> = new Set([
 function formatFecha(iso: string | undefined | null): string {
   if (!iso) return "—";
   try {
-    const d = new Date(iso);
-    return d.toISOString().slice(0, 10);
+    return formatLimaDateTime(iso, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }, iso);
   } catch {
     return "—";
   }

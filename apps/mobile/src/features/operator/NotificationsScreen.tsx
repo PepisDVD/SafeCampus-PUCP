@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Badge, Button, Card, Label, SectionHeader, colors, spacing } from "@safecampus/ui-native";
+import { formatLimaDateTime } from "@safecampus/shared-types";
 
 import { useNotificationPermission } from "../permissions";
 import type { useOperatorData } from "./use-operator-data";
@@ -21,7 +22,10 @@ export function NotificationsScreen({ data }: { data: OperatorData }) {
       id: "sync",
       title: "Realtime operativo",
       body: data.lastSyncAt
-        ? `Ultima sincronizacion ${data.lastSyncAt.toLocaleTimeString("es-PE")}`
+        ? `Ultima sincronizacion ${formatLimaDateTime(data.lastSyncAt, {
+            hour: "2-digit",
+            minute: "2-digit",
+          }, "--:--")}`
         : "Esperando primera sincronizacion",
       tone: "info" as const,
     },

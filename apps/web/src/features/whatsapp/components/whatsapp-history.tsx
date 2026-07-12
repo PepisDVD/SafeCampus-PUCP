@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api/client";
+import { formatLimaDateTime } from "@/lib/lima-date";
 import { CycleDetailDialog, CycleList } from "./whatsapp-cycles";
 import type {
   Conversation,
@@ -68,10 +69,10 @@ function initials(value: string) {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("es-PE", {
+  return formatLimaDateTime(value, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+  }, value);
 }
 
 function stateTone(state: ConversationState) {

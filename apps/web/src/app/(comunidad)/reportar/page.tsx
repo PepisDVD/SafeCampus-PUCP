@@ -52,6 +52,7 @@ import {
 } from "@/features/incidentes/presentation";
 import { useGeolocation } from "@/hooks/use-geolocation";
 import { api } from "@/lib/api/client";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 type Step = 0 | 1 | 2 | 3 | 4;
 
@@ -566,13 +567,11 @@ export default function ReportarPage() {
                         ? ` (${Math.round(location.precision_metros)} m aprox.)`
                         : ""}
                       {locationSource === "live" && ubicacionActualizadaEn
-                        ? ` - actualizado ${new Date(
-                            ubicacionActualizadaEn,
-                          ).toLocaleTimeString("es-PE", {
+                        ? ` - actualizado ${formatLimaDateTime(new Date(ubicacionActualizadaEn), {
                             hour: "2-digit",
                             minute: "2-digit",
                             second: "2-digit",
-                          })}`
+                          }, "--")}`
                         : ""}
                     </span>
                     {locationSource === "gps" || locationSource === "live" ? (

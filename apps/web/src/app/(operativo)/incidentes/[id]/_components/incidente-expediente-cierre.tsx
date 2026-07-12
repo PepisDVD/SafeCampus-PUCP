@@ -1,20 +1,19 @@
 import { FileCheck2 } from "lucide-react";
 import type { ExpedienteCierre } from "@safecampus/shared-types";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 type Props = {
   expediente: ExpedienteCierre | null;
 };
 
 function formatFecha(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("es-PE", {
+  return formatLimaDateTime(iso, {
     year: "numeric",
     month: "long",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  });
+  }, iso);
 }
 
 export function IncidenteExpedienteCierre({ expediente }: Props) {

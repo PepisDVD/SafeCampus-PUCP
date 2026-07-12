@@ -34,6 +34,7 @@ import { lostFoundClient } from "../client";
 import { activeMetadatoCampos, MetadatoFields, metadatosToValues, validateMetadatos, valuesToMetadatos } from "./metadato-fields";
 import { CharCounter, LF_TEXT_LIMITS } from "./text-field-help";
 import type { CasoLfDetail, CategoriaLf, UbicacionMaestra } from "../types";
+import { fromLimaDateTimeInputValue, toLimaDateTimeInputValue } from "@/lib/lima-date";
 
 const ACCEPT_IMAGES = "image/jpeg,image/png,image/webp,image/heic,image/gif";
 const MAX_IMAGES = 3;
@@ -185,7 +186,7 @@ export function EditCaseModal({
           descripcion,
           categoria_id: categoriaId,
           lugar_referencia: lugar,
-          fecha_evento: new Date(fecha).toISOString(),
+          fecha_evento: fecha,
           color_principal: caso.color_principal ?? undefined,
           marca: caso.marca ?? undefined,
           etiquetas: caso.etiquetas,
@@ -385,15 +386,11 @@ export function EditCaseModal({
 }
 
 function toDateTimeLocalValue(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+  return toLimaDateTimeInputValue(value);
 }
 
 function fromDateTimeLocalValue(value: string) {
-  return value ? new Date(value).toISOString() : "";
+  return fromLimaDateTimeInputValue(value);
 }
 
 function resolveInitialLocation(caso: CasoLfDetail, ubicaciones?: UbicacionMaestra[]) {

@@ -20,6 +20,7 @@ import {
 import { ExternalLink, ImageIcon, MessageSquareText, RefreshCw, RotateCcw } from "lucide-react";
 
 import { api } from "@/lib/api/client";
+import { formatLimaDateTime } from "@/lib/lima-date";
 import type {
   ConversationCycleDetail,
   ConversationCycleListItem,
@@ -53,11 +54,10 @@ function initials(value: string) {
 }
 
 function formatDateTime(value: string | null | undefined) {
-  if (!value) return "Sin fecha";
-  return new Intl.DateTimeFormat("es-PE", {
+  return formatLimaDateTime(value, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+  }, "Sin fecha");
 }
 
 function cycleTone(state: ConversationCycleListItem["estado"]) {

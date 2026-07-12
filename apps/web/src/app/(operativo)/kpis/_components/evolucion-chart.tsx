@@ -24,11 +24,12 @@ type Props = {
 const FORMATTER = new Intl.DateTimeFormat("es-PE", {
   day: "2-digit",
   month: "short",
+  timeZone: "UTC",
 });
 
 function formatLabel(iso: string): string {
   try {
-    return FORMATTER.format(new Date(iso));
+    return FORMATTER.format(new Date(`${iso.slice(0, 10)}T00:00:00Z`));
   } catch {
     return iso;
   }

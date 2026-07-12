@@ -67,6 +67,7 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api/client";
+import { formatLimaDateTime } from "@/lib/lima-date";
 import type {
   ChatbotStatus,
   Conversation,
@@ -170,17 +171,17 @@ type OperatorOption = {
 };
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat("es-PE", {
+  return formatLimaDateTime(value, {
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+  }, value);
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("es-PE", {
+  return formatLimaDateTime(value, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+  }, value);
 }
 
 function minutesSince(value: string) {

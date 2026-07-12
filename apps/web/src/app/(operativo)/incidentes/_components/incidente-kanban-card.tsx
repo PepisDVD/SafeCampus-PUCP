@@ -1,8 +1,7 @@
 /**
- * 📁 apps/web/src/app/(operativo)/incidentes/_components/incidente-kanban-card.tsx
- * 🎯 Tarjeta vertical de incidente para la vista Kanban.
- *    Reusa los helpers de presentación compartidos con la tabla.
- * 📦 Módulo: Operativo / Incidentes
+ * apps/web/src/app/(operativo)/incidentes/_components/incidente-kanban-card.tsx
+ * Tarjeta vertical de incidente para la vista Kanban.
+ * Reusa los helpers de presentacion compartidos con la tabla.
  */
 
 import Link from "next/link";
@@ -11,22 +10,22 @@ import type { IncidenteListItem } from "@safecampus/shared-types";
 import { cn } from "@safecampus/ui-kit";
 
 import { SEVERIDAD_COLOR } from "@/features/incidentes/presentation";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 type Props = {
   item: IncidenteListItem;
 };
 
 function formatHora(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleTimeString("es-PE", {
+  return formatLimaDateTime(
+    iso,
+    {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    });
-  } catch {
-    return "—";
-  }
+    },
+    "--",
+  );
 }
 
 function firstName(nombre: string | null): string | null {

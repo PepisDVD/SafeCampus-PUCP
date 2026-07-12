@@ -15,3 +15,4 @@ export * from "./omnicanal";
 export * from "./notificacion";
 export * from "./usuario";
 export * from "./database.types";
+export * from "./lima-date";

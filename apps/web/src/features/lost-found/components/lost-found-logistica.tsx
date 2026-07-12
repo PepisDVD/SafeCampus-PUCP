@@ -59,6 +59,7 @@ import { CharCounter, LF_TEXT_LIMITS } from "./text-field-help";
 import { ReturnRegistrationWizard } from "./return-registration-wizard";
 import type { UsuarioConRoles } from "@/features/admin/services/usuario.service";
 import type { CasoLfDetail, CasoLfListItem, CustodiaLf, ListResponse, MotivoCierreLf, UbicacionMaestra } from "../types";
+import { fromLimaDateTimeInputValue, toLimaDateTimeInputValue, LIMA_TIME_ZONE } from "@/lib/lima-date";
 
 type CustodiaPage = ListResponse<CustodiaLf> & { page: number; per_page: number };
 
@@ -485,7 +486,7 @@ function CustodiaDrawer({
           await lostFoundClient.actualizarCustodia(custodia.id, {
             ubicacion_custodia: ubicacion.trim(),
             observaciones: observacionesDraft.trim() || null,
-            fecha_vencimiento: new Date(fechaVencimiento).toISOString(),
+            fecha_vencimiento: fromLimaDateTimeInputValue(fechaVencimiento),
           });
         } else if (mode === "devolver" && custodia && form) {
           const formData = new FormData(form);
@@ -902,7 +903,7 @@ function validateCustodiaForm({
     if (ubicacion.length > LF_TEXT_LIMITS.custodia_ubicacion.max) errors.ubicacion = "La ubicación supera el límite permitido.";
     if (observaciones.length > LF_TEXT_LIMITS.custodia_observaciones.max) errors.observaciones = "Las observaciones superan el límite permitido.";
   }
-  if (mode === "editar" && (!fechaVencimiento || Number.isNaN(new Date(fechaVencimiento).getTime()))) {
+  if (mode === "editar" && (!fechaVencimiento || !fromLimaDateTimeInputValue(fechaVencimiento))) {
     errors.fechaVencimiento = "Ingresa una fecha de vencimiento válida.";
   }
   if (mode === "descartar") {
@@ -939,7 +940,8 @@ function optional(value: FormDataEntryValue | null) {
 
 function parseDateTimeLocal(value: string) {
   if (!value) return undefined;
-  const date = new Date(value);
+  const iso = fromLimaDateTimeInputValue(value);
+  const date = iso ? new Date(iso) : new Date(Number.NaN);
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
@@ -948,14 +950,12 @@ function formatPickerDate(date: Date) {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: LIMA_TIME_ZONE,
   }).format(date);
 }
 
 function toDateTimeLocalValue(value: string | Date) {
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "";
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+  return toLimaDateTimeInputValue(value);
 }
 
 function isExpired(value: string) {

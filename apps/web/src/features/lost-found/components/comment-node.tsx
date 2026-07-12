@@ -26,6 +26,7 @@ import {
 import { ChevronDown, ChevronUp, Eye, EyeOff, ImageIcon, Pencil, Pin, PinOff, Reply, Settings2, Star, Trash2, X } from "lucide-react";
 import { DEFAULT_TAG, type LfCommentTag, tagMeta } from "../presentation";
 import type { ComentarioLf } from "../types";
+import { formatLimaDateTime } from "@/lib/lima-date";
 
 const ACCEPT_IMAGES = "image/jpeg,image/png,image/webp,image/heic,image/gif";
 const MAX_IMAGES = 3;
@@ -284,7 +285,14 @@ export function CommentNode({
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-medium">{comment.autor?.nombre_completo ?? "Usuario"}</p>
             {comment.autor?.rol ? <RoleBadge role={comment.autor.rol} /> : null}
-            <span className="text-xs text-slate-500">{new Date(comment.created_at).toLocaleString()}</span>
+            <span className="text-xs text-slate-500">
+              {formatLimaDateTime(comment.created_at, {
+                day: "2-digit",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              }, comment.created_at)}
+            </span>
             {comment.fijado && (
               <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700"><Pin className="mr-1 h-3 w-3" />Fijado</Badge>
             )}

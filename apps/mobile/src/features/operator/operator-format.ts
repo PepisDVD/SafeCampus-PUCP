@@ -1,4 +1,5 @@
 import type { IncidentSeverity, IncidentStatus } from "../../shared/types/api";
+import { formatLimaDateTime } from "@safecampus/shared-types";
 
 export const statusLabel: Record<IncidentStatus, string> = {
   RECIBIDO: "Recibido",
@@ -18,11 +19,10 @@ export const severityLabel: Record<IncidentSeverity, string> = {
 };
 
 export function formatTime(value?: string | null) {
-  if (!value) return "--:--";
-  return new Intl.DateTimeFormat("es-PE", {
+  return formatLimaDateTime(value, {
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+  }, "--:--");
 }
 
 export function severityTone(severity?: IncidentSeverity | null) {
