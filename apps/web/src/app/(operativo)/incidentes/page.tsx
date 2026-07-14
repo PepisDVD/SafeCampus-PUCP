@@ -10,7 +10,7 @@
 
 import { Suspense } from "react";
 
-import { EstadoIncidente, NivelSeveridad } from "@safecampus/shared-types";
+import { EstadoIncidente, NivelSeveridad, TipoCanal } from "@safecampus/shared-types";
 
 import { listarIncidentes } from "@/features/incidentes/service";
 
@@ -22,6 +22,7 @@ import { ViewToggle, type IncidentesView } from "./_components/view-toggle";
 
 const SEVERIDAD_VALUES = new Set<string>(Object.values(NivelSeveridad));
 const ESTADO_VALUES = new Set<string>(Object.values(EstadoIncidente));
+const CANAL_VALUES = new Set<string>(Object.values(TipoCanal));
 const VIEW_VALUES = new Set<string>(["tabla", "kanban"]);
 const PER_PAGE = 20;
 
@@ -54,6 +55,9 @@ export default async function IncidentesPage({
   const estados = pickComma(params.estado).filter((v) =>
     ESTADO_VALUES.has(v),
   ) as EstadoIncidente[];
+  const canales = pickComma(params.canal_origen).filter((v) =>
+    CANAL_VALUES.has(v),
+  ) as TipoCanal[];
 
   const view: IncidentesView =
     rawView && VIEW_VALUES.has(rawView) ? (rawView as IncidentesView) : "tabla";
@@ -64,6 +68,7 @@ export default async function IncidentesPage({
     search: search || undefined,
     severidades: severidades.length ? severidades : undefined,
     estados: estados.length ? estados : undefined,
+    canales: canales.length ? canales : undefined,
     limit: PER_PAGE,
     skip,
   }).catch(() => ({ items: [], total: 0 }));
@@ -86,6 +91,7 @@ export default async function IncidentesPage({
         search={search}
         severidades={severidades}
         estados={estados}
+        canales={canales}
         view={view}
       />
 

@@ -58,6 +58,7 @@ export interface IncidenteListFilters {
   search?: string;
   severidades?: NivelSeveridad[];
   estados?: EstadoIncidente[];
+  canales?: TipoCanal[];
   limit?: number;
   skip?: number;
 }

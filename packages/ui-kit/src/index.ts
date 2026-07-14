@@ -18,6 +18,12 @@ export {
   getRoleTone,
   type RoleBadgeProps,
 } from "./components/role-badge";
+export {
+  ChannelBadge,
+  formatChannelLabel,
+  getChannelTone,
+  type ChannelBadgeProps,
+} from "./components/channel-badge";
 
 // Sidebar primitives
 export {
