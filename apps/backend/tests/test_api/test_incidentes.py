@@ -26,6 +26,7 @@ class FakeIncidenteService:
         search: str | None = None,
         severidad: str | None = None,
         estado: str | None = None,
+        canales: list[str] | None = None,
         asignado_a: str | None = None,
         limit: int = 20,
     ) -> list[IncidenteListItem]:
@@ -65,6 +66,8 @@ class FakeIncidenteService:
             filtered = [i for i in filtered if i.estado == estado]
         if severidad:
             filtered = [i for i in filtered if i.severidad == severidad]
+        if canales:
+            filtered = [i for i in filtered if i.canal_origen in canales]
         return filtered[:limit]
 
     async def listar_mapa(
@@ -196,6 +199,24 @@ def test_listar_incidentes_filtra_por_estado(client):
         payload = response.json()
         assert payload["total"] == 1
         assert payload["items"][0]["estado"] == "EN_ATENCION"
+    finally:
+        app.dependency_overrides.pop(get_service, None)
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_listar_incidentes_filtra_por_canal(client):
+    app.dependency_overrides[get_service] = lambda: FakeIncidenteService()
+    app.dependency_overrides[get_current_user] = _fake_supervisor
+    try:
+        response = client.get("/api/v1/incidentes?canal_origen=MENSAJERIA")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total"] == 1
+        assert payload["items"][0]["canal_origen"] == "MENSAJERIA"
+
+        response_multi = client.get("/api/v1/incidentes?canal_origen=WEB,MENSAJERIA")
+        assert response_multi.status_code == 200
+        assert response_multi.json()["total"] == 2
     finally:
         app.dependency_overrides.pop(get_service, None)
         app.dependency_overrides.pop(get_current_user, None)
