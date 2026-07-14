@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session, require_roles
-from app.core.constants import EstadoIncidente, NivelSeveridad
+from app.core.constants import EstadoIncidente, NivelSeveridad, TipoCanal
 from app.schemas.auth import AuthUserResponse
 from app.schemas.incidente import (
     ComentarioIncidenteCreateInput,
@@ -39,11 +39,24 @@ def get_service(db: AsyncSession = Depends(get_session)) -> IncidenteService:
     return IncidenteService(db)
 
 
+def _parse_canales(canal_origen: str | None) -> list[str] | None:
+    """Parsea `canal_origen=WEB,MOVIL` en una lista de valores válidos de TipoCanal."""
+    if not canal_origen:
+        return None
+    valores = {c.value for c in TipoCanal}
+    canales = [c.strip() for c in canal_origen.split(",") if c.strip() in valores]
+    return canales or None
+
+
 @router.get("/", response_model=IncidenteListResponse)
 async def listar_incidentes(
     search: str | None = Query(default=None, description="Filtra por código o título."),
     severidad: NivelSeveridad | None = Query(default=None),
     estado: EstadoIncidente | None = Query(default=None),
+    canal_origen: str | None = Query(
+        default=None,
+        description="Lista de tipo_canal separados por coma (ej. WEB,MOVIL).",
+    ),
     mios: bool = Query(
         default=False,
         description="Si es true, solo devuelve incidentes asignados al usuario autenticado.",
@@ -52,16 +65,18 @@ async def listar_incidentes(
     current_user: AuthUserResponse = Depends(require_roles(OPERATIVO_ROLES)),
     service: IncidenteService = Depends(get_service),
 ) -> IncidenteListResponse:
-    """Listado operativo de incidentes — filtrable por búsqueda, severidad y estado.
+    """Listado operativo de incidentes — filtrable por búsqueda, severidad, estado y canal.
 
     Con `mios=true` se restringe a los incidentes asignados al usuario autenticado
     (vista del operador en la app móvil). Restringido a roles
     supervisor / operador / administrador.
     """
+    canales = _parse_canales(canal_origen)
     items = await service.listar_recentes(
         search=search,
         severidad=severidad.value if severidad else None,
         estado=estado.value if estado else None,
+        canales=canales,
         asignado_a=current_user.id if mios else None,
         limit=limit,
     )

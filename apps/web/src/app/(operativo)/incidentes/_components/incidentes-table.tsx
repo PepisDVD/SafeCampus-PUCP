@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 import type { IncidenteListItem } from "@safecampus/shared-types";
-import { Badge, cn } from "@safecampus/ui-kit";
+import { Badge, ChannelBadge, cn } from "@safecampus/ui-kit";
 
 import {
   ESTADO_STYLE,
@@ -42,10 +42,11 @@ export function IncidentesTable({ items, footer }: Props) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       {/* Header (solo desktop) */}
-      <div className="hidden border-b border-slate-200 bg-slate-50/50 px-6 py-3 text-xs font-semibold tracking-wide text-slate-500 uppercase md:grid md:grid-cols-[140px_2fr_1.2fr_120px_140px_180px]">
+      <div className="hidden border-b border-slate-200 bg-slate-50/50 px-6 py-3 text-xs font-semibold tracking-wide text-slate-500 uppercase md:grid md:grid-cols-[140px_2fr_1.2fr_110px_120px_140px_180px]">
         <span>ID</span>
         <span>Incidente</span>
         <span>Zona</span>
+        <span>Canal</span>
         <span>Severidad</span>
         <span>Estado</span>
         <span>Asignado a</span>
@@ -61,7 +62,7 @@ export function IncidentesTable({ items, footer }: Props) {
             <li key={item.id} className="relative">
               <Link
                 href={`/incidentes/${item.id}`}
-                className="grid grid-cols-1 items-center gap-3 px-6 py-4 transition hover:bg-slate-50 md:grid-cols-[140px_2fr_1.2fr_120px_140px_180px]"
+                className="grid grid-cols-1 items-center gap-3 px-6 py-4 transition hover:bg-slate-50 md:grid-cols-[140px_2fr_1.2fr_110px_120px_140px_180px]"
               >
                 {/* Severity bar */}
                 <span
@@ -86,11 +87,16 @@ export function IncidentesTable({ items, footer }: Props) {
                 </div>
 
                 {/* Zona */}
-                <div className="flex items-center gap-1 text-sm text-slate-600">
+                <div className="flex min-w-0 items-center gap-1 text-sm text-slate-600">
                   <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                  <span className="truncate">
+                  <span className="truncate" title={item.lugar_referencia ?? undefined}>
                     {item.lugar_referencia ?? "—"}
                   </span>
+                </div>
+
+                {/* Canal de origen */}
+                <div>
+                  <ChannelBadge canal={item.canal_origen} />
                 </div>
 
                 {/* Severidad */}

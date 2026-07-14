@@ -79,6 +79,7 @@ class IncidenteRepository:
         search: str | None = None,
         severidad: str | None = None,
         estado: str | None = None,
+        canales: list[str] | None = None,
         asignado_a: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
@@ -96,6 +97,8 @@ class IncidenteRepository:
             statement = statement.where(Incidente.severidad == severidad)
         if estado:
             statement = statement.where(Incidente.estado == estado)
+        if canales:
+            statement = statement.where(Incidente.canal_origen.in_(canales))
         if asignado_a:
             statement = statement.where(Incidente.operador_asignado_id == UUID(asignado_a))
 

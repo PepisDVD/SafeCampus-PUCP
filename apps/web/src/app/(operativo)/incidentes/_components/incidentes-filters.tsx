@@ -2,12 +2,14 @@
 
 import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { EstadoIncidente, NivelSeveridad } from "@safecampus/shared-types";
+import { EstadoIncidente, NivelSeveridad, TipoCanal } from "@safecampus/shared-types";
 import {
   FilterBar,
   MultiSelectFilter,
   SearchInput,
 } from "@safecampus/ui-kit";
+
+import { CANAL_LABEL } from "@/features/incidentes/presentation";
 
 const SEVERIDADES: { value: NivelSeveridad; label: string }[] = [
   { value: NivelSeveridad.CRITICO, label: "Crítico" },
@@ -26,14 +28,21 @@ const ESTADOS: { value: EstadoIncidente; label: string }[] = [
   { value: EstadoIncidente.CERRADO, label: "Cerrado" },
 ];
 
+const CANALES: { value: TipoCanal; label: string }[] = [
+  { value: TipoCanal.WEB, label: CANAL_LABEL[TipoCanal.WEB] },
+  { value: TipoCanal.MOVIL, label: CANAL_LABEL[TipoCanal.MOVIL] },
+  { value: TipoCanal.MENSAJERIA, label: CANAL_LABEL[TipoCanal.MENSAJERIA] },
+];
+
 type Props = {
   search: string;
   severidades: NivelSeveridad[];
   estados: EstadoIncidente[];
+  canales: TipoCanal[];
   view?: "tabla" | "kanban";
 };
 
-export function IncidentesFilters({ search, severidades, estados, view }: Props) {
+export function IncidentesFilters({ search, severidades, estados, canales, view }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -78,6 +87,14 @@ export function IncidentesFilters({ search, severidades, estados, view }: Props)
           className="sm:w-48"
         />
       )}
+
+      <MultiSelectFilter
+        placeholder="Todos los canales"
+        options={CANALES}
+        selected={canales}
+        onChange={(vals) => update("canal_origen", vals.length ? vals.join(",") : null)}
+        className="sm:w-48"
+      />
     </FilterBar>
   );
 }

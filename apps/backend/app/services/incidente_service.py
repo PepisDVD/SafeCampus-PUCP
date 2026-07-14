@@ -90,6 +90,7 @@ class IncidenteService:
         search: str | None = None,
         severidad: str | None = None,
         estado: str | None = None,
+        canales: list[str] | None = None,
         asignado_a: str | None = None,
         limit: int = 20,
     ) -> list[IncidenteListItem]:
@@ -98,6 +99,7 @@ class IncidenteService:
             search=search,
             severidad=severidad,
             estado=estado,
+            canales=canales,
             asignado_a=asignado_a,
             limit=safe_limit,
         )

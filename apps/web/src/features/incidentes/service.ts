@@ -54,6 +54,7 @@ export async function listarIncidentes(
   if (filters.search) params.search = filters.search;
   if (filters.severidades?.length) params.severidad = filters.severidades.join(",");
   if (filters.estados?.length) params.estado = filters.estados.join(",");
+  if (filters.canales?.length) params.canal_origen = filters.canales.join(",");
 
   return serverApi.get<IncidenteListResponse>("/incidentes/", params);
 }
